@@ -3,8 +3,7 @@ mod proto;
 //pub use auth_token::AuthData;
 
 pub use crate::proto::Route;
-pub use crate::proto::start;
-pub use crate::proto::start_tls;
+pub use crate::proto::{start, start_tls, connect, connect_tls};
 
 #[derive(Clone)]
 pub struct AuthData {

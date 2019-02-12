@@ -96,7 +96,9 @@ impl Handler for WsServer {
             //info!("Connection with {} now open", addr);
         }
 
-        //self.ws.send("hi".to_string());
+        let q = self.ws.clone();
+
+        q.send("hi".to_string());
 
         Ok(())
     }
@@ -394,8 +396,10 @@ pub fn connect(host: String) {
     });
 }
 
-/*pub fn route_example_path(payload: ExampleDomain) -> Response {
+/*
+pub fn route_example_path(payload: ExampleDomain) -> Response {
     match payload {
         ExampleDomain::ExamplePath(payload) => WsResponse::Search("asd".to_string())
     }
-}*/
+}
+*/

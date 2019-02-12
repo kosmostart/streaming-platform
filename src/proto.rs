@@ -43,7 +43,7 @@ pub fn get_auth_data(cookie_header: Option<&Cookie>) -> Option<AuthData> {
 }
 */
 
-struct WssConnection {
+struct WssServer {
     addr: Option<String>,
     auth_data: Option<AuthData>,
     ws: Sender,
@@ -52,7 +52,7 @@ struct WssConnection {
     config: Config
 }
 
-struct WsConnection {
+struct WsServer {
     addr: Option<String>,
     auth_data: Option<AuthData>,
     ws: Sender,
@@ -66,7 +66,7 @@ pub enum Route {
     Disconnect
 }
 
-impl Handler for WsConnection {
+impl Handler for WsServer {
 
     fn on_open(&mut self, hs: Handshake) -> Result<()> {
 
@@ -176,7 +176,7 @@ impl Handler for WsConnection {
 
 }
 
-impl Handler for WssConnection {
+impl Handler for WssServer {
 
     fn on_open(&mut self, hs: Handshake) -> Result<()> {        
 
@@ -272,7 +272,7 @@ pub fn start(host: String, port: u16, route_msg: fn(Config, String, AuthData) ->
 
     let mut server = Builder::new().build(|ws| {
 
-        WsConnection {
+        WsServer {
             addr: None,
             auth_data: None,
             ws,
@@ -311,7 +311,7 @@ pub fn start_tls(host: String, port: u16, route_msg: fn(Config, String, AuthData
 
     let mut server = Builder::new().with_settings(settings).build(|ws| {
 
-        WssConnection {
+        WssServer {
             addr: None,
             auth_data: None,
             ws,
@@ -325,17 +325,20 @@ pub fn start_tls(host: String, port: u16, route_msg: fn(Config, String, AuthData
     server.listen(format!("{}:{}", host, port));
 }
 
-struct Client {
+struct WssClient {
     out: ws::Sender,
 }
 
-impl ws::Handler for Client {
+impl ws::Handler for WssClient {
+    fn on_open(&mut self, _: Handshake) -> Result<()> {
+        Ok(()) 
+    }
 
     fn on_message(&mut self, msg: ws::Message) -> ws::Result<()> {
+        println!("Client got message '{}'. ", msg);
+        //self.out.send("Hello");
 
-        //println!("msg = {}", msg);
-
-        self.out.close(ws::CloseCode::Normal)
+        Ok(())
     }
 
     fn upgrade_ssl_client(
@@ -362,25 +365,37 @@ impl ws::Handler for Client {
     }
 }
 
+struct WsClient {
+    out: Sender    
+}
+
+impl Handler for WsClient {
+    fn on_open(&mut self, _: Handshake) -> Result<()> {
+        Ok(()) 
+    }
+
+    fn on_message(&mut self, msg: Message) -> Result<()> {
+        println!("Client got message '{}'. ", msg);
+        //self.out.send("Hello");
+
+        Ok(())
+    }
+}
+
+pub fn connect_tls(host: String) {
+    ws::connect(host, |out| {        
+        WssClient { out }
+    });
+}
+
+pub fn connect(host: String) {
+     ws::connect(host, |out| {            
+        WsClient { out }
+    });
+}
+
 /*pub fn route_example_path(payload: ExampleDomain) -> Response {
     match payload {
         ExampleDomain::ExamplePath(payload) => WsResponse::Search("asd".to_string())
     }
 }*/
-
-pub fn connect_client (host: String) {
-
-    if let Err(error) = ws::connect("wss://".to_string() + &host + ":50004", |out| {
-
-        if let Err(_) = out.send("Hello WebSocket") {
-            //println!("Websocket couldn't queue an initial message.")
-        } else {
-            //println!("Client sent message 'Hello WebSocket'. ")
-        }
-
-        Client { out }
-
-    }) {
-        //println!("Failed to create WebSocket due to: {:?}", error);
-    }
-}

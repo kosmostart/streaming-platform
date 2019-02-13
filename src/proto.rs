@@ -1,7 +1,7 @@
 use std::fs::File;
 use std::rc::Rc;
 use std::io::Read;
-use ws::{Builder, Settings, Handler, Sender, Result, Message, Handshake, CloseCode, Error};
+use ws::{Builder, Settings, Handler, Sender, Message, Handshake, CloseCode};
 use ws::util::TcpStream;
 use openssl::ssl::{SslAcceptor, SslAcceptorBuilder, SslMethod, SslStream, SslConnectorBuilder, SslConnector, SslVerifyMode};
 use openssl::pkey::PKey;
@@ -68,7 +68,7 @@ pub enum Route {
 
 impl Handler for WsServer {
 
-    fn on_open(&mut self, hs: Handshake) -> Result<()> {
+    fn on_open(&mut self, hs: Handshake) -> ws::Result<()> {
 
         println!("got client");
 
@@ -100,10 +100,12 @@ impl Handler for WsServer {
 
         q.send("hi".to_string());
 
+        println!("sent hi");
+
         Ok(())
     }
 
-    fn on_message(&mut self, msg: Message) -> Result<()> {
+    fn on_message(&mut self, msg: Message) -> ws::Result<()> {
 
         println!("got message");
 
@@ -172,7 +174,7 @@ impl Handler for WsServer {
 
     }
 
-    fn on_error(&mut self, err: Error) {
+    fn on_error(&mut self, err: ws::Error) {
         //println!("The server encountered an error: {:?}", err);
     }
 
@@ -180,7 +182,7 @@ impl Handler for WsServer {
 
 impl Handler for WssServer {
 
-    fn on_open(&mut self, hs: Handshake) -> Result<()> {        
+    fn on_open(&mut self, hs: Handshake) -> ws::Result<()> {        
 
         /*
         if let Some(cookie) = hs.request.header("Cookie") {
@@ -210,7 +212,7 @@ impl Handler for WssServer {
         Ok(())
     }
 
-    fn on_message(&mut self, msg: Message) -> Result<()> {
+    fn on_message(&mut self, msg: Message) -> ws::Result<()> {
 
         match self.auth_data {
             Some(ref d) => {
@@ -257,7 +259,7 @@ impl Handler for WssServer {
 
     }
 
-    fn on_error(&mut self, err: Error) {
+    fn on_error(&mut self, err: ws::Error) {
         //println!("The server encountered an error: {:?}", err);
     }
 
@@ -332,7 +334,7 @@ struct WssClient {
 }
 
 impl ws::Handler for WssClient {
-    fn on_open(&mut self, _: Handshake) -> Result<()> {
+    fn on_open(&mut self, _: Handshake) -> ws::Result<()> {
         Ok(()) 
     }
 
@@ -368,15 +370,16 @@ impl ws::Handler for WssClient {
 }
 
 struct WsClient {
-    out: Sender    
+    out: Sender,
+    tx: crossbeam::channel::Sender<Message>
 }
 
 impl Handler for WsClient {
-    fn on_open(&mut self, _: Handshake) -> Result<()> {
+    fn on_open(&mut self, _: Handshake) -> ws::Result<()> {
         Ok(()) 
     }
 
-    fn on_message(&mut self, msg: Message) -> Result<()> {
+    fn on_message(&mut self, msg: Message) -> ws::Result<()> {
         println!("Client got message '{}'. ", msg);
         //self.out.send("Hello");
 
@@ -386,14 +389,70 @@ impl Handler for WsClient {
 
 pub fn connect_tls(host: String) {
     ws::connect(host, |out| {        
-        WssClient { out }
+        WssClient { 
+            out            
+        }
     });
 }
 
-pub fn connect(host: String) {
-     ws::connect(host, |out| {            
-        WsClient { out }
-    });
+pub fn connect(thread_name: String, host: String, tx: crossbeam::channel::Sender<Message>) -> Result<(std::thread::JoinHandle<()>, Sender), Error> {    
+    let (tx1, rx) = crossbeam::channel::unbounded();
+
+    let handle = std::thread::Builder::new()
+        .name(thread_name)
+        .spawn(move || {
+            ws::connect(host, |out| {                
+                tx1.send(out.clone());
+                WsClient { 
+                    out,
+                    tx: tx.clone()
+                }
+            });
+        })?;
+
+    let sender = rx.recv()?;
+
+    Ok((handle, sender))
+}
+
+#[derive(Debug)]
+pub enum Error {    
+	Io(std::io::Error),
+    ChannelReceive(crossbeam::channel::RecvError)
+}
+
+impl From<std::io::Error> for Error {
+	fn from(err: std::io::Error) -> Error {
+		Error::Io(err)
+	}
+}
+
+impl From<crossbeam::channel::RecvError> for Error {
+	fn from(err: crossbeam::channel::RecvError) -> Error {
+		Error::ChannelReceive(err)
+	}
+}
+
+pub fn route_message(config: Config, data: String, auth_data: AuthData) -> Route {
+    Route::Message("Error".to_string())
+}
+
+#[test]
+fn test_scenarios() {
+    let server = std::thread::Builder::new()
+        .name("server".to_owned())
+        .spawn(move || {
+            start("0.0.0.0".to_owned(), 60000, route_message, Config {})
+        })
+        .unwrap();
+
+    let host = "ws://127.0.0.1:60000";
+
+    let (tx, rx) = crossbeam::channel::unbounded();
+
+    let (handle, sender) = connect("hello".to_owned(), host.to_owned(), tx).unwrap();
+
+    handle.join().unwrap();
 }
 
 /*

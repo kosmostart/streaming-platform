@@ -61,7 +61,8 @@ struct WsServer {
 }
 
 pub enum Route {
-    Message(String),
+    ToSender(String),
+    ToClient(String, String),
     Broadcast(String),
     Disconnect
 }
@@ -117,15 +118,16 @@ impl Handler for WsServer {
                         let route_msg = self.route_msg;
 
                         match route_msg(self.config.clone(), data, d.clone()) {
-
-                            Route::Message(response) => {
-                                self.ws.send(response);
+                            Route::ToSender(res) => {
+                                self.ws.send(res);
                             }
-                            Route::Broadcast(response) => {
-                                self.ws.broadcast(response);
+                            Route::ToClient(client, res) => {
+                                self.ws.send(res);
+                            }
+                            Route::Broadcast(res) => {
+                                self.ws.broadcast(res);
                             }
                             Route::Disconnect => {}
-
                         }
                     },
                     Message::Binary(data) => {}
@@ -138,15 +140,16 @@ impl Handler for WsServer {
                         let route_msg = self.route_msg;
 
                         match route_msg(self.config.clone(), data, AuthData {}) {
-
-                            Route::Message(response) => {
-                                self.ws.send(response);
+                            Route::ToSender(res) => {
+                                self.ws.send(res);
                             }
-                            Route::Broadcast(response) => {
-                                self.ws.broadcast(response);
+                            Route::ToClient(client, res) => {
+                                self.ws.send(res);
                             }
-                            Route::Disconnect => {}
-
+                            Route::Broadcast(res) => {
+                                self.ws.broadcast(res);
+                            }
+                            Route::Disconnect => {}                            
                         }
                     },
                     Message::Binary(data) => {}
@@ -222,15 +225,16 @@ impl Handler for WssServer {
                         let route_msg = self.route_msg;
 
                         match route_msg(self.config.clone(), data, d.clone()) {
-
-                            Route::Message(response) => {
-                                self.ws.send(response);
+                            Route::ToSender(res) => {
+                                self.ws.send(res);
                             }
-                            Route::Broadcast(response) => {
-                                self.ws.broadcast(response);
+                            Route::ToClient(client, res) => {
+                                self.ws.send(res);
+                            }
+                            Route::Broadcast(res) => {
+                                self.ws.broadcast(res);
                             }
                             Route::Disconnect => {}
-
                         }
                     },
                     Message::Binary(data) => {}
@@ -434,7 +438,7 @@ impl From<crossbeam::channel::RecvError> for Error {
 }
 
 pub fn route_message(config: Config, data: String, auth_data: AuthData) -> Route {
-    Route::Message("Error".to_string())
+    Route::ToSender("Error".to_string())
 }
 
 #[test]

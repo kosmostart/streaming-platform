@@ -268,7 +268,7 @@ fn read_file(name: &str) -> std::io::Result<Vec<u8>> {
     Ok(buf)
 }
 
-pub fn start(host: String, port: u16, route_msg: fn(Config, String, AuthData) -> Route, config: Config, tx: crossbeam::channel::Sender<Message>) {
+pub fn start(host: String, port: u16, route_msg: fn(Config, String, AuthData) -> Route, config: Config) {
 
     let (tx, rx) = crossbeam::channel::unbounded();
 
@@ -398,6 +398,7 @@ impl ws::Handler for WssClient {
 }
 
 struct WsClient {
+    addr: Option<String>,
     out: Sender,
     tx: crossbeam::channel::Sender<Message>
 }
@@ -417,7 +418,14 @@ impl Handler for WsClient {
     fn build_request(&mut self, url: &url::Url) -> ws::Result<Request> {
         let mut req = Request::from_url(url)?;
 
-        req.headers_mut().push(("Service".into(), "ReportService".into()));
+        match &self.addr {
+            Some(addr) => {
+                req.headers_mut().push(("Service".into(), addr.clone().into()));
+            }
+            None => {
+                info!("Client with empty addr.");
+            }
+        }        
 
         Ok(req)
     }
@@ -431,15 +439,16 @@ pub fn connect_tls(host: String) {
     });
 }
 
-pub fn connect(thread_name: String, host: String, tx: crossbeam::channel::Sender<Message>) -> Result<(std::thread::JoinHandle<()>, Sender), Error> {    
+pub fn connect(addr: String, host: String, tx: crossbeam::channel::Sender<Message>) -> Result<(std::thread::JoinHandle<()>, Sender), Error> {    
     let (tx1, rx) = crossbeam::channel::unbounded();
 
     let handle = std::thread::Builder::new()
-        .name(thread_name)
+        .name(addr.clone())
         .spawn(move || {
             ws::connect(host, |out| {                
                 tx1.send(out.clone());
-                WsClient { 
+                WsClient {
+                    addr: Some(addr.clone()),
                     out,
                     tx: tx.clone()
                 }

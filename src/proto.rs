@@ -1,7 +1,9 @@
+use log::*;
+use std::collections::HashMap;
 use std::fs::File;
 use std::rc::Rc;
 use std::io::Read;
-use ws::{Builder, Settings, Handler, Sender, Message, Handshake, CloseCode};
+use ws::{Request, Builder, Settings, Handler, Sender, Message, Handshake, CloseCode};
 use ws::util::TcpStream;
 use openssl::ssl::{SslAcceptor, SslAcceptorBuilder, SslMethod, SslStream, SslConnectorBuilder, SslConnector, SslVerifyMode};
 use openssl::pkey::PKey;
@@ -44,20 +46,29 @@ pub fn get_auth_data(cookie_header: Option<&Cookie>) -> Option<AuthData> {
 */
 
 struct WssServer {
-    addr: Option<String>,
+    net_addr: Option<String>,
     auth_data: Option<AuthData>,
     ws: Sender,
     route_msg: fn(Config, String, AuthData) -> Route,
     ssl: Rc<SslAcceptor>,
-    config: Config
+    config: Config,
+    addr: Option<String>
 }
 
 struct WsServer {
-    addr: Option<String>,
+    net_addr: Option<String>,
     auth_data: Option<AuthData>,
     ws: Sender,
     route_msg: fn(Config, String, AuthData) -> Route,
-    config: Config
+    config: Config,
+    tx: crossbeam::channel::Sender<ServerMsg>,
+    addr: Option<String>
+}
+
+enum ServerMsg {
+    AddClient(String, Sender),
+    RemoveClient(String),
+    SendMsg(String, Message)
 }
 
 pub enum Route {
@@ -71,7 +82,21 @@ impl Handler for WsServer {
 
     fn on_open(&mut self, hs: Handshake) -> ws::Result<()> {
 
-        println!("got client");
+        info!("got client {}", self.ws.connection_id());
+
+        match hs.request.header("Service") {
+            Some(addr) => {
+                let addr = std::str::from_utf8(addr)?;
+                match addr {
+                    "ReportService" => {
+                        self.addr = Some(addr.to_owned());
+                        self.tx.send(ServerMsg::AddClient(addr.to_owned(), self.ws.clone()));
+                    }
+                    _ => {}
+                }
+            }
+            None => {}
+        }
 
         /*
 
@@ -92,70 +117,37 @@ impl Handler for WsServer {
         }
         */
 
-        if let Some(addr) = hs.remote_addr()? {
-            self.addr = Some(addr.clone());
-            //info!("Connection with {} now open", addr);
-        }
-
-        let q = self.ws.clone();
-
-        q.send("hi".to_string());
-
-        println!("sent hi");
+        if let Some(net_addr) = hs.remote_addr()? {
+            self.net_addr = Some(net_addr.clone());
+            info!("Connection with {} now open", net_addr);
+        }        
 
         Ok(())
     }
 
     fn on_message(&mut self, msg: Message) -> ws::Result<()> {
 
-        println!("got message");
+        info!("got message");
 
-        match self.auth_data {
-            Some(ref d) => {
-                match msg {
-                    Message::Text(data) => {
+        match msg {
+            Message::Text(data) => {
 
-                        let route_msg = self.route_msg;
+                let route_msg = self.route_msg;
 
-                        match route_msg(self.config.clone(), data, d.clone()) {
-                            Route::ToSender(res) => {
-                                self.ws.send(res);
-                            }
-                            Route::ToClient(client, res) => {
-                                self.ws.send(res);
-                            }
-                            Route::Broadcast(res) => {
-                                self.ws.broadcast(res);
-                            }
-                            Route::Disconnect => {}
-                        }
-                    },
-                    Message::Binary(data) => {}
+                match route_msg(self.config.clone(), data, AuthData {}) {
+                    Route::ToSender(res) => {
+                        self.ws.send(res);
+                    }
+                    Route::ToClient(addr, res) => {
+                        self.tx.send(ServerMsg::SendMsg(addr, Message::Text(res)));
+                    }
+                    Route::Broadcast(res) => {
+                        self.ws.broadcast(res);
+                    }
+                    Route::Disconnect => {}                            
                 }
-            }
-            None => {
-                match msg {
-                    Message::Text(data) => {
-
-                        let route_msg = self.route_msg;
-
-                        match route_msg(self.config.clone(), data, AuthData {}) {
-                            Route::ToSender(res) => {
-                                self.ws.send(res);
-                            }
-                            Route::ToClient(client, res) => {
-                                self.ws.send(res);
-                            }
-                            Route::Broadcast(res) => {
-                                self.ws.broadcast(res);
-                            }
-                            Route::Disconnect => {}                            
-                        }
-                    },
-                    Message::Binary(data) => {}
-                }
-            }
-
+            },
+            Message::Binary(data) => {}
         }
 
         Ok(())
@@ -163,22 +155,22 @@ impl Handler for WsServer {
 
     fn on_close(&mut self, code: CloseCode, reason: &str) {
 
-        println!("closed");
+        info!("closed");
 
         match code {
 
-            CloseCode::Normal => {}//println!("The client is done with the connection."),
+            CloseCode::Normal => {}//info!("The client is done with the connection."),
 
-            CloseCode::Away   => {}//println!("The client is leaving the site."),
+            CloseCode::Away   => {}//info!("The client is leaving the site."),
 
-            _ => {}//println!("The client encountered an error: {}", reason),
+            _ => {}//info!("The client encountered an error: {}", reason),
 
         }
 
     }
 
     fn on_error(&mut self, err: ws::Error) {
-        //println!("The server encountered an error: {:?}", err);
+        //info!("The server encountered an error: {:?}", err);
     }
 
 }
@@ -205,9 +197,9 @@ impl Handler for WssServer {
         }
         */
 
-        if let Some(addr) = hs.remote_addr()? {
-            self.addr = Some(addr.clone());
-            //println!("Connection with {} now open", addr);
+        if let Some(net_addr) = hs.remote_addr()? {
+            self.net_addr = Some(net_addr.clone());
+            //info!("Connection with {} now open", net_addr);
         }
 
         //self.ws.send("hi".to_string());
@@ -249,22 +241,22 @@ impl Handler for WssServer {
 
     fn on_close(&mut self, code: CloseCode, reason: &str) {
 
-        //println!("closed");
+        info!("closed {}", self.ws.connection_id());
 
         match code {
 
-            CloseCode::Normal => {}//println!("The client is done with the connection."),
+            CloseCode::Normal => {}//info!("The client is done with the connection."),
 
-            CloseCode::Away   => {}//println!("The client is leaving the site."),
+            CloseCode::Away   => {}//info!("The client is leaving the site."),
 
-            _ => {}//println!("The client encountered an error: {}", reason),
+            _ => {}//info!("The client encountered an error: {}", reason),
 
         }
 
     }
 
     fn on_error(&mut self, err: ws::Error) {
-        //println!("The server encountered an error: {:?}", err);
+        //info!("The server encountered an error: {:?}", err);
     }
 
 }
@@ -276,27 +268,59 @@ fn read_file(name: &str) -> std::io::Result<Vec<u8>> {
     Ok(buf)
 }
 
-pub fn start(host: String, port: u16, route_msg: fn(Config, String, AuthData) -> Route, config: Config) {
+pub fn start(host: String, port: u16, route_msg: fn(Config, String, AuthData) -> Route, config: Config, tx: crossbeam::channel::Sender<Message>) {
+
+    let (tx, rx) = crossbeam::channel::unbounded();
 
     let mut server = Builder::new().build(|ws| {
 
         WsServer {
-            addr: None,
+            net_addr: None,
             auth_data: None,
             ws,
             route_msg,
-            config: config.clone()
+            config: config.clone(),
+            tx: tx.clone(),
+            addr: None
         }
 
     }).unwrap();
+
+    let clients = std::thread::Builder::new()
+        .name("clients".to_owned())
+        .spawn(move || {
+            let mut clients = HashMap::new();            
+
+            loop {
+                let msg = rx.recv().unwrap();
+
+                match msg {
+                    ServerMsg::AddClient(addr, sender) => {
+                        info!("Adding client {}", &addr);
+                        clients.insert(addr, sender);                                
+                    }
+                    ServerMsg::SendMsg(addr, res) => {
+                        match clients.get(&addr) {
+                            Some(sender) => {
+                                info!("Sending message to client {} {:?}", &addr, res);
+                                sender.send(res);                                
+                            }
+                            None => {
+                                info!("Client not found: {}", &addr);
+                            }
+                        }
+                    }
+                    _ => {}
+                }                
+            }
+        })
+        .unwrap();
 
     server.listen(format!("{}:{}", host, port));
 }
 
 pub fn start_tls(host: String, port: u16, route_msg: fn(Config, String, AuthData) -> Route, config: Config) {
-
     let settings = Settings::default();
-
 
     let cert = {
         let data = read_file("sample.pem").unwrap();
@@ -307,7 +331,6 @@ pub fn start_tls(host: String, port: u16, route_msg: fn(Config, String, AuthData
         let data = read_file("sample.rsa").unwrap();
         PKey::private_key_from_pem(data.as_ref()).unwrap()
     };
-
 
     let acceptor = Rc::new({
         let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls()).unwrap();
@@ -320,12 +343,13 @@ pub fn start_tls(host: String, port: u16, route_msg: fn(Config, String, AuthData
     let mut server = Builder::new().with_settings(settings).build(|ws| {
 
         WssServer {
-            addr: None,
+            net_addr: None,
             auth_data: None,
             ws,
             route_msg,
             ssl: acceptor.clone(),
-            config: config.clone()
+            config: config.clone(),
+            addr: None
         }
 
     }).unwrap();
@@ -343,7 +367,7 @@ impl ws::Handler for WssClient {
     }
 
     fn on_message(&mut self, msg: ws::Message) -> ws::Result<()> {
-        println!("Client got message '{}'. ", msg);
+        info!("Client got message '{}'. ", msg);
         //self.out.send("Hello");
 
         Ok(())
@@ -384,10 +408,18 @@ impl Handler for WsClient {
     }
 
     fn on_message(&mut self, msg: Message) -> ws::Result<()> {
-        println!("Client got message '{}'. ", msg);
+        info!("Client got message '{}'. ", msg);
         //self.out.send("Hello");
 
         Ok(())
+    }
+
+    fn build_request(&mut self, url: &url::Url) -> ws::Result<Request> {
+        let mut req = Request::from_url(url)?;
+
+        req.headers_mut().push(("Service".into(), "ReportService".into()));
+
+        Ok(req)
     }
 }
 
@@ -445,7 +477,7 @@ pub fn route_message(config: Config, data: String, auth_data: AuthData) -> Route
 fn test_scenarios() {
     let server = std::thread::Builder::new()
         .name("server".to_owned())
-        .spawn(move || {
+        .spawn(|| {
             start("0.0.0.0".to_owned(), 60000, route_message, Config {})
         })
         .unwrap();

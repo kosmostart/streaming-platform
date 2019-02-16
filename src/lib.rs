@@ -1,11 +1,13 @@
 mod proto;
-
-//pub use auth_token::AuthData;
+mod simple;
+mod tls;
+mod error;
 
 pub use crossbeam;
-pub use ws::Message;
-pub use crate::proto::Route;
-pub use crate::proto::{start, start_tls, connect, connect_tls};
+pub use crate::proto::{Message2, Sender2};
+pub use crate::simple::{start, connect};
+pub use crate::tls::{start_tls, connect_tls};
+pub use error::Error;
 
 #[derive(Clone)]
 pub struct AuthData {

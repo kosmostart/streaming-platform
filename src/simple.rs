@@ -3,19 +3,20 @@ use std::fs::File;
 use std::rc::Rc;
 use std::io::Read;
 use log::*;
+use bytes::{Buf, BufMut};
 use ws::{Request, Builder, Settings, Handler, Sender, Message, Handshake, CloseCode};
 use ws::util::TcpStream;
 use crate::{AuthData, Config};
-use crate::proto::{ServerMsg, Route};
+use crate::proto::{ClientKind, ServerMsg, MsgMeta, Sender2};
 use crate::error::Error;
 
 struct WsServer {
     net_addr: Option<String>,
     auth_data: Option<AuthData>,
     ws: Sender,
-    route_msg: fn(Config, String, AuthData) -> Route,
     config: Config,
     tx: crossbeam::channel::Sender<ServerMsg>,
+    client_kind: Option<ClientKind>,
     addr: Option<String>
 }
 
@@ -25,13 +26,17 @@ impl Handler for WsServer {
 
         info!("got client {}", self.ws.connection_id());
 
-        match hs.request.header("Service") {
+        match hs.request.header("Service") {            
             Some(addr) => {
+                self.client_kind = Some(ClientKind::Service);
+
                 let addr = std::str::from_utf8(addr)?;
                 self.addr = Some(addr.to_owned());
                 self.tx.send(ServerMsg::AddClient(addr.to_owned(), self.ws.clone()));
             }
-            None => {}
+            None => {
+                self.client_kind = Some(ClientKind::App);
+            }
         }
 
         /*
@@ -65,25 +70,34 @@ impl Handler for WsServer {
 
         info!("got message");
 
-        match msg {
-            Message::Text(data) => {
+        match &self.addr {
+            Some(addr) => {
+                match msg {
+                    Message::Text(data) => {},
+                    Message::Binary(data) => {
+                        
+                        let res = {
+                            let mut buf = std::io::Cursor::new(&data);
+                            let len = buf.get_u32_be() as usize;
 
-                let route_msg = self.route_msg;
+                            serde_json::from_slice::<MsgMeta>(&data[4..len + 4])
+                        };
 
-                match route_msg(self.config.clone(), data, AuthData {}) {
-                    Route::ToSender(res) => {
-                        self.ws.send(res);
+                        match res {
+                            Ok(msg_meta) => {
+                                info!("Sending message: {:#?}", msg_meta);
+                                self.tx.send(ServerMsg::SendMsg(msg_meta.addr, data));
+                            }
+                            Err(err) => {
+                                error!("MsgMeta deserialization failed!")
+                            }
+                        }
                     }
-                    Route::ToClient(addr, res) => {
-                        self.tx.send(ServerMsg::SendMsg(addr, Message::Text(res)));
-                    }
-                    Route::Broadcast(res) => {
-                        self.ws.broadcast(res);
-                    }
-                    Route::Disconnect => {}                            
                 }
-            },
-            Message::Binary(data) => {}
+            }
+            None => {
+                info!("Client is unauthorized.");
+            }
         }
 
         Ok(())
@@ -111,7 +125,7 @@ impl Handler for WsServer {
 
 }
 
-pub fn start(host: String, port: u16, route_msg: fn(Config, String, AuthData) -> Route, config: Config) {
+pub fn start(host: String, port: u16, config: Config) {
 
     let (tx, rx) = crossbeam::channel::unbounded();
 
@@ -121,9 +135,9 @@ pub fn start(host: String, port: u16, route_msg: fn(Config, String, AuthData) ->
             net_addr: None,
             auth_data: None,
             ws,
-            route_msg,
             config: config.clone(),
             tx: tx.clone(),
+            client_kind: None,
             addr: None
         }
 
@@ -162,13 +176,13 @@ pub fn start(host: String, port: u16, route_msg: fn(Config, String, AuthData) ->
     server.listen(format!("{}:{}", host, port));
 }
 
-struct WsClient {
+struct WsClient<T> where T: serde::Serialize, for<'de> T: serde::Deserialize<'de> {
     addr: Option<String>,
     out: Sender,
-    tx: crossbeam::channel::Sender<Message>
+    tx: crossbeam::channel::Sender<(MsgMeta, T)>
 }
 
-impl Handler for WsClient {
+impl<T> Handler for WsClient<T> where T: serde::Serialize, for<'de> T: serde::Deserialize<'de> {
     fn on_open(&mut self, _: Handshake) -> ws::Result<()> {
         Ok(()) 
     }
@@ -196,14 +210,15 @@ impl Handler for WsClient {
     }
 }
 
-pub fn connect(addr: String, host: String, tx: crossbeam::channel::Sender<Message>) -> Result<(std::thread::JoinHandle<()>, Sender), Error> {    
+pub fn connect(addr: String, host: String, tx: crossbeam::channel::Sender<(MsgMeta, Vec<u8>)>) -> Result<(std::thread::JoinHandle<()>, Sender2), Error> {
     let (tx1, rx) = crossbeam::channel::unbounded();
 
     let handle = std::thread::Builder::new()
         .name(addr.clone())
         .spawn(move || {
-            ws::connect(host, |out| {                
-                tx1.send(out.clone());
+            ws::connect(host, |out| {
+                tx1.send(Sender2::new(out.clone()));
+
                 WsClient {
                     addr: Some(addr.clone()),
                     out,
@@ -217,16 +232,12 @@ pub fn connect(addr: String, host: String, tx: crossbeam::channel::Sender<Messag
     Ok((handle, sender))
 }
 
-pub fn route_message(config: Config, data: String, auth_data: AuthData) -> Route {
-    Route::ToSender("Error".to_string())
-}
-
 #[test]
 fn test_scenarios() {
     let server = std::thread::Builder::new()
         .name("server".to_owned())
         .spawn(|| {
-            start("0.0.0.0".to_owned(), 60000, route_message, Config {})
+            start("0.0.0.0".to_owned(), 60000, Config {})
         })
         .unwrap();
 

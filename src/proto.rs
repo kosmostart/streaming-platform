@@ -1,25 +1,52 @@
-use serde::{Serialize, Deserialize};
+use bytes::BufMut;
+use serde_derive::{Serialize, Deserialize};
 use ws::{Message, Sender};
+use crate::error::Error;
 
+pub enum ClientKind {
+    App,
+    Service
+}
 pub enum ServerMsg {
     AddClient(String, Sender),
     RemoveClient(String),
-    SendMsg(String, Message)
+    SendMsg(String, Vec<u8>)
 }
 
-pub enum Route {
-    ToSender(String),
-    ToClient(String, String),
-    Broadcast(String),
-    Disconnect
-}
-
+#[derive(Clone)]
 pub struct Sender2 {
     sender: Sender
 }
-pub struct Message2<T> where T: Serialize, for<'de> T: serde::Deserialize<'de> {
-    pub payload: T
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct MsgMeta {
+    pub addr: String
 }
+
 impl Sender2 {
-    //fn send(msg: )
+    pub fn new(sender: Sender) -> Sender2 {
+        Sender2 {
+            sender
+        }
+    }
+    pub fn send<T>(&self, addr: String, payload: T) -> Result<(), Error> where T: serde::Serialize, for<'de> T: serde::Deserialize<'de> {
+        
+        let msg_meta = MsgMeta {
+            addr
+        };
+
+        let mut msg_meta = serde_json::to_vec(&msg_meta)?;
+        let mut payload = serde_json::to_vec(&payload)?;
+
+        let mut buf = vec![];
+
+        buf.put_u32_be(msg_meta.len() as u32);
+
+        buf.append(&mut msg_meta);
+        buf.append(&mut payload);
+
+        self.sender.send(Message::Binary(buf));
+        
+        Ok(())
+    }
 }

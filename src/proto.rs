@@ -122,4 +122,3 @@ impl MagicBall2 {
         Ok((msg_meta.addr, payload.to_vec()))
     }
 }
-

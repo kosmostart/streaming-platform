@@ -3,7 +3,7 @@ use log::*;
 use bytes::{Buf};
 use ws::{Request, Builder, Handler, Sender, Message, Handshake, CloseCode};
 use crate::{AuthData, Config};
-use crate::proto::{ClientKind, ServerMsg, MsgMeta, MagicBall};
+use crate::proto::{ClientKind, ServerMsg, MsgMeta, MagicBall, MagicBall2};
 use crate::error::Error;
 
 struct WsServer {
@@ -223,6 +223,30 @@ pub fn connect<T, R>(addr: String, host: String) -> Result<(std::thread::JoinHan
         .spawn(move || {
             ws::connect(host, |out| {
                 tx2.send(MagicBall::new(out.clone(), rx.clone()));
+
+                WsClient {
+                    addr: Some(addr.clone()),
+                    out,
+                    tx: tx.clone()
+                }
+            });
+        })?;
+
+    let sender = rx2.recv()?;
+
+    Ok((handle, sender))
+}
+
+pub fn connect2(addr: String, host: String) -> Result<(std::thread::JoinHandle<()>, MagicBall2), Error> {
+
+    let (tx, rx) = crossbeam::channel::unbounded();
+    let (tx2, rx2) = crossbeam::channel::unbounded();
+
+    let handle = std::thread::Builder::new()
+        .name(addr.clone())
+        .spawn(move || {
+            ws::connect(host, |out| {
+                tx2.send(MagicBall2::new(out.clone(), rx.clone()));
 
                 WsClient {
                     addr: Some(addr.clone()),

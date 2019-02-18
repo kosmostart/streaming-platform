@@ -7,7 +7,7 @@ use bytes::{Buf, BufMut};
 use ws::{Request, Builder, Settings, Handler, Sender, Message, Handshake, CloseCode};
 use ws::util::TcpStream;
 use crate::{AuthData, Config};
-use crate::proto::{ClientKind, ServerMsg, MsgMeta, Sender2};
+use crate::proto::{ClientKind, ServerMsg, MsgMeta, MagicBall};
 use crate::error::Error;
 
 struct WsServer {
@@ -210,14 +210,14 @@ impl<T> Handler for WsClient<T> where T: serde::Serialize, for<'de> T: serde::De
     }
 }
 
-pub fn connect(addr: String, host: String, tx: crossbeam::channel::Sender<(MsgMeta, Vec<u8>)>) -> Result<(std::thread::JoinHandle<()>, Sender2), Error> {
-    let (tx1, rx) = crossbeam::channel::unbounded();
+pub fn connect(addr: String, host: String, tx: crossbeam::channel::Sender<(MsgMeta, Vec<u8>)>) -> Result<(std::thread::JoinHandle<()>, MagicBall), Error> {
+    let (tx2, rx2) = crossbeam::channel::unbounded();
 
     let handle = std::thread::Builder::new()
         .name(addr.clone())
         .spawn(move || {
             ws::connect(host, |out| {
-                tx1.send(Sender2::new(out.clone()));
+                tx2.send(MagicBall::new(out.clone()));
 
                 WsClient {
                     addr: Some(addr.clone()),
@@ -227,7 +227,7 @@ pub fn connect(addr: String, host: String, tx: crossbeam::channel::Sender<(MsgMe
             });
         })?;
 
-    let sender = rx.recv()?;
+    let sender = rx2.recv()?;
 
     Ok((handle, sender))
 }

@@ -14,7 +14,7 @@ pub enum ServerMsg {
 }
 
 #[derive(Clone)]
-pub struct Sender2 {
+pub struct MagicBall {
     sender: Sender
 }
 
@@ -23,9 +23,9 @@ pub struct MsgMeta {
     pub addr: String
 }
 
-impl Sender2 {
-    pub fn new(sender: Sender) -> Sender2 {
-        Sender2 {
+impl MagicBall {
+    pub fn new(sender: Sender) -> MagicBall {
+        MagicBall {
             sender
         }
     }

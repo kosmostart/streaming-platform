@@ -3,10 +3,9 @@ mod simple;
 //mod tls;
 mod error;
 
-pub use crossbeam;
 pub use crate::simple::{start, connect};
 //pub use crate::tls::{start_tls, connect_tls};
-pub use error::Error;
+pub use crate::error::Error;
 
 #[derive(Clone)]
 pub struct AuthData {

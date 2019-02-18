@@ -1,4 +1,6 @@
-use bytes::BufMut;
+use std::{marker::PhantomData, fmt::Debug};
+use log::*;
+use bytes::{Buf, BufMut};
 use serde_derive::{Serialize, Deserialize};
 use ws::{Message, Sender};
 use crate::error::Error;
@@ -14,8 +16,11 @@ pub enum ServerMsg {
 }
 
 #[derive(Clone)]
-pub struct MagicBall {
-    sender: Sender
+pub struct MagicBall<T, R> where T: serde::Serialize, for<'de> T: serde::Deserialize<'de>, R: serde::Serialize, for<'de> R: serde::Deserialize<'de> {
+    phantom_data_for_T: PhantomData<T>,
+    phantom_data_for_R: PhantomData<R>,
+    sender: Sender,
+    rx: crossbeam::channel::Receiver<Vec<u8>>
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -23,13 +28,16 @@ pub struct MsgMeta {
     pub addr: String
 }
 
-impl MagicBall {
-    pub fn new(sender: Sender) -> MagicBall {
+impl<T, R> MagicBall<T, R> where T: Debug, T: serde::Serialize, for<'de> T: serde::Deserialize<'de>, R: Debug, R: serde::Serialize, for<'de> R: serde::Deserialize<'de> {
+    pub fn new(sender: Sender, rx: crossbeam::channel::Receiver<Vec<u8>>) -> MagicBall<T, R> {
         MagicBall {
-            sender
+            phantom_data_for_T: PhantomData,
+            phantom_data_for_R: PhantomData,
+            sender,
+            rx
         }
     }
-    pub fn send<T>(&self, addr: String, payload: T) -> Result<(), Error> where T: serde::Serialize, for<'de> T: serde::Deserialize<'de> {
+    pub fn send(&self, addr: String, payload: T) -> Result<(), Error> {
         
         let msg_meta = MsgMeta {
             addr
@@ -48,5 +56,20 @@ impl MagicBall {
         self.sender.send(Message::Binary(buf));
         
         Ok(())
+    }
+    pub fn recv(&self) -> Result<(String, R), Error> {
+        let data = self.rx.recv()?;
+
+        let len = {
+            let mut buf = std::io::Cursor::new(&data);
+            buf.get_u32_be() as usize
+        };
+        
+        let msg_meta = serde_json::from_slice::<MsgMeta>(&data[4..len + 4])?;
+        let payload = serde_json::from_slice::<R>(&data[len + 4..])?;
+
+        info!("Received message, {:#?} {:#?}", msg_meta, payload);
+
+        Ok((msg_meta.addr, payload))
     }
 }

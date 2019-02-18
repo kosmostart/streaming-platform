@@ -1,11 +1,7 @@
-use std::collections::HashMap;
-use std::fs::File;
-use std::rc::Rc;
-use std::io::Read;
+use std::{collections::HashMap, fmt::Debug};
 use log::*;
-use bytes::{Buf, BufMut};
-use ws::{Request, Builder, Settings, Handler, Sender, Message, Handshake, CloseCode};
-use ws::util::TcpStream;
+use bytes::{Buf};
+use ws::{Request, Builder, Handler, Sender, Message, Handshake, CloseCode};
 use crate::{AuthData, Config};
 use crate::proto::{ClientKind, ServerMsg, MsgMeta, MagicBall};
 use crate::error::Error;
@@ -176,20 +172,27 @@ pub fn start(host: String, port: u16, config: Config) {
     server.listen(format!("{}:{}", host, port));
 }
 
-struct WsClient<T> where T: serde::Serialize, for<'de> T: serde::Deserialize<'de> {
+struct WsClient {
     addr: Option<String>,
     out: Sender,
-    tx: crossbeam::channel::Sender<(MsgMeta, T)>
+    tx: crossbeam::channel::Sender<Vec<u8>>
 }
 
-impl<T> Handler for WsClient<T> where T: serde::Serialize, for<'de> T: serde::Deserialize<'de> {
+impl Handler for WsClient {
     fn on_open(&mut self, _: Handshake) -> ws::Result<()> {
         Ok(()) 
     }
 
     fn on_message(&mut self, msg: Message) -> ws::Result<()> {
-        info!("Client got message '{}'. ", msg);
-        //self.out.send("Hello");
+        
+        info!("Client got message {}", msg);
+
+        match msg {
+            Message::Text(data) => {},
+            Message::Binary(data) => {
+                self.tx.send(data);
+            }
+        }
 
         Ok(())
     }
@@ -210,14 +213,16 @@ impl<T> Handler for WsClient<T> where T: serde::Serialize, for<'de> T: serde::De
     }
 }
 
-pub fn connect(addr: String, host: String, tx: crossbeam::channel::Sender<(MsgMeta, Vec<u8>)>) -> Result<(std::thread::JoinHandle<()>, MagicBall), Error> {
+pub fn connect<T, R>(addr: String, host: String) -> Result<(std::thread::JoinHandle<()>, MagicBall<T, R>), Error> where T: Debug, T: Send, T: 'static, T: serde::Serialize, for<'de> T: serde::Deserialize<'de>, R: Debug, R: Send, R: 'static, R: serde::Serialize, for<'de> R: serde::Deserialize<'de> {
+
+    let (tx, rx) = crossbeam::channel::unbounded();
     let (tx2, rx2) = crossbeam::channel::unbounded();
 
     let handle = std::thread::Builder::new()
         .name(addr.clone())
         .spawn(move || {
             ws::connect(host, |out| {
-                tx2.send(MagicBall::new(out.clone()));
+                tx2.send(MagicBall::new(out.clone(), rx.clone()));
 
                 WsClient {
                     addr: Some(addr.clone()),

@@ -82,7 +82,7 @@ impl Handler for WsServer {
                         match res {
                             Ok(msg_meta) => {
                                 info!("Sending message: {:#?}", msg_meta);
-                                self.tx.send(ServerMsg::SendMsg(msg_meta.addr, data));
+                                self.tx.send(ServerMsg::SendMsg(msg_meta.rx, data));
                             }
                             Err(err) => {
                                 error!("MsgMeta deserialization failed!")
@@ -222,7 +222,7 @@ pub fn connect<T, R>(addr: String, host: String) -> Result<(std::thread::JoinHan
         .name(addr.clone())
         .spawn(move || {
             ws::connect(host, |out| {
-                tx2.send(MagicBall::new(out.clone(), rx.clone()));
+                tx2.send(MagicBall::new(addr.clone(), out.clone(), rx.clone()));
 
                 WsClient {
                     addr: Some(addr.clone()),
@@ -246,7 +246,7 @@ pub fn connect2(addr: String, host: String) -> Result<(std::thread::JoinHandle<(
         .name(addr.clone())
         .spawn(move || {
             ws::connect(host, |out| {
-                tx2.send(MagicBall2::new(out.clone(), rx.clone()));
+                tx2.send(MagicBall2::new(addr.clone(), out.clone(), rx.clone()));
 
                 WsClient {
                     addr: Some(addr.clone()),

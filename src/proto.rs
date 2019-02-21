@@ -93,6 +93,10 @@ impl<T, R> MagicBall<T, R> where T: Debug, T: serde::Serialize, for<'de> T: serd
         Ok(())
     }
     pub fn reply_to_rpc(&self, addr: String, correlation_id: Option<Uuid>, payload: T) -> Result<(), Error> {        
+        if correlation_id.is_none() {
+            return  Err(Error::EmptyCorrelationIdPassed);
+        }
+
         let msg_meta = MsgMeta {
             tx: self.addr.clone(),
             rx: addr,
@@ -200,6 +204,10 @@ impl MagicBall2 {
         Ok(())
     }
     pub fn reply_to_rpc(&self, addr: String, correlation_id: Option<Uuid>, mut payload: Vec<u8>) -> Result<(), Error> {        
+        if correlation_id.is_none() {
+            return  Err(Error::EmptyCorrelationIdPassed);
+        }
+
         let msg_meta = MsgMeta {
             tx: self.addr.clone(),
             rx: addr,

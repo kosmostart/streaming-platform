@@ -156,7 +156,7 @@ pub fn start(host: String, port: u16, config: Config) {
                     ServerMsg::SendMsg(addr, res) => {
                         match clients.get(&addr) {
                             Some(sender) => {
-                                info!("Sending message to client {} {:?}", &addr, res);
+                                info!("Sending message to client {}", &addr);
                                 sender.send(res);                                
                             }
                             None => {
@@ -191,7 +191,7 @@ impl Handler for WsClient {
 
     fn on_message(&mut self, msg: Message) -> ws::Result<()> {
         
-        info!("Client got message {}", msg);
+        info!("Client got message");
 
         match msg {
             Message::Text(data) => {},
@@ -227,10 +227,12 @@ impl Handler for WsClient {
 
                                         match self.rpc_rx.recv() {
                                             Ok(msg) => {
+                                                info!("Debugging {:?}", msg);
                                                 match msg {
                                                     ClientMsg::RpcDataResponse(received_correlation_id, rpc_tx) => {
                                                         match received_correlation_id == correlation_id {
                                                             true => {
+                                                                info!("Sending to rpc_tx {:?}", msg_meta);
                                                                 rpc_tx.send((msg_meta, len, data));
                                                             }
                                                             false => error!("received_correlation_id not equals correlation_id: {}, {}", received_correlation_id, correlation_id)
@@ -360,6 +362,8 @@ pub fn connect2(addr: String, host: String) -> Result<(std::thread::JoinHandle<(
             loop {
                 let msg = rpc_rx2.recv().unwrap();
 
+                info!("Debugging {:?}", msg);
+
                 match msg {
                     ClientMsg::AddRpc(correlation_id, rpc_client_tx) => {
                         info!("Adding rpc {}", correlation_id);
@@ -372,6 +376,7 @@ pub fn connect2(addr: String, host: String) -> Result<(std::thread::JoinHandle<(
                         match rpcs.get(&correlation_id) {
                             Some(rpc_client_tx) => {
                                 rpc_tx2.send(ClientMsg::RpcDataResponse(correlation_id, rpc_client_tx.clone()));
+                                info!("rpc_client_tx sent {}", correlation_id);
                             }
                             None => error!("Rpc not found: {}", correlation_id)
                         }                        

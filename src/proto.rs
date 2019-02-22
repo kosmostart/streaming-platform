@@ -16,6 +16,7 @@ pub enum ServerMsg {
     SendMsg(String, Vec<u8>)
 }
 
+#[derive(Debug)]
 pub enum ClientMsg {
     AddRpc(Uuid, crossbeam::channel::Sender<(MsgMeta, usize, Vec<u8>)>),
     RemoveRpc(Uuid),
@@ -102,7 +103,7 @@ impl<T, R> MagicBall<T, R> where T: Debug, T: serde::Serialize, for<'de> T: serd
             rx: addr,
             kind: MsgKind::RpcResponse,
             correlation_id            
-        };
+        };        
 
         let mut msg_meta = serde_json::to_vec(&msg_meta)?;
         let mut payload = serde_json::to_vec(&payload)?;
@@ -141,7 +142,7 @@ impl<T, R> MagicBall<T, R> where T: Debug, T: serde::Serialize, for<'de> T: serd
             kind: MsgKind::RpcRequest,
             correlation_id: Some(correlation_id)
         };
-
+        
         let mut msg_meta = serde_json::to_vec(&msg_meta)?;        
 
         let mut buf = vec![];
@@ -157,7 +158,7 @@ impl<T, R> MagicBall<T, R> where T: Debug, T: serde::Serialize, for<'de> T: serd
         
         self.sender.send(Message::Binary(buf));
 
-        let res = match self.rx.recv() {
+        let res = match rpc_rx.recv() {
             Ok((msg_meta, len, data)) => {
                 let payload = &data[len + 4..];
                 let payload = serde_json::from_slice::<R>(&data[len + 4..])?;
@@ -265,7 +266,7 @@ impl MagicBall2 {
         
         self.sender.send(Message::Binary(buf));
 
-        let res = match self.rx.recv() {
+        let res = match rpc_rx.recv() {
             Ok((msg_meta, len, data)) => {
                 let payload = &data[len + 4..];        
                 Ok((msg_meta, payload.to_vec()))

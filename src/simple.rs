@@ -3,6 +3,7 @@ use log::*;
 use bytes::{Buf};
 use ws::{Request, Builder, Handler, Sender, Message, Handshake, CloseCode};
 use uuid::Uuid;
+use cookie::Cookie;
 use crate::{AuthData, Config};
 use crate::proto::{ClientKind, ServerMsg, ClientMsg, MsgMeta, MsgKind, MagicBall, MagicBall2};
 use crate::error::Error;
@@ -23,16 +24,48 @@ impl Handler for WsServer {
 
         info!("got client {}", self.ws.connection_id());
 
-        match hs.request.header("Service") {            
-            Some(addr) => {
+        match hs.remote_addr()? {
+            Some(net_addr) => {
+                self.net_addr = Some(net_addr.clone());
+                info!("Connection with {} now open", net_addr);
+            }
+            None => info!("No remote addr present.")
+        }
+
+        match hs.request.header("Cookie") {
+            Some(cookie) => {
+                let cookie = std::str::from_utf8(cookie)?;
+
+                info!("Cookie: {}", cookie);
+
+                match Cookie::parse(cookie) {
+                    Ok(cookie) => {
+
+                    }
+                    Err(err) => error!("Cookie parse error: {}", err)
+                }
+
+                self.client_kind = Some(ClientKind::App);
+                return Ok(());
+            }
+            None => {
+                info!("No Cookie header present.")
+            }
+        }
+
+        match hs.request.header("Service") {
+            Some(addr) => {                                
+                let addr = std::str::from_utf8(addr)?;
+
+                info!("Service: {}", addr);
+
                 self.client_kind = Some(ClientKind::Service);
 
-                let addr = std::str::from_utf8(addr)?;
                 self.addr = Some(addr.to_owned());
                 self.tx.send(ServerMsg::AddClient(addr.to_owned(), self.ws.clone()));
             }
             None => {
-                self.client_kind = Some(ClientKind::App);
+                info!("No Service header present.")
             }
         }
 
@@ -53,12 +86,7 @@ impl Handler for WsServer {
                 Err(e) => error!("ws cookie parse error. {}", e)
             }
         }
-        */
-
-        if let Some(net_addr) = hs.remote_addr()? {
-            self.net_addr = Some(net_addr.clone());
-            info!("Connection with {} now open", net_addr);
-        }        
+        */                
 
         Ok(())
     }

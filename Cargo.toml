@@ -16,3 +16,4 @@ openssl = "*"
 ws = { version = "*", features = ["ssl"] }
 crossbeam = "*"
 uuid = { version = "*", features = ["serde", "v4"] }
+cookie = "*"

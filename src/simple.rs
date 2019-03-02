@@ -40,12 +40,21 @@ impl Handler for WsServer {
 
                 match Cookie::parse(cookie) {
                     Ok(cookie) => {
-
+                        info!("Cookie: {:?}", cookie.name_value());
+                        match cookie.name() {
+                            "addr" => {
+                                let addr = cookie.value();
+                                
+                                self.client_kind = Some(ClientKind::App);
+                                self.addr = Some(addr.to_owned());
+                                self.tx.send(ServerMsg::AddClient(addr.to_owned(), self.ws.clone()));
+                            }
+                            _ => info!("No addr present.")
+                        }
                     }
                     Err(err) => error!("Cookie parse error: {}", err)
                 }
 
-                self.client_kind = Some(ClientKind::App);
                 return Ok(());
             }
             None => {

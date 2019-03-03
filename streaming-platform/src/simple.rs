@@ -212,6 +212,61 @@ pub fn start(host: String, port: u16, config: Config) {
     server.listen(format!("{}:{}", host, port));
 }
 
+pub fn start_with_link(host: String, port: u16, link_client_name: String, link_to_host: String, config: Config) {
+
+    let (tx, rx) = crossbeam::channel::unbounded();
+
+    let host = "ws://127.0.0.1:60000";
+
+    let (handle, magic_ball) = connect2(link_client_name, link_to_host).unwrap();
+
+    let mut server = Builder::new().build(|ws| {
+
+        WsServer {
+            net_addr: None,
+            auth_data: None,
+            ws,
+            config: config.clone(),
+            tx: tx.clone(),
+            client_kind: None,
+            addr: None
+        }
+
+    }).unwrap();
+
+    let clients = std::thread::Builder::new()
+        .name("clients".to_owned())
+        .spawn(move || {
+            let mut clients = HashMap::new();            
+
+            loop {
+                let msg = rx.recv().unwrap();
+
+                match msg {
+                    ServerMsg::AddClient(addr, sender) => {
+                        info!("Adding client {}", &addr);
+                        clients.insert(addr, sender);                                
+                    }
+                    ServerMsg::SendMsg(addr, res) => {
+                        match clients.get(&addr) {
+                            Some(sender) => {
+                                info!("Sending message to client {}", &addr);
+                                sender.send(res);                                
+                            }
+                            None => {
+                                info!("Client not found: {}", &addr);
+                            }
+                        }
+                    }
+                    _ => {}
+                }                
+            }
+        })
+        .unwrap();
+
+    server.listen(format!("{}:{}", host, port));
+}
+
 struct WsClient {
     addr: Option<String>,
     out: Sender,

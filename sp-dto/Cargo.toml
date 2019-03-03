@@ -10,4 +10,4 @@ bytes = "*"
 serde = "*"
 serde_derive = "*"
 serde_json = "*"
-uuid = { version = "*", features = ["serde", "v4"] }
+uuid = { version = "*", features = ["serde", "v4", "stdweb"] }

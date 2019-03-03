@@ -1,19 +1,6 @@
-[package]
-name = "streaming-platform"
-version = "0.1.0"
-authors = ["Maximb <sprayrules@gmail.com>"]
-edition = "2018"
+[workspace]
 
-[dependencies]
-
-log = "*"
-bytes = "*"
-serde = "*"
-serde_derive = "*"
-serde_json = "*"
-url = "*"
-openssl = "*"
-ws = { version = "*", features = ["ssl"] }
-crossbeam = "*"
-uuid = { version = "*", features = ["serde", "v4"] }
-cookie = "*"
+members = [
+	"streaming-platform",
+	"sp-dto"
+]

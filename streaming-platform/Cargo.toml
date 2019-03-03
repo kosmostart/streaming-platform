@@ -1,0 +1,18 @@
+[package]
+name = "streaming-platform"
+version = "0.1.0"
+authors = ["Maximb <sprayrules@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+
+log = "*"
+serde = "*"
+serde_derive = "*"
+serde_json = "*"
+url = "*"
+openssl = "*"
+ws = { version = "*", features = ["ssl"] }
+crossbeam = "*"
+cookie = "*"
+sp-dto = { path = "../sp-dto" }

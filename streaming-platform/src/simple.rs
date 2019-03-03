@@ -1,11 +1,12 @@
 use std::{collections::HashMap, fmt::Debug};
 use log::*;
-use bytes::{Buf};
+use sp_dto::bytes::Buf;
 use ws::{Request, Builder, Handler, Sender, Message, Handshake, CloseCode};
-use uuid::Uuid;
+use sp_dto::uuid::Uuid;
 use cookie::Cookie;
+use sp_dto::{MsgMeta, MsgKind};
 use crate::{AuthData, Config};
-use crate::proto::{ClientKind, ServerMsg, ClientMsg, MsgMeta, MsgKind, MagicBall, MagicBall2};
+use crate::proto::{ClientKind, ServerMsg, ClientMsg, MagicBall, MagicBall2};
 use crate::error::Error;
 
 struct WsServer {

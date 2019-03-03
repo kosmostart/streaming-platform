@@ -1,9 +1,10 @@
 use std::{marker::PhantomData, fmt::Debug};
 use log::*;
-use bytes::{Buf, BufMut};
+use sp_dto::bytes::{Buf, BufMut};
 use serde_derive::{Serialize, Deserialize};
 use ws::{Message, Sender};
-use uuid::Uuid;
+use sp_dto::uuid::Uuid;
+use sp_dto::{MsgMeta, MsgKind};
 use crate::error::Error;
 
 pub enum ClientKind {
@@ -42,21 +43,6 @@ pub struct MagicBall2 {
     rx: crossbeam::channel::Receiver<(MsgMeta, usize, Vec<u8>)>,
     rpc_request_rx: crossbeam::channel::Receiver<(MsgMeta, usize, Vec<u8>)>,
     rpc_tx: crossbeam::channel::Sender<ClientMsg>
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct MsgMeta {
-    pub tx: String,
-    pub rx: String,
-    pub kind: MsgKind,
-    pub correlation_id: Option<Uuid>
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub enum MsgKind {
-    Event,
-    RpcRequest,
-    RpcResponse
 }
 
 impl<T, R> MagicBall<T, R> where T: Debug, T: serde::Serialize, for<'de> T: serde::Deserialize<'de>, R: Debug, R: serde::Serialize, for<'de> R: serde::Deserialize<'de> {

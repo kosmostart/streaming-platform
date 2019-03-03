@@ -44,10 +44,11 @@ impl Handler for WsServer {
                         match cookie.name() {
                             "addr" => {
                                 let addr = cookie.value();
+                                let addr = Uuid::new_v4().to_string();
                                 
                                 self.client_kind = Some(ClientKind::App);
-                                self.addr = Some(addr.to_owned());
-                                self.tx.send(ServerMsg::AddClient(addr.to_owned(), self.ws.clone()));
+                                self.addr = Some(addr.clone());
+                                self.tx.send(ServerMsg::AddClient(addr, self.ws.clone()));
                             }
                             _ => info!("No addr present.")
                         }

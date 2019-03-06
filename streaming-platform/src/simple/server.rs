@@ -119,7 +119,13 @@ impl Handler for WsServer {
                                     let mut buf = std::io::Cursor::new(&data);
                                     let len = buf.get_u32_be() as usize;
 
-                                    (serde_json::from_slice::<MsgMeta>(&data[4..len + 4]), len)
+                                    match len > data.len() - 4 {
+                                        true => {
+                                            let custom_error = std::io::Error::new(std::io::ErrorKind::Other, "oh no!");
+                                            return Err(ws::Error::new(ws::ErrorKind::Io(custom_error), ""));
+                                        }
+                                        false => (serde_json::from_slice::<MsgMeta>(&data[4..len + 4]), len)
+                                    }
                                 };
 
                                 match res {

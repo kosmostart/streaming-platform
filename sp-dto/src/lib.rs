@@ -7,8 +7,9 @@ pub use bytes;
 pub use uuid;
 
 #[derive(Debug, Serialize, Deserialize)]
-pub enum Addr {
-
+pub enum MsgSource {
+    Component(String, String),
+    Service(String)
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -16,8 +17,8 @@ pub struct MsgMeta {
     pub tx: String,
     pub rx: String,
     pub kind: MsgKind,
-    pub correlation_id: Option<Uuid>,
-    pub original_tx: Option<String>
+    pub correlation_id: Option<Uuid>,    
+    pub source: Option<MsgSource>
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -33,7 +34,7 @@ pub fn send_event_dto<T>(tx: String, rx: String, payload: T) -> Result<Vec<u8>, 
         rx,
         kind: MsgKind::Event,
         correlation_id: None,
-        original_tx: None
+        source: None
     };
 
     let mut msg_meta = serde_json::to_vec(&msg_meta)?;
@@ -55,7 +56,7 @@ pub fn reply_to_rpc_dto<T>(tx: String, rx: String, correlation_id: Option<Uuid>,
         rx,
         kind: MsgKind::RpcResponse,
         correlation_id,
-        original_tx: None
+        source: None
     };        
 
     let mut msg_meta = serde_json::to_vec(&msg_meta)?;
@@ -96,7 +97,7 @@ pub fn rpc_dto<T>(tx: String, rx: String, payload: T) -> Result<Vec<u8>, Error> 
         rx,
         kind: MsgKind::RpcRequest,
         correlation_id: Some(correlation_id),
-        original_tx: None
+        source: None
     };
     
     let mut msg_meta = serde_json::to_vec(&msg_meta)?;
@@ -131,7 +132,7 @@ pub fn send_event_dto2(tx: String, rx: String, mut payload: Vec<u8>) -> Result<V
         rx,
         kind: MsgKind::Event,
         correlation_id: None,
-        original_tx: None
+        source: None
     };
 
     let mut msg_meta = serde_json::to_vec(&msg_meta)?;        
@@ -152,7 +153,7 @@ pub fn reply_to_rpc_dto2(tx: String, rx: String, correlation_id: Option<Uuid>, m
         rx,
         kind: MsgKind::RpcResponse,
         correlation_id,
-        original_tx: None
+        source: None
     };
 
     let mut msg_meta = serde_json::to_vec(&msg_meta)?;        
@@ -190,7 +191,7 @@ pub fn rpc_dto2(tx: String, rx: String, mut payload: Vec<u8>) -> Result<Vec<u8>,
         rx,
         kind: MsgKind::RpcRequest,
         correlation_id: Some(correlation_id),
-        original_tx: None
+        source: None
     };
 
     let mut msg_meta = serde_json::to_vec(&msg_meta)?;        

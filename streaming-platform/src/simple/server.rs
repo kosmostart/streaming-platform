@@ -1,10 +1,10 @@
 use std::{collections::HashMap, fmt::Debug};
 use log::*;
-use sp_dto::bytes::{Buf, BufMut};
-use ws::{Request, Builder, Handler, Sender, Message, Handshake, CloseCode};
-use sp_dto::uuid::Uuid;
 use cookie::Cookie;
-use sp_dto::{MsgMeta, MsgKind};
+use ws::{Request, Builder, Handler, Sender, Message, Handshake, CloseCode};
+use sp_dto::bytes::{Buf, BufMut};
+use sp_dto::uuid::Uuid;
+use sp_dto::{MsgMeta, MsgKind, MsgSource};
 use crate::{AuthData, Config};
 use crate::proto::{ClientKind, ServerMsg, ClientMsg, MagicBall, MagicBall2};
 use crate::error::Error;
@@ -81,6 +81,22 @@ impl Handler for WsServer {
             }
         }
 
+        match hs.request.header("Hub") {
+            Some(addr) => {                                
+                let addr = std::str::from_utf8(addr)?;
+
+                info!("Service: {}", addr);
+
+                self.client_kind = Some(ClientKind::Hub);
+
+                self.addr = Some(addr.to_owned());
+                self.tx.send(ServerMsg::AddClient(addr.to_owned(), self.ws.clone()));
+            }
+            None => {
+                info!("No Service header present.")
+            }
+        }
+
         /*
 
         if let Some(cookie) = hs.request.header("Cookie") {
@@ -136,7 +152,7 @@ impl Handler for WsServer {
                                             ClientKind::App => {
                                                 match &self.magic_ball {
                                                     Some(magic_ball) => {
-                                                        msg_meta.original_tx = Some(msg_meta.tx.clone());
+                                                        msg_meta.source = Some(MsgSource::Component(msg_meta.tx, addr.clone()));
                                                         msg_meta.tx = "AppHub".to_owned();
 
                                                         match serde_json::to_vec(&msg_meta) {
@@ -161,7 +177,7 @@ impl Handler for WsServer {
                                                     }
                                                 }
                                             }
-                                            ClientKind::Service => {                                        
+                                            ClientKind::Service | ClientKind::Hub => {
                                                 self.tx.send(ServerMsg::SendMsg(msg_meta.rx, data));
                                             }
                                         }                                                                                                    
@@ -264,7 +280,7 @@ pub fn start_with_link(host: String, port: u16, link_client_name: String, link_t
 
     let (tx, rx) = crossbeam::channel::unbounded();    
 
-    let (handle, magic_ball) = crate::simple::client::connect2(link_client_name, link_to_host).unwrap();
+    let (handle, magic_ball) = crate::simple::client::connect2(link_client_name, link_to_host, Some(tx.clone())).unwrap();
 
     let mut server = Builder::new().build(|ws| {
 
@@ -294,11 +310,11 @@ pub fn start_with_link(host: String, port: u16, link_client_name: String, link_t
                         info!("Adding client {}", &addr);
                         clients.insert(addr, sender);                                
                     }
-                    ServerMsg::SendMsg(addr, res) => {
+                    ServerMsg::SendMsg(addr, data) => {
                         match clients.get(&addr) {
                             Some(sender) => {
                                 info!("Sending message to client {}", &addr);
-                                sender.send(res);                                
+                                sender.send(data);                                
                             }
                             None => {
                                 info!("Client not found: {}", &addr);

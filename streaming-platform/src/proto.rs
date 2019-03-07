@@ -4,12 +4,14 @@ use sp_dto::bytes::{Buf, BufMut};
 use serde_derive::{Serialize, Deserialize};
 use ws::{Message, Sender};
 use sp_dto::uuid::Uuid;
-use sp_dto::{MsgMeta, MsgKind};
+use sp_dto::{MsgMeta, MsgKind, MsgSource};
 use crate::error::Error;
 
+#[derive(Debug)]
 pub enum ClientKind {
     App,
-    Service
+    Service,
+    Hub
 }
 pub enum ServerMsg {
     AddClient(String, Sender),
@@ -63,7 +65,7 @@ impl<T, R> MagicBall<T, R> where T: Debug, T: serde::Serialize, for<'de> T: serd
             rx: addr,
             kind: MsgKind::Event,
             correlation_id: None,
-            original_tx: None
+            source: None
         };
 
         let mut msg_meta = serde_json::to_vec(&msg_meta)?;
@@ -80,7 +82,7 @@ impl<T, R> MagicBall<T, R> where T: Debug, T: serde::Serialize, for<'de> T: serd
         
         Ok(())
     }    
-    pub fn reply_to_rpc(&self, addr: String, correlation_id: Option<Uuid>, payload: T) -> Result<(), Error> {        
+    pub fn reply_to_rpc(&self, addr: String, correlation_id: Option<Uuid>, payload: T, source: Option<MsgSource>) -> Result<(), Error> {
         if correlation_id.is_none() {
             return Err(Error::EmptyCorrelationIdPassed);
         }
@@ -90,8 +92,8 @@ impl<T, R> MagicBall<T, R> where T: Debug, T: serde::Serialize, for<'de> T: serd
             rx: addr,
             kind: MsgKind::RpcResponse,
             correlation_id,
-            original_tx: None
-        };        
+            source
+        };
 
         let mut msg_meta = serde_json::to_vec(&msg_meta)?;
         let mut payload = serde_json::to_vec(&payload)?;
@@ -129,7 +131,7 @@ impl<T, R> MagicBall<T, R> where T: Debug, T: serde::Serialize, for<'de> T: serd
             rx: addr,
             kind: MsgKind::RpcRequest,
             correlation_id: Some(correlation_id),
-            original_tx: None
+            source: None
         };
         
         let mut msg_meta = serde_json::to_vec(&msg_meta)?;        
@@ -178,7 +180,7 @@ impl MagicBall2 {
             rx: addr,
             kind: MsgKind::Event,
             correlation_id: None,
-            original_tx: None
+            source: None
         };
 
         let mut msg_meta = serde_json::to_vec(&msg_meta)?;        
@@ -199,7 +201,7 @@ impl MagicBall2 {
         
         Ok(())
     }
-    pub fn reply_to_rpc(&self, addr: String, correlation_id: Option<Uuid>, mut payload: Vec<u8>) -> Result<(), Error> {        
+    pub fn reply_to_rpc(&self, addr: String, correlation_id: Option<Uuid>, mut payload: Vec<u8>, source: Option<MsgSource>) -> Result<(), Error> {
         if correlation_id.is_none() {
             return Err(Error::EmptyCorrelationIdPassed);
         }
@@ -209,7 +211,7 @@ impl MagicBall2 {
             rx: addr,
             kind: MsgKind::RpcResponse,
             correlation_id,
-            original_tx: None
+            source
         };
 
         let mut msg_meta = serde_json::to_vec(&msg_meta)?;        
@@ -245,7 +247,7 @@ impl MagicBall2 {
             rx: addr,
             kind: MsgKind::RpcRequest,
             correlation_id: Some(correlation_id),
-            original_tx: None
+            source: None
         };
 
         let mut msg_meta = serde_json::to_vec(&msg_meta)?;

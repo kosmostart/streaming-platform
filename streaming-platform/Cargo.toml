@@ -12,7 +12,7 @@ serde_derive = "*"
 serde_json = "*"
 url = "*"
 openssl = "*"
+cookie = "*"
 ws = { version = "*", features = ["ssl"] }
 crossbeam = "*"
-cookie = "*"
 sp-dto = { path = "../sp-dto" }

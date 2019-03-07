@@ -4,12 +4,13 @@ use sp_dto::bytes::Buf;
 use ws::{Request, Builder, Handler, Sender, Message, Handshake, CloseCode};
 use sp_dto::uuid::Uuid;
 use cookie::Cookie;
-use sp_dto::{MsgMeta, MsgKind};
+use sp_dto::{MsgMeta, MsgKind, MsgSource};
 use crate::{AuthData, Config};
 use crate::proto::{ClientKind, ServerMsg, ClientMsg, MagicBall, MagicBall2};
 use crate::error::Error;
 
 struct WsClient {
+    client_kind: ClientKind,
     addr: Option<String>,
     out: Sender,
     events_tx: crossbeam::channel::Sender<(MsgMeta, usize, Vec<u8>)>,
@@ -17,7 +18,8 @@ struct WsClient {
     //RequestRpc(Uuid),    
     rpc_tx: crossbeam::channel::Sender<ClientMsg>,
     //Rpc(Uuid, crossbeam::channel::Sender<(MsgMeta, usize, Vec<u8>)>)
-    rpc_rx: crossbeam::channel::Receiver<ClientMsg>
+    rpc_rx: crossbeam::channel::Receiver<ClientMsg>,
+    linked_tx: Option<crossbeam::channel::Sender<ServerMsg>>
 }
 
 impl Handler for WsClient {
@@ -42,49 +44,72 @@ impl Handler for WsClient {
                     Ok(msg_meta) => {
                         info!("Received message, {:#?}", msg_meta);
 
-                        match msg_meta.kind {
-                            MsgKind::Event => {
-                                self.events_tx.send((msg_meta, len, data));
-                            }
-                            MsgKind::RpcRequest => {
-                                match msg_meta.correlation_id {
-                                    Some(correlation_id) => {
-                                        self.rpc_request_tx.send((msg_meta, len, data));
-                                    }
-                                    None => error!("Missing correlation id for RpcRequest msg {:?}", msg_meta)
-                                }                                                                
-                            }
-                            MsgKind::RpcResponse => {
-                                match msg_meta.correlation_id {
-
-                                    Some(correlation_id) => {
-
-                                        self.rpc_tx.send(ClientMsg::RpcDataRequest(correlation_id));
-
-                                        match self.rpc_rx.recv() {
-                                            Ok(msg) => {
-                                                info!("Debugging {:?}", msg);
-                                                match msg {
-                                                    ClientMsg::RpcDataResponse(received_correlation_id, rpc_tx) => {
-                                                        match received_correlation_id == correlation_id {
-                                                            true => {
-                                                                info!("Sending to rpc_tx {:?}", msg_meta);
-                                                                rpc_tx.send((msg_meta, len, data));
-                                                            }
-                                                            false => error!("received_correlation_id not equals correlation_id: {}, {}", received_correlation_id, correlation_id)
-                                                        }
+                        match self.client_kind {
+                            ClientKind::Hub => {
+                                match msg_meta.source {
+                                    Some(source) => {
+                                        match source {
+                                            MsgSource::Component(component_addr, client_addr) => {
+                                                match &self.linked_tx {
+                                                    Some(linked_tx) => {
+                                                        linked_tx.send(ServerMsg::SendMsg(client_addr, data));
                                                     }
-                                                    _ => error!("Client handler: wrong ClientMsg")
+                                                    None => info!("Linked tx missing!")
                                                 }
                                             }
-                                            Err(err) => error!("Error on self.rpc_rx.recv(): {:?}", err)
+                                            MsgSource::Service(addr) => {
+
+                                            }
                                         }
                                     }
-                                    None => error!("Missing correlation id for RpcResponse msg {:?}", msg_meta)
+                                    None => info!("Source is emply for Hub client mesage!")
                                 }
                             }
+                            _ => {
+                                match msg_meta.kind {
+                                    MsgKind::Event => {
+                                        self.events_tx.send((msg_meta, len, data));
+                                    }
+                                    MsgKind::RpcRequest => {
+                                        match msg_meta.correlation_id {
+                                            Some(correlation_id) => {
+                                                self.rpc_request_tx.send((msg_meta, len, data));
+                                            }
+                                            None => error!("Missing correlation id for RpcRequest msg {:?}", msg_meta)
+                                        }                                                                
+                                    }
+                                    MsgKind::RpcResponse => {
+                                        match msg_meta.correlation_id {
 
-                        }
+                                            Some(correlation_id) => {
+
+                                                self.rpc_tx.send(ClientMsg::RpcDataRequest(correlation_id));
+
+                                                match self.rpc_rx.recv() {
+                                                    Ok(msg) => {
+                                                        info!("Debugging {:?}", msg);
+                                                        match msg {
+                                                            ClientMsg::RpcDataResponse(received_correlation_id, rpc_tx) => {
+                                                                match received_correlation_id == correlation_id {
+                                                                    true => {
+                                                                        info!("Sending to rpc_tx {:?}", msg_meta);
+                                                                        rpc_tx.send((msg_meta, len, data));
+                                                                    }
+                                                                    false => error!("received_correlation_id not equals correlation_id: {}, {}", received_correlation_id, correlation_id)
+                                                                }
+                                                            }
+                                                            _ => error!("Client handler: wrong ClientMsg")
+                                                        }
+                                                    }
+                                                    Err(err) => error!("Error on self.rpc_rx.recv(): {:?}", err)
+                                                }
+                                            }
+                                            None => error!("Missing correlation id for RpcResponse msg {:?}", msg_meta)
+                                        }
+                                    }
+                                }
+                            }
+                        }                        
                                                             
                     }
                     Err(err) => {
@@ -103,7 +128,11 @@ impl Handler for WsClient {
 
         match &self.addr {
             Some(addr) => {
-                req.headers_mut().push(("Service".into(), addr.clone().into()));
+                match self.client_kind {
+                    ClientKind::Service => req.headers_mut().push(("Service".into(), addr.clone().into())),
+                    ClientKind::Hub => req.headers_mut().push(("Hub".into(), addr.clone().into())),
+                    _ => error!("Client kind {:?} is not allowed for link.", self.client_kind)
+                }                
             }
             None => {
                 info!("Client with empty addr.");
@@ -163,12 +192,14 @@ pub fn connect<T, R>(addr: String, host: String) -> Result<(std::thread::JoinHan
                 tx2.send(MagicBall::new(addr.clone(), out.clone(), events_rx.clone(), rpc_request_rx.clone(), rpc_tx3.clone()));
 
                 WsClient {
+                    client_kind: ClientKind::Service,
                     addr: Some(addr.clone()),
                     out,
                     events_tx: events_tx.clone(),
                     rpc_request_tx: rpc_request_tx.clone(),
                     rpc_tx: rpc_tx.clone(),
-                    rpc_rx: rpc_rx.clone()
+                    rpc_rx: rpc_rx.clone(),
+                    linked_tx: None
                 }
             });
         })?;
@@ -178,7 +209,7 @@ pub fn connect<T, R>(addr: String, host: String) -> Result<(std::thread::JoinHan
     Ok((handle, sender))
 }
 
-pub fn connect2(addr: String, host: String) -> Result<(std::thread::JoinHandle<()>, MagicBall2), Error> {
+pub fn connect2(addr: String, host: String, linked_tx: Option<crossbeam::channel::Sender<ServerMsg>>) -> Result<(std::thread::JoinHandle<()>, MagicBall2), Error> {
 
     let (events_tx, events_rx) = crossbeam::channel::unbounded();
     let (rpc_request_tx, rpc_request_rx) = crossbeam::channel::unbounded();
@@ -230,12 +261,14 @@ pub fn connect2(addr: String, host: String) -> Result<(std::thread::JoinHandle<(
                 tx2.send(MagicBall2::new(addr.clone(), out.clone(), events_rx.clone(), rpc_request_rx.clone(), rpc_tx3.clone()));
 
                 WsClient {
+                    client_kind: ClientKind::Hub,
                     addr: Some(addr.clone()),
                     out,
                     events_tx: events_tx.clone(),
                     rpc_request_tx: rpc_request_tx.clone(),
                     rpc_tx: rpc_tx.clone(),
-                    rpc_rx: rpc_rx.clone()
+                    rpc_rx: rpc_rx.clone(),
+                    linked_tx: linked_tx.clone()
                 }
             });
         })?;

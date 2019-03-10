@@ -212,3 +212,13 @@ pub fn get_msg_meta(data: &Vec<u8>) -> Result<MsgMeta, Error> {
 
     serde_json::from_slice::<MsgMeta>(&data[4..len + 4])
 }
+
+pub fn get_msg<T>(data: &Vec<u8>) -> Result<(MsgMeta, T), Error> where T: Debug, T: serde::Serialize, for<'de> T: serde::Deserialize<'de> {
+    let mut buf = std::io::Cursor::new(data);
+    let len = buf.get_u32_be() as usize;
+
+    let msg_meta = serde_json::from_slice::<MsgMeta>(&data[4..len + 4])?;
+    let payload = serde_json::from_slice::<T>(&data[len + 4..])?;
+
+    Ok((msg_meta, payload))
+}

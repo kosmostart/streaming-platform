@@ -31,7 +31,8 @@ pub enum MsgKind {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Attachment {
-	pub name: String
+	pub name: String,
+    pub size: u32
 }
 
 pub fn send_event_dto<T>(tx: String, rx: String, payload: T) -> Result<Vec<u8>, Error> where T: Debug, T: serde::Serialize, for<'de> T: serde::Deserialize<'de> {
@@ -118,6 +119,75 @@ pub fn rpc_dto<T>(tx: String, rx: String, payload: T) -> Result<Vec<u8>, Error> 
 
     buf.append(&mut msg_meta);
     buf.append(&mut payload);
+
+    Ok(buf)
+}
+
+pub fn rpc_dto_with_attachments<T>(tx: String, rx: String, payload: T, attachments: Vec<(String, Vec<u8>)>) -> Result<Vec<u8>, Error> where T: Debug, T: serde::Serialize, for<'de> T: serde::Deserialize<'de> {
+    let correlation_id = Uuid::new_v4();
+    let mut attachments_meta = vec![];
+    let mut attachments_payload = vec![];
+
+    for (attachment_name, mut attachment_payload) in attachments {
+        attachments_meta.push(Attachment {
+            name: attachment_name,
+            size: attachment_payload.len() as u32
+        });        
+        attachments_payload.append(&mut attachment_payload);
+    }
+
+    let msg_meta = MsgMeta {
+        tx,
+        rx,
+        kind: MsgKind::RpcRequest,
+        correlation_id: Some(correlation_id),
+        source: None,
+		attachments: attachments_meta
+    };
+
+    let mut msg_meta = serde_json::to_vec(&msg_meta)?;
+    let mut payload = serde_json::to_vec(&payload)?;
+
+    let mut buf = vec![];
+
+    buf.put_u32_be(msg_meta.len() as u32);
+
+    buf.append(&mut msg_meta);
+    buf.append(&mut payload);
+    buf.append(&mut attachments_payload);
+
+    Ok(buf)
+}
+
+pub fn rpc_dto_with_later_attachments<T>(tx: String, rx: String, payload: T, attachments: Vec<(String, u32)>) -> Result<Vec<u8>, Error> where T: Debug, T: serde::Serialize, for<'de> T: serde::Deserialize<'de> {
+    let correlation_id = Uuid::new_v4();
+    let mut attachments_meta = vec![];    
+
+    for (attachment_name,attachment_size) in attachments {
+        attachments_meta.push(Attachment {
+            name: attachment_name,
+            size: attachment_size
+        });                
+    }
+
+    let msg_meta = MsgMeta {
+        tx,
+        rx,
+        kind: MsgKind::RpcRequest,
+        correlation_id: Some(correlation_id),
+        source: None,
+		attachments: attachments_meta
+    };
+
+    let mut msg_meta = serde_json::to_vec(&msg_meta)?;
+    let mut payload = serde_json::to_vec(&payload)?;
+
+    let mut buf = vec![];
+
+    buf.put_u32_be(msg_meta.len() as u32);
+
+    buf.append(&mut msg_meta);
+    buf.append(&mut payload);    
 
     Ok(buf)
 }
@@ -225,9 +295,9 @@ pub fn rpc_dto_with_attachments2(tx: String, rx: String, mut payload: Vec<u8>, a
 
     for (attachment_name, mut attachment_payload) in attachments {
         attachments_meta.push(Attachment {
-            name: attachment_name
-        });
-        attachments_payload.put_u32_be(attachment_payload.len() as u32);
+            name: attachment_name,
+            size: attachment_payload.len() as u32
+        });        
         attachments_payload.append(&mut attachment_payload);
     }
 
@@ -249,6 +319,38 @@ pub fn rpc_dto_with_attachments2(tx: String, rx: String, mut payload: Vec<u8>, a
     buf.append(&mut msg_meta);
     buf.append(&mut payload);
     buf.append(&mut attachments_payload);
+
+    Ok(buf)
+}
+
+pub fn rpc_dto_with_later_attachments2(tx: String, rx: String, mut payload: Vec<u8>, attachments: Vec<(String, u32)>) -> Result<Vec<u8>, Error> {
+    let correlation_id = Uuid::new_v4();
+    let mut attachments_meta = vec![];    
+
+    for (attachment_name,attachment_size) in attachments {
+        attachments_meta.push(Attachment {
+            name: attachment_name,
+            size: attachment_size
+        });                
+    }
+
+    let msg_meta = MsgMeta {
+        tx,
+        rx,
+        kind: MsgKind::RpcRequest,
+        correlation_id: Some(correlation_id),
+        source: None,
+		attachments: attachments_meta
+    };
+
+    let mut msg_meta = serde_json::to_vec(&msg_meta)?;    
+
+    let mut buf = vec![];
+
+    buf.put_u32_be(msg_meta.len() as u32);
+
+    buf.append(&mut msg_meta);
+    buf.append(&mut payload);    
 
     Ok(buf)
 }

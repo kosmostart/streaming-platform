@@ -4,7 +4,7 @@ use sp_dto::bytes::{Buf, BufMut};
 use serde_derive::{Serialize, Deserialize};
 use ws::{Message, Sender};
 use sp_dto::uuid::Uuid;
-use sp_dto::{MsgMeta, MsgKind, MsgSource};
+use sp_dto::*;
 use crate::error::Error;
 
 #[derive(Debug)]
@@ -60,25 +60,9 @@ impl<T, R> MagicBall<T, R> where T: Debug, T: serde::Serialize, for<'de> T: serd
         }
     }
     pub fn send_event(&self, addr: String, payload: T) -> Result<(), Error> {        
-        let msg_meta = MsgMeta {
-            tx: self.addr.clone(),
-            rx: addr,
-            kind: MsgKind::Event,
-            correlation_id: None,
-            source: None
-        };
+        let dto = send_event_dto(self.addr.clone(), addr, payload)?;
 
-        let mut msg_meta = serde_json::to_vec(&msg_meta)?;
-        let mut payload = serde_json::to_vec(&payload)?;
-
-        let mut buf = vec![];
-
-        buf.put_u32_be(msg_meta.len() as u32);
-
-        buf.append(&mut msg_meta);
-        buf.append(&mut payload);
-
-        self.sender.send(Message::Binary(buf));
+        self.sender.send(Message::Binary(dto));
         
         Ok(())
     }    
@@ -87,25 +71,9 @@ impl<T, R> MagicBall<T, R> where T: Debug, T: serde::Serialize, for<'de> T: serd
             return Err(Error::EmptyCorrelationIdPassed);
         }
 
-        let msg_meta = MsgMeta {
-            tx: self.addr.clone(),
-            rx: addr,
-            kind: MsgKind::RpcResponse,
-            correlation_id,
-            source
-        };
+        let dto = reply_to_rpc_dto(self.addr.clone(), addr, correlation_id, payload)?;
 
-        let mut msg_meta = serde_json::to_vec(&msg_meta)?;
-        let mut payload = serde_json::to_vec(&payload)?;
-
-        let mut buf = vec![];
-
-        buf.put_u32_be(msg_meta.len() as u32);
-
-        buf.append(&mut msg_meta);
-        buf.append(&mut payload);
-
-        self.sender.send(Message::Binary(buf));
+        self.sender.send(Message::Binary(dto));
         
         Ok(())
     }
@@ -124,30 +92,13 @@ impl<T, R> MagicBall<T, R> where T: Debug, T: serde::Serialize, for<'de> T: serd
         Ok((msg_meta, payload))
     }
     pub fn rpc(&self, addr: String, mut payload: Vec<u8>) -> Result<(MsgMeta, R), Error> {
-        let correlation_id = Uuid::new_v4();
-
-        let msg_meta = MsgMeta {
-            tx: self.addr.clone(),
-            rx: addr,
-            kind: MsgKind::RpcRequest,
-            correlation_id: Some(correlation_id),
-            source: None
-        };
-        
-        let mut msg_meta = serde_json::to_vec(&msg_meta)?;        
-
-        let mut buf = vec![];
-
-        buf.put_u32_be(msg_meta.len() as u32);
-
-        buf.append(&mut msg_meta);
-        buf.append(&mut payload);
+        let (correlation_id, dto) = rpc_dto_with_correlation_id_2(self.addr.clone(), addr, payload)?;        
 
         let (rpc_tx, rpc_rx) = crossbeam::channel::unbounded();
         
         self.rpc_tx.send(ClientMsg::AddRpc(correlation_id, rpc_tx));
         
-        self.sender.send(Message::Binary(buf));
+        self.sender.send(Message::Binary(dto));
 
         let res = match rpc_rx.recv() {
             Ok((msg_meta, len, data)) => {
@@ -174,25 +125,10 @@ impl MagicBall2 {
             rpc_tx
         }
     }
-    pub fn send_event(&self, addr: String, mut payload: Vec<u8>) -> Result<(), Error> {        
-        let msg_meta = MsgMeta {
-            tx: self.addr.clone(),
-            rx: addr,
-            kind: MsgKind::Event,
-            correlation_id: None,
-            source: None
-        };
+    pub fn send_event(&self, addr: String, mut payload: Vec<u8>) -> Result<(), Error> {                
+        let dto = send_event_dto2(self.addr.clone(), addr, payload)?;
 
-        let mut msg_meta = serde_json::to_vec(&msg_meta)?;        
-
-        let mut buf = vec![];
-
-        buf.put_u32_be(msg_meta.len() as u32);
-
-        buf.append(&mut msg_meta);
-        buf.append(&mut payload);
-
-        self.sender.send(Message::Binary(buf));
+        self.sender.send(Message::Binary(dto));
         
         Ok(())
     }
@@ -204,26 +140,11 @@ impl MagicBall2 {
     pub fn reply_to_rpc(&self, addr: String, correlation_id: Option<Uuid>, mut payload: Vec<u8>, source: Option<MsgSource>) -> Result<(), Error> {
         if correlation_id.is_none() {
             return Err(Error::EmptyCorrelationIdPassed);
-        }
+        }        
 
-        let msg_meta = MsgMeta {
-            tx: self.addr.clone(),
-            rx: addr,
-            kind: MsgKind::RpcResponse,
-            correlation_id,
-            source
-        };
+        let dto = reply_to_rpc_dto2(self.addr.clone(), addr, correlation_id, payload)?;        
 
-        let mut msg_meta = serde_json::to_vec(&msg_meta)?;        
-
-        let mut buf = vec![];
-
-        buf.put_u32_be(msg_meta.len() as u32);
-
-        buf.append(&mut msg_meta);
-        buf.append(&mut payload);
-
-        self.sender.send(Message::Binary(buf));
+        self.sender.send(Message::Binary(dto));
         
         Ok(())
     }
@@ -240,30 +161,13 @@ impl MagicBall2 {
         Ok((msg_meta, payload.to_vec()))
     }
     pub fn rpc(&self, addr: String, mut payload: Vec<u8>) -> Result<(MsgMeta, Vec<u8>), Error> {
-        let correlation_id = Uuid::new_v4();
-
-        let msg_meta = MsgMeta {
-            tx: self.addr.clone(),
-            rx: addr,
-            kind: MsgKind::RpcRequest,
-            correlation_id: Some(correlation_id),
-            source: None
-        };
-
-        let mut msg_meta = serde_json::to_vec(&msg_meta)?;
-
-        let mut buf = vec![];
-
-        buf.put_u32_be(msg_meta.len() as u32);
-
-        buf.append(&mut msg_meta);
-        buf.append(&mut payload);
+        let (correlation_id, dto) = rpc_dto_with_correlation_id_2(self.addr.clone(), addr, payload)?;
 
         let (rpc_tx, rpc_rx) = crossbeam::channel::unbounded();
         
         self.rpc_tx.send(ClientMsg::AddRpc(correlation_id, rpc_tx));
         
-        self.sender.send(Message::Binary(buf));
+        self.sender.send(Message::Binary(dto));
 
         let res = match rpc_rx.recv() {
             Ok((msg_meta, len, data)) => {

@@ -93,7 +93,7 @@ impl Handler for WsServer {
                 self.tx.send(ServerMsg::AddClient(addr.to_owned(), self.ws.clone()));
             }
             None => {
-                info!("No Service header present.")
+                info!("No Hub header present.")
             }
         }
 

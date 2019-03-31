@@ -394,14 +394,14 @@ pub fn rpc_dto_with_correlation_id_2(tx: String, rx: String, mut payload: Vec<u8
     Ok((correlation_id, buf))
 }
 
-pub fn get_msg_meta(data: &Vec<u8>) -> Result<MsgMeta, Error> {
+pub fn get_msg_meta(data: &[u8]) -> Result<MsgMeta, Error> {
     let mut buf = std::io::Cursor::new(data);
     let len = buf.get_u32_be() as usize;
 
     serde_json::from_slice::<MsgMeta>(&data[4..len + 4])
 }
 
-pub fn get_msg<T>(data: &Vec<u8>) -> Result<(MsgMeta, T, Vec<(String, Vec<u8>)>), Error> where T: Debug, T: serde::Serialize, for<'de> T: serde::Deserialize<'de> {
+pub fn get_msg<T>(data: &[u8]) -> Result<(MsgMeta, T, Vec<(String, Vec<u8>)>), Error> where T: Debug, T: serde::Serialize, for<'de> T: serde::Deserialize<'de> {
     let mut buf = std::io::Cursor::new(data);    
     let len = buf.get_u32_be();
     let msg_meta_offset = (len + 4) as usize;

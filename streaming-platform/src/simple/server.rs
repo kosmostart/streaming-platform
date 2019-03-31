@@ -157,13 +157,13 @@ impl Handler for WsServer {
 
                                                         match serde_json::to_vec(&msg_meta) {
                                                             Ok(mut msg_meta) => {                                                                
-                                                                let mut payload: Vec<_> = data.drain(4 + len..).collect();
+                                                                let mut payload_with_attachments: Vec<_> = data.drain(4 + len..).collect();
                                                                 let mut buf = vec![];
 
                                                                 buf.put_u32_be(msg_meta.len() as u32);
 
                                                                 buf.append(&mut msg_meta);
-                                                                buf.append(&mut payload);
+                                                                buf.append(&mut payload_with_attachments);
 
                                                                 magic_ball.send_data(buf);
                                                             }

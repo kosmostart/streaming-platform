@@ -58,13 +58,13 @@ pub fn send_event_dto<T>(tx: String, rx: String, payload: T) -> Result<Vec<u8>, 
     Ok(buf)
 }
 
-pub fn reply_to_rpc_dto<T>(tx: String, rx: String, correlation_id: Option<Uuid>, payload: T) -> Result<Vec<u8>, Error> where T: Debug, T: serde::Serialize, for<'de> T: serde::Deserialize<'de> {
+pub fn reply_to_rpc_dto<T>(tx: String, rx: String, correlation_id: Option<Uuid>, payload: T, source: Option<MsgSource>) -> Result<Vec<u8>, Error> where T: Debug, T: serde::Serialize, for<'de> T: serde::Deserialize<'de> {
     let msg_meta = MsgMeta {
         tx,
         rx,
         kind: MsgKind::RpcResponse,
         correlation_id,
-        source: None,
+        source,
 		attachments: vec![]
     };        
 
@@ -227,13 +227,13 @@ pub fn send_event_dto2(tx: String, rx: String, mut payload: Vec<u8>) -> Result<V
     Ok(buf)
 }
 
-pub fn reply_to_rpc_dto2(tx: String, rx: String, correlation_id: Option<Uuid>, mut payload: Vec<u8>) -> Result<Vec<u8>, Error> {
+pub fn reply_to_rpc_dto2(tx: String, rx: String, correlation_id: Option<Uuid>, mut payload: Vec<u8>, source: Option<MsgSource>) -> Result<Vec<u8>, Error> {
     let msg_meta = MsgMeta {
         tx,
         rx,
         kind: MsgKind::RpcResponse,
         correlation_id,
-        source: None,
+        source,
 		attachments: vec![]
     };
 

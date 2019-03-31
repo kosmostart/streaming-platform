@@ -71,7 +71,7 @@ impl<T, R> MagicBall<T, R> where T: Debug, T: serde::Serialize, for<'de> T: serd
             return Err(Error::EmptyCorrelationIdPassed);
         }
 
-        let dto = reply_to_rpc_dto(self.addr.clone(), addr, correlation_id, payload)?;
+        let dto = reply_to_rpc_dto(self.addr.clone(), addr, correlation_id, payload, source)?;
 
         self.sender.send(Message::Binary(dto));
         
@@ -142,7 +142,7 @@ impl MagicBall2 {
             return Err(Error::EmptyCorrelationIdPassed);
         }        
 
-        let dto = reply_to_rpc_dto2(self.addr.clone(), addr, correlation_id, payload)?;        
+        let dto = reply_to_rpc_dto2(self.addr.clone(), addr, correlation_id, payload, source)?;        
 
         self.sender.send(Message::Binary(dto));
         

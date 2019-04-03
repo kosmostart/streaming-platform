@@ -66,7 +66,7 @@ impl<T, R> MagicBall<T, R> where T: Debug, T: serde::Serialize, for<'de> T: serd
         
         Ok(())
     }    
-    pub fn reply_to_rpc(&self, addr: String, correlation_id: Option<Uuid>, payload: T, source: Option<MsgSource>) -> Result<(), Error> {
+    pub fn reply_to_rpc(&self, addr: String, correlation_id: Option<Uuid>, payload: R, source: Option<MsgSource>) -> Result<(), Error> {
         if correlation_id.is_none() {
             return Err(Error::EmptyCorrelationIdPassed);
         }
@@ -84,20 +84,18 @@ impl<T, R> MagicBall<T, R> where T: Debug, T: serde::Serialize, for<'de> T: serd
 
         Ok((msg_meta, payload))
     }
-    pub fn recv_rpc_request(&self) -> Result<(MsgMeta, R), Error> {
+    pub fn recv_rpc_request(&self) -> Result<(MsgMeta, T), Error> {
         let (msg_meta, len, data) = self.rpc_request_rx.recv()?;            
 
-        let payload = serde_json::from_slice::<R>(&data[len + 4..])?;        
+        let payload = serde_json::from_slice::<T>(&data[len + 4..])?;        
 
         Ok((msg_meta, payload))
     }
-    pub fn rpc(&self, addr: String, mut payload: Vec<u8>) -> Result<(MsgMeta, R), Error> {
-        let (correlation_id, dto) = rpc_dto_with_correlation_id_2(self.addr.clone(), addr, payload)?;        
-
+    pub fn rpc(&self, addr: String, payload: T) -> Result<(MsgMeta, R), Error> {
+        let (correlation_id, dto) = rpc_dto_with_correlation_id(self.addr.clone(), addr, payload)?;
         let (rpc_tx, rpc_rx) = crossbeam::channel::unbounded();
         
-        self.rpc_tx.send(ClientMsg::AddRpc(correlation_id, rpc_tx));
-        
+        self.rpc_tx.send(ClientMsg::AddRpc(correlation_id, rpc_tx));        
         self.sender.send(Message::Binary(dto));
 
         let res = match rpc_rx.recv() {

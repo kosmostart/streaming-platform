@@ -7,7 +7,7 @@ use sp_dto::uuid::Uuid;
 use sp_dto::*;
 use crate::error::Error;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ClientKind {
     App,
     Service,

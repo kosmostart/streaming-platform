@@ -280,7 +280,7 @@ pub fn start_with_link(host: String, port: u16, link_client_name: String, link_t
 
     let (tx, rx) = crossbeam::channel::unbounded();    
 
-    let (handle, magic_ball) = crate::simple::client::connect2(link_client_name, link_to_host, Some(tx.clone())).unwrap();
+    let (handle, magic_ball) = crate::simple::client::connect2(link_client_name, link_to_host, ClientKind::Hub, Some(tx.clone())).unwrap();
 
     let mut server = Builder::new().build(|ws| {
 

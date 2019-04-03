@@ -209,7 +209,7 @@ pub fn connect<T, R>(addr: String, host: String) -> Result<(std::thread::JoinHan
     Ok((handle, sender))
 }
 
-pub fn connect2(addr: String, host: String, linked_tx: Option<crossbeam::channel::Sender<ServerMsg>>) -> Result<(std::thread::JoinHandle<()>, MagicBall2), Error> {
+pub fn connect2(addr: String, host: String, client_kind: ClientKind, linked_tx: Option<crossbeam::channel::Sender<ServerMsg>>) -> Result<(std::thread::JoinHandle<()>, MagicBall2), Error> {
 
     let (events_tx, events_rx) = crossbeam::channel::unbounded();
     let (rpc_request_tx, rpc_request_rx) = crossbeam::channel::unbounded();
@@ -261,7 +261,7 @@ pub fn connect2(addr: String, host: String, linked_tx: Option<crossbeam::channel
                 tx2.send(MagicBall2::new(addr.clone(), out.clone(), events_rx.clone(), rpc_request_rx.clone(), rpc_tx3.clone()));
 
                 WsClient {
-                    client_kind: ClientKind::Hub,
+                    client_kind: client_kind.clone(),
                     addr: Some(addr.clone()),
                     out,
                     events_tx: events_tx.clone(),

@@ -85,7 +85,7 @@ impl Handler for WsServer {
             Some(addr) => {                                
                 let addr = std::str::from_utf8(addr)?;
 
-                info!("Service: {}", addr);
+                info!("Hub: {}", addr);
 
                 self.client_kind = Some(ClientKind::Hub);
 

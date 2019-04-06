@@ -87,7 +87,7 @@ impl Handler for WsClient {
 
                                                 match self.rpc_rx.recv() {
                                                     Ok(msg) => {
-                                                        info!("Debugging {:?}", msg);
+                                                        info!("Debugging on_message {:?}", msg);
                                                         match msg {
                                                             ClientMsg::RpcDataResponse(received_correlation_id, rpc_tx) => {
                                                                 match received_correlation_id == correlation_id {
@@ -147,10 +147,8 @@ pub fn connect<T, R>(addr: String, host: String) -> Result<(std::thread::JoinHan
 
     let (events_tx, events_rx) = crossbeam::channel::unbounded();
     let (rpc_request_tx, rpc_request_rx) = crossbeam::channel::unbounded();
-    let (rpc_tx, rpc_rx) = crossbeam::channel::unbounded();
-    let rpc_rx2 = rpc_rx.clone();
-    let rpc_tx2 = rpc_tx.clone();
-    let rpc_tx3 = rpc_tx.clone();
+    let (client_to_state_tx, client_to_state_rx) = crossbeam::channel::unbounded();
+    let (state_to_client_tx, state_to_client_rx) = crossbeam::channel::unbounded();
     let (tx2, rx2) = crossbeam::channel::unbounded();
 
     let rpc = std::thread::Builder::new()
@@ -161,7 +159,9 @@ pub fn connect<T, R>(addr: String, host: String) -> Result<(std::thread::JoinHan
             //rpcs: HashMap<Uuid, crossbeam::channel::Sender<(MsgMeta, usize, Vec<u8>)>>
 
             loop {
-                let msg = rpc_rx2.recv().unwrap();
+                let msg = client_to_state_rx.recv().unwrap();
+
+                info!("Debugging connect {:#?}", msg);
 
                 match msg {
                     ClientMsg::AddRpc(correlation_id, rpc_client_tx) => {
@@ -174,7 +174,7 @@ pub fn connect<T, R>(addr: String, host: String) -> Result<(std::thread::JoinHan
                     ClientMsg::RpcDataRequest(correlation_id) => {
                         match rpcs.get(&correlation_id) {
                             Some(rpc_client_tx) => {
-                                rpc_tx2.send(ClientMsg::RpcDataResponse(correlation_id, rpc_client_tx.clone()));
+                                state_to_client_tx.send(ClientMsg::RpcDataResponse(correlation_id, rpc_client_tx.clone()));
                             }
                             None => error!("Rpc not found: {}", correlation_id)
                         }                        
@@ -189,7 +189,7 @@ pub fn connect<T, R>(addr: String, host: String) -> Result<(std::thread::JoinHan
         .name(addr.clone())
         .spawn(move || {
             ws::connect(host, |out| {
-                tx2.send(MagicBall::new(addr.clone(), out.clone(), events_rx.clone(), rpc_request_rx.clone(), rpc_tx3.clone()));
+                tx2.send(MagicBall::new(addr.clone(), out.clone(), events_rx.clone(), rpc_request_rx.clone(), client_to_state_tx.clone()));
 
                 WsClient {
                     client_kind: ClientKind::Service,
@@ -197,8 +197,8 @@ pub fn connect<T, R>(addr: String, host: String) -> Result<(std::thread::JoinHan
                     out,
                     events_tx: events_tx.clone(),
                     rpc_request_tx: rpc_request_tx.clone(),
-                    rpc_tx: rpc_tx.clone(),
-                    rpc_rx: rpc_rx.clone(),
+                    rpc_tx: client_to_state_tx.clone(),
+                    rpc_rx: state_to_client_rx.clone(),
                     linked_tx: None
                 }
             });
@@ -213,10 +213,8 @@ pub fn connect2(addr: String, host: String, client_kind: ClientKind, linked_tx: 
 
     let (events_tx, events_rx) = crossbeam::channel::unbounded();
     let (rpc_request_tx, rpc_request_rx) = crossbeam::channel::unbounded();
-    let (rpc_tx, rpc_rx) = crossbeam::channel::unbounded();
-    let rpc_rx2 = rpc_rx.clone();
-    let rpc_tx2 = rpc_tx.clone();
-    let rpc_tx3 = rpc_tx.clone();
+    let (client_to_state_tx, client_to_state_rx) = crossbeam::channel::unbounded();
+    let (state_to_client_tx, state_to_client_rx) = crossbeam::channel::unbounded();
     let (tx2, rx2) = crossbeam::channel::unbounded();
 
     let rpc = std::thread::Builder::new()
@@ -227,9 +225,9 @@ pub fn connect2(addr: String, host: String, client_kind: ClientKind, linked_tx: 
             //rpcs: HashMap<Uuid, crossbeam::channel::Sender<(MsgMeta, usize, Vec<u8>)>>
 
             loop {
-                let msg = rpc_rx2.recv().unwrap();
+                let msg = client_to_state_rx.recv().unwrap();
 
-                info!("Debugging {:?}", msg);
+                info!("Debugging connect2 {:?}", msg);
 
                 match msg {
                     ClientMsg::AddRpc(correlation_id, rpc_client_tx) => {
@@ -242,7 +240,7 @@ pub fn connect2(addr: String, host: String, client_kind: ClientKind, linked_tx: 
                     ClientMsg::RpcDataRequest(correlation_id) => {
                         match rpcs.get(&correlation_id) {
                             Some(rpc_client_tx) => {
-                                rpc_tx2.send(ClientMsg::RpcDataResponse(correlation_id, rpc_client_tx.clone()));
+                                state_to_client_tx.send(ClientMsg::RpcDataResponse(correlation_id, rpc_client_tx.clone()));
                                 info!("rpc_client_tx sent {}", correlation_id);
                             }
                             None => error!("Rpc not found: {}", correlation_id)
@@ -258,7 +256,7 @@ pub fn connect2(addr: String, host: String, client_kind: ClientKind, linked_tx: 
         .name(addr.clone())
         .spawn(move || {
             ws::connect(host, |out| {
-                tx2.send(MagicBall2::new(addr.clone(), out.clone(), events_rx.clone(), rpc_request_rx.clone(), rpc_tx3.clone()));
+                tx2.send(MagicBall2::new(addr.clone(), out.clone(), events_rx.clone(), rpc_request_rx.clone(), client_to_state_tx.clone()));
 
                 WsClient {
                     client_kind: client_kind.clone(),
@@ -266,8 +264,8 @@ pub fn connect2(addr: String, host: String, client_kind: ClientKind, linked_tx: 
                     out,
                     events_tx: events_tx.clone(),
                     rpc_request_tx: rpc_request_tx.clone(),
-                    rpc_tx: rpc_tx.clone(),
-                    rpc_rx: rpc_rx.clone(),
+                    rpc_tx: client_to_state_tx.clone(),
+                    rpc_rx: state_to_client_rx.clone(),
                     linked_tx: linked_tx.clone()
                 }
             });

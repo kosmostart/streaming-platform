@@ -3,7 +3,8 @@ pub enum Error {
 	Io(std::io::Error),
 	SerdeJson(serde_json::Error),
     ChannelReceive(crossbeam::channel::RecvError),
-	EmptyCorrelationIdPassed
+	RecvTimeout(crossbeam::channel::RecvTimeoutError),
+	EmptyCorrelationIdPassed	
 }
 
 impl From<std::io::Error> for Error {
@@ -21,5 +22,11 @@ impl From<serde_json::Error> for Error {
 impl From<crossbeam::channel::RecvError> for Error {
 	fn from(err: crossbeam::channel::RecvError) -> Error {
 		Error::ChannelReceive(err)
+	}
+}
+
+impl From<crossbeam::channel::RecvTimeoutError> for Error {
+	fn from(err: crossbeam::channel::RecvTimeoutError) -> Error {
+		Error::RecvTimeout(err)
 	}
 }

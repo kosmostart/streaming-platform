@@ -98,7 +98,7 @@ impl<T, R> MagicBall<T, R> where T: Debug, T: serde::Serialize, for<'de> T: serd
         self.rpc_tx.send(ClientMsg::AddRpc(correlation_id, rpc_tx));        
         self.sender.send(Message::Binary(dto));
 
-        let res = match rpc_rx.recv() {
+        let res = match rpc_rx.recv_timeout(std::time::Duration::from_secs(60)) {
             Ok((msg_meta, len, data)) => {
                 let payload = &data[len + 4..];
                 let payload = serde_json::from_slice::<R>(&data[len + 4..])?;
@@ -167,7 +167,7 @@ impl MagicBall2 {
         
         self.sender.send(Message::Binary(dto));
 
-        let res = match rpc_rx.recv() {
+        let res = match rpc_rx.recv_timeout(std::time::Duration::from_secs(60)) {
             Ok((msg_meta, len, data)) => {
                 let payload = &data[len + 4..];        
                 Ok((msg_meta, payload.to_vec()))

@@ -59,6 +59,9 @@ impl<T, R> MagicBall<T, R> where T: Debug, T: serde::Serialize, for<'de> T: serd
             rpc_tx
         }
     }
+	pub fn get_addr(&self) -> String {
+		self.addr.clone()
+	}
     pub fn send_event(&self, addr: &str, payload: T) -> Result<(), Error> {        
         let dto = send_event_dto(self.addr.clone(), addr.to_owned(), payload)?;
 
@@ -123,6 +126,9 @@ impl MagicBall2 {
             rpc_tx
         }
     }
+	pub fn get_addr(&self) -> String {
+		self.addr.clone()
+	}
     pub fn send_event(&self, addr: &str, mut payload: Vec<u8>) -> Result<(), Error> {                
         let dto = send_event_dto2(self.addr.clone(), addr.to_owned(), payload)?;
 

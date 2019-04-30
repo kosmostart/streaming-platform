@@ -151,8 +151,7 @@ impl Handler for WsServer {
                                         match client_kind {
                                             ClientKind::App => {
                                                 match &self.magic_ball {
-                                                    Some(magic_ball) => {
-                                                        msg_meta.source = Some(MsgSource::Component(msg_meta.tx, addr.clone()));
+                                                    Some(magic_ball) => {                                                        
                                                         msg_meta.tx = "AppHub".to_owned();
 
                                                         match serde_json::to_vec(&msg_meta) {

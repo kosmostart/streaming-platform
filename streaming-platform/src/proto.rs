@@ -62,18 +62,14 @@ impl<T, R> MagicBall<T, R> where T: Debug, T: serde::Serialize, for<'de> T: serd
 	pub fn get_addr(&self) -> String {
 		self.addr.clone()
 	}
-    pub fn send_event(&self, addr: &str, payload: T) -> Result<(), Error> {        
-        let dto = send_event_dto(self.addr.clone(), addr.to_owned(), payload)?;
+    pub fn send_event(&self, addr: &str, payload: T, source: MsgSource) -> Result<(), Error> {        
+        let dto = send_event_dto(self.addr.clone(), addr.to_owned(), payload, source)?;
 
         self.sender.send(Message::Binary(dto));
         
         Ok(())
     }    
-    pub fn reply_to_rpc(&self, addr: String, correlation_id: Option<Uuid>, payload: R, source: Option<MsgSource>) -> Result<(), Error> {
-        if correlation_id.is_none() {
-            return Err(Error::EmptyCorrelationIdPassed);
-        }
-
+    pub fn reply_to_rpc(&self, addr: String, correlation_id: Option<Uuid>, payload: R, source: MsgSource) -> Result<(), Error> {        
         let dto = reply_to_rpc_dto(self.addr.clone(), addr, correlation_id, payload, source)?;
 
         self.sender.send(Message::Binary(dto));
@@ -94,8 +90,8 @@ impl<T, R> MagicBall<T, R> where T: Debug, T: serde::Serialize, for<'de> T: serd
 
         Ok((msg_meta, payload))
     }
-    pub fn rpc(&self, addr: &str, payload: T) -> Result<(MsgMeta, R), Error> {
-        let (correlation_id, dto) = rpc_dto_with_correlation_id(self.addr.clone(), addr.to_owned(), payload)?;
+    pub fn rpc(&self, addr: &str, payload: T, source: MsgSource) -> Result<(MsgMeta, R), Error> {
+        let (correlation_id, dto) = rpc_dto_with_correlation_id(self.addr.clone(), addr.to_owned(), payload, source)?;
         let (rpc_tx, rpc_rx) = crossbeam::channel::unbounded();
         
         self.rpc_tx.send(ClientMsg::AddRpc(correlation_id, rpc_tx));        
@@ -129,8 +125,8 @@ impl MagicBall2 {
 	pub fn get_addr(&self) -> String {
 		self.addr.clone()
 	}
-    pub fn send_event(&self, addr: &str, mut payload: Vec<u8>) -> Result<(), Error> {                
-        let dto = send_event_dto2(self.addr.clone(), addr.to_owned(), payload)?;
+    pub fn send_event(&self, addr: &str, mut payload: Vec<u8>, source: MsgSource) -> Result<(), Error> {                
+        let dto = send_event_dto2(self.addr.clone(), addr.to_owned(), payload, source)?;
 
         self.sender.send(Message::Binary(dto));
         
@@ -141,11 +137,7 @@ impl MagicBall2 {
         
         Ok(())
     }
-    pub fn reply_to_rpc(&self, addr: &str, correlation_id: Option<Uuid>, mut payload: Vec<u8>, source: Option<MsgSource>) -> Result<(), Error> {
-        if correlation_id.is_none() {
-            return Err(Error::EmptyCorrelationIdPassed);
-        }        
-
+    pub fn reply_to_rpc(&self, addr: &str, correlation_id: Uuid, mut payload: Vec<u8>, source: MsgSource) -> Result<(), Error> {        
         let dto = reply_to_rpc_dto2(self.addr.clone(), addr.to_owned(), correlation_id, payload, source)?;        
 
         self.sender.send(Message::Binary(dto));
@@ -164,8 +156,8 @@ impl MagicBall2 {
 
         Ok((msg_meta, payload.to_vec()))
     }
-    pub fn rpc(&self, addr: &str, mut payload: Vec<u8>) -> Result<(MsgMeta, Vec<u8>), Error> {
-        let (correlation_id, dto) = rpc_dto_with_correlation_id_2(self.addr.clone(), addr.to_owned(), payload)?;
+    pub fn rpc(&self, addr: &str, mut payload: Vec<u8>, source: MsgSource) -> Result<(MsgMeta, Vec<u8>), Error> {
+        let (correlation_id, dto) = rpc_dto_with_correlation_id_2(self.addr.clone(), addr.to_owned(), payload, source)?;
 
         let (rpc_tx, rpc_rx) = crossbeam::channel::unbounded();
         

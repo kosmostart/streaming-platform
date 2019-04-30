@@ -3,8 +3,7 @@ pub enum Error {
 	Io(std::io::Error),
 	SerdeJson(serde_json::Error),
     ChannelReceive(crossbeam::channel::RecvError),
-	RecvTimeout(crossbeam::channel::RecvTimeoutError),
-	EmptyCorrelationIdPassed	
+	RecvTimeout(crossbeam::channel::RecvTimeoutError)
 }
 
 impl From<std::io::Error> for Error {

@@ -47,22 +47,17 @@ impl Handler for WsClient {
                         match self.client_kind {
                             ClientKind::Hub => {
                                 match msg_meta.source {
-                                    Some(source) => {
-                                        match source {
-                                            MsgSource::Component(component_addr, client_addr) => {
-                                                match &self.linked_tx {
-                                                    Some(linked_tx) => {
-                                                        linked_tx.send(ServerMsg::SendMsg(client_addr, data));
-                                                    }
-                                                    None => info!("Linked tx missing!")
-                                                }
+                                    MsgSource::Component(app_addr, component_addr, client_addr) => {
+                                        match &self.linked_tx {
+                                            Some(linked_tx) => {
+                                                linked_tx.send(ServerMsg::SendMsg(client_addr, data));
                                             }
-                                            MsgSource::Service(addr) => {
-
-                                            }
+                                            None => info!("Linked tx missing!")
                                         }
                                     }
-                                    None => info!("Source is emply for Hub client mesage!")
+                                    MsgSource::Service(addr) => {
+
+                                    }
                                 }
                             }
                             _ => {
@@ -71,40 +66,28 @@ impl Handler for WsClient {
                                         self.events_tx.send((msg_meta, len, data));
                                     }
                                     MsgKind::RpcRequest => {
-                                        match msg_meta.correlation_id {
-                                            Some(correlation_id) => {
-                                                self.rpc_request_tx.send((msg_meta, len, data));
-                                            }
-                                            None => error!("Missing correlation id for RpcRequest msg {:?}", msg_meta)
-                                        }                                                                
+                                        self.rpc_request_tx.send((msg_meta, len, data));
                                     }
                                     MsgKind::RpcResponse => {
-                                        match msg_meta.correlation_id {
+                                        self.rpc_tx.send(ClientMsg::RpcDataRequest(msg_meta.correlation_id));
 
-                                            Some(correlation_id) => {
-
-                                                self.rpc_tx.send(ClientMsg::RpcDataRequest(correlation_id));
-
-                                                match self.rpc_rx.recv() {
-                                                    Ok(msg) => {
-                                                        info!("Debugging on_message {:?}", msg);
-                                                        match msg {
-                                                            ClientMsg::RpcDataResponse(received_correlation_id, rpc_tx) => {
-                                                                match received_correlation_id == correlation_id {
-                                                                    true => {
-                                                                        info!("Sending to rpc_tx {:?}", msg_meta);
-                                                                        rpc_tx.send((msg_meta, len, data));
-                                                                    }
-                                                                    false => error!("received_correlation_id not equals correlation_id: {}, {}", received_correlation_id, correlation_id)
-                                                                }
+                                        match self.rpc_rx.recv() {
+                                            Ok(msg) => {
+                                                info!("Debugging on_message {:?}", msg);
+                                                match msg {
+                                                    ClientMsg::RpcDataResponse(received_correlation_id, rpc_tx) => {
+                                                        match received_correlation_id == msg_meta.correlation_id {
+                                                            true => {
+                                                                info!("Sending to rpc_tx {:?}", msg_meta);
+                                                                rpc_tx.send((msg_meta, len, data));
                                                             }
-                                                            _ => error!("Client handler: wrong ClientMsg")
+                                                            false => error!("received_correlation_id not equals correlation_id: {}, {}", received_correlation_id, msg_meta.correlation_id)
                                                         }
                                                     }
-                                                    Err(err) => error!("Error on self.rpc_rx.recv(): {:?}", err)
+                                                    _ => error!("Client handler: wrong ClientMsg")
                                                 }
                                             }
-                                            None => error!("Missing correlation id for RpcResponse msg {:?}", msg_meta)
+                                            Err(err) => error!("Error on self.rpc_rx.recv(): {:?}", err)
                                         }
                                     }
                                 }

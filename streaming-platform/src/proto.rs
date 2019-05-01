@@ -126,7 +126,7 @@ impl MagicBall2 {
 		self.addr.clone()
 	}
     pub fn send_event(&self, addr: &str, mut payload: Vec<u8>, source: MsgSource) -> Result<(), Error> {                
-        let dto = send_event_dto2(self.addr.clone(), addr.to_owned(), payload, source)?;
+        let dto = event_dto2(self.addr.clone(), addr.to_owned(), payload, source)?;
 
         self.sender.send(Message::Binary(dto));
         

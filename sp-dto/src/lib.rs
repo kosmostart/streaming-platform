@@ -240,7 +240,7 @@ impl MagicBall2 {
     }
     */
 
-pub fn send_event_dto2(tx: String, rx: String, mut payload: Vec<u8>, source: MsgSource) -> Result<Vec<u8>, Error> {        
+pub fn event_dto2(tx: String, rx: String, mut payload: Vec<u8>, source: MsgSource) -> Result<Vec<u8>, Error> {        
     let correlation_id = Uuid::new_v4();
     
     let msg_meta = MsgMeta {

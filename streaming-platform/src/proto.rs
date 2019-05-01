@@ -63,7 +63,7 @@ impl<T, R> MagicBall<T, R> where T: Debug, T: serde::Serialize, for<'de> T: serd
 		self.addr.clone()
 	}
     pub fn send_event(&self, addr: &str, payload: T, source: MsgSource) -> Result<(), Error> {        
-        let dto = send_event_dto(self.addr.clone(), addr.to_owned(), payload, source)?;
+        let dto = event_dto(self.addr.clone(), addr.to_owned(), payload, source)?;
 
         self.sender.send(Message::Binary(dto));
         

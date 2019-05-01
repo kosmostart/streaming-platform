@@ -62,9 +62,8 @@ pub fn send_event_dto<T>(tx: String, rx: String, payload: T, source: MsgSource) 
     Ok(buf)
 }
 
-pub fn reply_to_rpc_dto<T>(tx: String, rx: String, correlation_id: Option<Uuid>, payload: T, source: MsgSource) -> Result<Vec<u8>, Error> where T: Debug, T: serde::Serialize, for<'de> T: serde::Deserialize<'de> {
+pub fn reply_to_rpc_dto<T>(tx: String, rx: String, correlation_id: Uuid, payload: T, source: MsgSource) -> Result<Vec<u8>, Error> where T: Debug, T: serde::Serialize, for<'de> T: serde::Deserialize<'de> {
     let mut payload = serde_json::to_vec(&payload)?;
-    let correlation_id = Uuid::new_v4();
 
     let msg_meta = MsgMeta {
         tx,

@@ -154,6 +154,13 @@ impl Handler for WsServer {
                                                     Some(magic_ball) => {                                                        
                                                         msg_meta.tx = "AppHub".to_owned();
 
+                                                        match msg_meta.source {
+                                                            MsgSource::Component(_, _, ref mut client_addr) => {
+                                                                *client_addr = addr.clone();
+                                                            }
+                                                            _ => {}
+                                                        }
+
                                                         match serde_json::to_vec(&msg_meta) {
                                                             Ok(mut msg_meta) => {                                                                
                                                                 let mut payload_with_attachments: Vec<_> = data.drain(4 + len..).collect();

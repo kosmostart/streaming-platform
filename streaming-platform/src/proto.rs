@@ -69,7 +69,7 @@ impl<T, R> MagicBall<T, R> where T: Debug, T: serde::Serialize, for<'de> T: serd
         
         Ok(())
     }    
-    pub fn reply_to_rpc(&self, addr: String, correlation_id: Option<Uuid>, payload: R, source: MsgSource) -> Result<(), Error> {        
+    pub fn reply_to_rpc(&self, addr: String, correlation_id: Uuid, payload: R, source: MsgSource) -> Result<(), Error> {        
         let dto = reply_to_rpc_dto(self.addr.clone(), addr, correlation_id, payload, source)?;
 
         self.sender.send(Message::Binary(dto));

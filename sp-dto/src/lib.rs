@@ -23,6 +23,15 @@ pub struct MsgMeta {
 	pub attachments: Vec<Attachment>
 }
 
+impl MsgMeta {
+    pub fn cmp_addr(&self) -> Option<String> {
+        match self.source {
+            MsgSource::Component(ref addr, _, _) => Some(addr.to_owned()),
+            _ => None
+        }
+    } 
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub enum MsgKind {
     Event,

@@ -29,7 +29,7 @@ impl Handler for WsClient {
 
     fn on_message(&mut self, msg: Message) -> ws::Result<()> {
         
-        info!("Client got message");
+        debug!("Client got message");
 
         match msg {
             Message::Text(data) => {},
@@ -42,7 +42,7 @@ impl Handler for WsClient {
 
                 match serde_json::from_slice::<MsgMeta>(&data[4..len + 4]) {
                     Ok(msg_meta) => {
-                        info!("Received message, {:#?}", msg_meta);
+                        debug!("Received message, {:#?}", msg_meta);
 
                         match self.client_kind {
                             ClientKind::Hub => {
@@ -52,7 +52,7 @@ impl Handler for WsClient {
                                             Some(linked_tx) => {
                                                 linked_tx.send(ServerMsg::SendMsg(client_addr, data));
                                             }
-                                            None => info!("Linked tx missing!")
+                                            None => debug!("Linked tx missing!")
                                         }
                                     }
                                     MsgSource::Service(addr) => {
@@ -73,12 +73,12 @@ impl Handler for WsClient {
 
                                         match self.rpc_rx.recv() {
                                             Ok(msg) => {
-                                                info!("Debugging on_message {:?}", msg);
+                                                debug!("Debugging on_message {:?}", msg);
                                                 match msg {
                                                     ClientMsg::RpcDataResponse(received_correlation_id, rpc_tx) => {
                                                         match received_correlation_id == msg_meta.correlation_id {
                                                             true => {
-                                                                info!("Sending to rpc_tx {:?}", msg_meta);
+                                                                debug!("Sending to rpc_tx {:?}", msg_meta);
                                                                 rpc_tx.send((msg_meta, len, data));
                                                             }
                                                             false => error!("received_correlation_id not equals correlation_id: {}, {}", received_correlation_id, msg_meta.correlation_id)
@@ -118,7 +118,7 @@ impl Handler for WsClient {
                 }                
             }
             None => {
-                info!("Client with empty addr.");
+                debug!("Client with empty addr.");
             }
         }        
 
@@ -144,11 +144,11 @@ pub fn connect<T, R>(addr: String, host: String) -> Result<(std::thread::JoinHan
             loop {
                 let msg = client_to_state_rx.recv().unwrap();
 
-                info!("Debugging connect {:#?}", msg);
+                debug!("Debugging connect {:#?}", msg);
 
                 match msg {
                     ClientMsg::AddRpc(correlation_id, rpc_client_tx) => {
-                        info!("Adding rpc {}", correlation_id);
+                        debug!("Adding rpc {}", correlation_id);
                         rpcs.insert(correlation_id, rpc_client_tx);
                     }
                     ClientMsg::RemoveRpc(correlation_id) => {
@@ -210,11 +210,11 @@ pub fn connect2(addr: String, host: String, client_kind: ClientKind, linked_tx: 
             loop {
                 let msg = client_to_state_rx.recv().unwrap();
 
-                info!("Debugging connect2 {:?}", msg);
+                debug!("Debugging connect2 {:?}", msg);
 
                 match msg {
                     ClientMsg::AddRpc(correlation_id, rpc_client_tx) => {
-                        info!("Adding rpc {}", correlation_id);
+                        debug!("Adding rpc {}", correlation_id);
                         rpcs.insert(correlation_id, rpc_client_tx);
                     }
                     ClientMsg::RemoveRpc(correlation_id) => {
@@ -224,7 +224,7 @@ pub fn connect2(addr: String, host: String, client_kind: ClientKind, linked_tx: 
                         match rpcs.get(&correlation_id) {
                             Some(rpc_client_tx) => {
                                 state_to_client_tx.send(ClientMsg::RpcDataResponse(correlation_id, rpc_client_tx.clone()));
-                                info!("rpc_client_tx sent {}", correlation_id);
+                                debug!("rpc_client_tx sent {}", correlation_id);
                             }
                             None => error!("Rpc not found: {}", correlation_id)
                         }                        

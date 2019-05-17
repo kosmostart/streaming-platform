@@ -33,7 +33,7 @@ impl Handler for WssServer {
                     self.auth_data = get_auth_data(Some(&cookie_header));
                     match self.auth_data {
                         None => {
-                            info!("ws auth attempt failed, sending close.");
+                            debug!("ws auth attempt failed, sending close.");
                             self.ws.close(CloseCode::Normal);
                         }
                         _ => {}
@@ -46,7 +46,7 @@ impl Handler for WssServer {
 
         if let Some(net_addr) = hs.remote_addr()? {
             self.net_addr = Some(net_addr.clone());
-            //info!("Connection with {} now open", net_addr);
+            //debug!("Connection with {} now open", net_addr);
         }
 
         //self.ws.send("hi".to_string());
@@ -88,22 +88,22 @@ impl Handler for WssServer {
 
     fn on_close(&mut self, code: CloseCode, reason: &str) {
 
-        info!("closed {}", self.ws.connection_id());
+        debug!("closed {}", self.ws.connection_id());
 
         match code {
 
-            CloseCode::Normal => {}//info!("The client is done with the connection."),
+            CloseCode::Normal => {}//debug!("The client is done with the connection."),
 
-            CloseCode::Away   => {}//info!("The client is leaving the site."),
+            CloseCode::Away   => {}//debug!("The client is leaving the site."),
 
-            _ => {}//info!("The client encountered an error: {}", reason),
+            _ => {}//debug!("The client encountered an error: {}", reason),
 
         }
 
     }
 
     fn on_error(&mut self, err: ws::Error) {
-        //info!("The server encountered an error: {:?}", err);
+        //debug!("The server encountered an error: {:?}", err);
     }
 
 }
@@ -163,7 +163,7 @@ impl ws::Handler for WssClient {
     }
 
     fn on_message(&mut self, msg: ws::Message) -> ws::Result<()> {
-        info!("Client got message '{}'. ", msg);
+        debug!("Client got message '{}'. ", msg);
         //self.out.send("Hello");
 
         Ok(())

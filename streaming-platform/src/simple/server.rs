@@ -24,25 +24,25 @@ impl Handler for WsServer {
 
     fn on_open(&mut self, hs: Handshake) -> ws::Result<()> {
 
-        info!("got client {}", self.ws.connection_id());
+        debug!("got client {}", self.ws.connection_id());
 
         match hs.remote_addr()? {
             Some(net_addr) => {
                 self.net_addr = Some(net_addr.clone());
-                info!("Connection with {} now open", net_addr);
+                debug!("Connection with {} now open", net_addr);
             }
-            None => info!("No remote addr present.")
+            None => debug!("No remote addr present.")
         }
 
         match hs.request.header("Cookie") {
             Some(cookie) => {
                 let cookie = std::str::from_utf8(cookie)?;
 
-                info!("Cookie: {}", cookie);
+                debug!("Cookie: {}", cookie);
 
                 match Cookie::parse(cookie) {
                     Ok(cookie) => {
-                        info!("Cookie: {:?}", cookie.name_value());
+                        debug!("Cookie: {:?}", cookie.name_value());
                         match cookie.name() {
                             "addr" => {
                                 let addr = cookie.value();
@@ -52,7 +52,7 @@ impl Handler for WsServer {
                                 self.addr = Some(addr.clone());
                                 self.tx.send(ServerMsg::AddClient(addr, self.ws.clone()));
                             }
-                            _ => info!("No addr present.")
+                            _ => debug!("No addr present.")
                         }
                     }
                     Err(err) => error!("Cookie parse error: {}", err)
@@ -61,7 +61,7 @@ impl Handler for WsServer {
                 return Ok(());
             }
             None => {
-                info!("No Cookie header present.")
+                debug!("No Cookie header present.")
             }
         }
 
@@ -69,7 +69,7 @@ impl Handler for WsServer {
             Some(addr) => {                                
                 let addr = std::str::from_utf8(addr)?;
 
-                info!("Service: {}", addr);
+                debug!("Service: {}", addr);
 
                 self.client_kind = Some(ClientKind::Service);
 
@@ -77,7 +77,7 @@ impl Handler for WsServer {
                 self.tx.send(ServerMsg::AddClient(addr.to_owned(), self.ws.clone()));
             }
             None => {
-                info!("No Service header present.")
+                debug!("No Service header present.")
             }
         }
 
@@ -85,7 +85,7 @@ impl Handler for WsServer {
             Some(addr) => {                                
                 let addr = std::str::from_utf8(addr)?;
 
-                info!("Hub: {}", addr);
+                debug!("Hub: {}", addr);
 
                 self.client_kind = Some(ClientKind::Hub);
 
@@ -93,7 +93,7 @@ impl Handler for WsServer {
                 self.tx.send(ServerMsg::AddClient(addr.to_owned(), self.ws.clone()));
             }
             None => {
-                info!("No Hub header present.")
+                debug!("No Hub header present.")
             }
         }
 
@@ -105,7 +105,7 @@ impl Handler for WsServer {
                     self.auth_data = get_auth_data(Some(&cookie_header));
                     match self.auth_data {
                         None => {
-                            info!("ws auth attempt failed, sending close.");
+                            debug!("ws auth attempt failed, sending close.");
                             //self.ws.close(CloseCode::Normal);
                         }
                         _ => {}
@@ -121,7 +121,7 @@ impl Handler for WsServer {
 
     fn on_message(&mut self, msg: Message) -> ws::Result<()> {
 
-        info!("got message");
+        debug!("got message");
 
         match &self.addr {
             Some(addr) => {
@@ -146,7 +146,7 @@ impl Handler for WsServer {
 
                                 match res {
                                     Ok(mut msg_meta) => {
-                                        info!("Sending message: {:#?}", msg_meta);
+                                        debug!("Sending message: {:#?}", msg_meta);
 
                                         match client_kind {
                                             ClientKind::App => {
@@ -201,7 +201,7 @@ impl Handler for WsServer {
                 }                
             }
             None => {
-                info!("Client is unauthorized.");
+                debug!("Client is unauthorized.");
             }
         }
 
@@ -210,22 +210,22 @@ impl Handler for WsServer {
 
     fn on_close(&mut self, code: CloseCode, reason: &str) {
 
-        info!("closed");
+        debug!("closed");
 
         match code {
 
-            CloseCode::Normal => {}//info!("The client is done with the connection."),
+            CloseCode::Normal => {}//debug!("The client is done with the connection."),
 
-            CloseCode::Away   => {}//info!("The client is leaving the site."),
+            CloseCode::Away   => {}//debug!("The client is leaving the site."),
 
-            _ => {}//info!("The client encountered an error: {}", reason),
+            _ => {}//debug!("The client encountered an error: {}", reason),
 
         }
 
     }
 
     fn on_error(&mut self, err: ws::Error) {
-        //info!("The server encountered an error: {:?}", err);
+        //debug!("The server encountered an error: {:?}", err);
     }
 
 }
@@ -259,17 +259,17 @@ pub fn start(host: String, port: u16, config: Config) {
 
                 match msg {
                     ServerMsg::AddClient(addr, sender) => {
-                        info!("Adding client {}", &addr);
+                        debug!("Adding client {}", &addr);
                         clients.insert(addr, sender);                                
                     }
                     ServerMsg::SendMsg(addr, res) => {
                         match clients.get(&addr) {
                             Some(sender) => {
-                                info!("Sending message to client {}", &addr);
+                                debug!("Sending message to client {}", &addr);
                                 sender.send(res);                                
                             }
                             None => {
-                                info!("Client not found: {}", &addr);
+                                debug!("Client not found: {}", &addr);
                             }
                         }
                     }
@@ -313,17 +313,17 @@ pub fn start_with_link(host: String, port: u16, link_client_name: String, link_t
 
                 match msg {
                     ServerMsg::AddClient(addr, sender) => {
-                        info!("Adding client {}", &addr);
+                        debug!("Adding client {}", &addr);
                         clients.insert(addr, sender);                                
                     }
                     ServerMsg::SendMsg(addr, data) => {
                         match clients.get(&addr) {
                             Some(sender) => {
-                                info!("Sending message to client {}", &addr);
+                                debug!("Sending message to client {}", &addr);
                                 sender.send(data);                                
                             }
                             None => {
-                                info!("Client not found: {}", &addr);
+                                debug!("Client not found: {}", &addr);
                             }
                         }
                     }

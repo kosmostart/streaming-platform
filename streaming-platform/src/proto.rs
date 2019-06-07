@@ -91,6 +91,8 @@ impl<T, R> MagicBall<T, R> where T: Debug, T: serde::Serialize, for<'de> T: serd
         Ok((msg_meta, payload))
     }
     pub fn rpc(&self, addr: &str, payload: T, source: MsgSource) -> Result<(MsgMeta, R), Error> {
+		info!("rpc call, addr: {}, payload: {:#?}, source: {:#?}", addr, payload, source);
+		
         let (correlation_id, dto) = rpc_dto_with_correlation_id(self.addr.clone(), addr.to_owned(), payload, source)?;
         let (rpc_tx, rpc_rx) = crossbeam::channel::unbounded();
         

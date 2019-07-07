@@ -99,7 +99,7 @@ impl<T, R> MagicBall<T, R> where T: Debug, T: serde::Serialize, for<'de> T: serd
         self.rpc_tx.send(ClientMsg::AddRpc(correlation_id, rpc_tx));        
         self.sender.send(Message::Binary(dto));
 
-        let res = match rpc_rx.recv_timeout(std::time::Duration::from_secs(60)) {
+        let res = match rpc_rx.recv_timeout(std::time::Duration::from_secs(30)) {
             Ok((msg_meta, len, data)) => {
                 let payload = &data[len + 4..];
                 let payload = serde_json::from_slice::<R>(&data[len + 4..])?;
@@ -167,10 +167,93 @@ impl MagicBall2 {
         
         self.sender.send(Message::Binary(dto));
 
-        let res = match rpc_rx.recv_timeout(std::time::Duration::from_secs(60)) {
+        let res = match rpc_rx.recv_timeout(std::time::Duration::from_secs(30)) {
             Ok((msg_meta, len, data)) => {
                 let payload = &data[len + 4..];        
                 Ok((msg_meta, payload.to_vec()))
+            }
+            Err(err) => Err(err)?
+        };
+
+        self.rpc_tx.send(ClientMsg::RemoveRpc(correlation_id));
+
+        res
+    }
+    pub fn proxy_event(&self, tx: String, mut data: Vec<u8>) -> Result<(), Error> {
+        let (res, len) = {
+            let mut buf = std::io::Cursor::new(&data);
+            let len = buf.get_u32_be() as usize;
+
+            match len > data.len() - 4 {
+                true => {
+                    let custom_error = std::io::Error::new(std::io::ErrorKind::Other, "oh no!");
+                    return Err(Error::Io(custom_error));
+                }
+                false => (serde_json::from_slice::<MsgMeta>(&data[4..len + 4]), len)
+            }
+        };
+
+        let mut msg_meta = res?;
+
+        msg_meta.tx = tx;
+
+        let mut msg_meta = serde_json::to_vec(&msg_meta)?;
+                                                      
+        let mut payload_with_attachments: Vec<_> = data.drain(4 + len..).collect();
+        let mut buf = vec![];
+
+        buf.put_u32_be(msg_meta.len() as u32);
+
+        buf.append(&mut msg_meta);
+        buf.append(&mut payload_with_attachments);
+
+        self.sender.send(Message::Binary(buf));
+        
+        Ok(())
+    }
+    pub fn proxy_rpc(&self, tx: String, mut data: Vec<u8>) -> Result<(MsgMeta, Vec<u8>), Error> {
+
+        let (res, len) = {
+            let mut buf = std::io::Cursor::new(&data);
+            let len = buf.get_u32_be() as usize;
+
+            match len > data.len() - 4 {
+                true => {
+                    let custom_error = std::io::Error::new(std::io::ErrorKind::Other, "oh no!");
+                    return Err(Error::Io(custom_error));
+                }
+                false => (serde_json::from_slice::<MsgMeta>(&data[4..len + 4]), len)
+            }
+        };
+
+        let mut msg_meta = res?;
+
+        let correlation_id = msg_meta.correlation_id;
+
+        msg_meta.tx = tx;
+
+        let mut msg_meta = serde_json::to_vec(&msg_meta)?;
+                                                      
+        let mut payload_with_attachments: Vec<_> = data.drain(4 + len..).collect();
+        let mut buf = vec![];
+
+        buf.put_u32_be(msg_meta.len() as u32);
+
+        buf.append(&mut msg_meta);
+        buf.append(&mut payload_with_attachments);
+        
+
+        let (rpc_tx, rpc_rx) = crossbeam::channel::unbounded();
+        
+        self.rpc_tx.send(ClientMsg::AddRpc(correlation_id, rpc_tx));
+        
+        self.sender.send(Message::Binary(buf));
+
+        let res = match rpc_rx.recv_timeout(std::time::Duration::from_secs(30)) {
+            Ok((msg_meta, len, data)) => {
+                //let payload = &data[len + 4..];        
+                //Ok((msg_meta, payload.to_vec()))
+                Ok((msg_meta, data))
             }
             Err(err) => Err(err)?
         };

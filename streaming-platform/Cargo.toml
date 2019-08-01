@@ -10,7 +10,7 @@ log = "*"
 serde = "*"
 serde_derive = "*"
 serde_json = "*"
-url = "1.7.0"
+url = "*"
 openssl = "*"
 cookie = "*"
 ws = { version = "*", features = ["ssl"] }

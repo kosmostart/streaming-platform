@@ -16,6 +16,7 @@ pub enum MsgSource {
 pub struct MsgMeta {
     pub tx: String,
     pub rx: String,
+    pub key: String,
     pub kind: MsgKind,
     pub correlation_id: Uuid,
     pub source: MsgSource,

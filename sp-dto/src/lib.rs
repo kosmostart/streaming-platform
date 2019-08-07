@@ -25,6 +25,24 @@ pub struct MsgMeta {
 }
 
 impl MsgMeta {
+    pub fn key_part(&self, index: usize) -> Result<String, String> {
+        let split: Vec<&str> = self.key.split(".").collect();
+
+        if index >= split.len() {
+            return Err("index equals or more than key parts lenght".to_owned());
+        }
+
+        return Ok(split[index].to_owned())
+    }
+    pub fn match_key_part(&self, index: usize, value: &str) -> Result<bool, String> {
+        let split: Vec<&str> = self.key.split(".").collect();
+
+        if index >= split.len() {
+            return Err("index equals or more than key parts lenght".to_owned());
+        }
+
+        return Ok(split[index] == value)
+    }
     pub fn cmp_addr(&self) -> Option<String> {
         match self.source {
             MsgSource::Component(ref addr, _, _) => Some(addr.to_owned()),

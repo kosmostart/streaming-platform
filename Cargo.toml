@@ -4,5 +4,6 @@ members = [
 	"streaming-platform",
 	"sp-dto",
 	"sp-manager",
-	"sp-yew"
+	"sp-yew",
+	"sp-delivery"
 ]

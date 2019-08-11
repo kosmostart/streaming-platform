@@ -1186,7 +1186,7 @@ dependencies = [
  "serde 1.0.98 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_derive 1.0.98 (registry+https://github.com/rust-lang/crates.io-index)",
  "toml 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "warp 0.1.18 (registry+https://github.com/rust-lang/crates.io-index)",
+ "warp 0.1.18 (git+https://github.com/seanmonstar/warp)",
 ]
 
 [[package]]
@@ -1683,31 +1683,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "warp"
-version = "0.1.18"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-dependencies = [
- "bytes 0.4.12 (registry+https://github.com/rust-lang/crates.io-index)",
- "futures 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
- "headers 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "http 0.1.18 (registry+https://github.com/rust-lang/crates.io-index)",
- "hyper 0.12.33 (registry+https://github.com/rust-lang/crates.io-index)",
- "log 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
- "mime 0.3.13 (registry+https://github.com/rust-lang/crates.io-index)",
- "mime_guess 2.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "multipart 0.16.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "scoped-tls 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "serde 1.0.98 (registry+https://github.com/rust-lang/crates.io-index)",
- "serde_json 1.0.40 (registry+https://github.com/rust-lang/crates.io-index)",
- "serde_urlencoded 0.5.5 (registry+https://github.com/rust-lang/crates.io-index)",
- "tokio 0.1.22 (registry+https://github.com/rust-lang/crates.io-index)",
- "tokio-io 0.1.12 (registry+https://github.com/rust-lang/crates.io-index)",
- "tokio-threadpool 0.1.15 (registry+https://github.com/rust-lang/crates.io-index)",
- "tungstenite 0.8.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "urlencoding 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
 name = "wasm-bindgen"
 version = "0.2.42"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2050,7 +2025,6 @@ dependencies = [
 "checksum version_check 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)" = "914b1a6776c4c929a602fafd8bc742e06365d4bcbe48c30f9cca5824f70dc9dd"
 "checksum want 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)" = "b6395efa4784b027708f7451087e647ec73cc74f5d9bc2e418404248d679a230"
 "checksum warp 0.1.18 (git+https://github.com/seanmonstar/warp)" = "<none>"
-"checksum warp 0.1.18 (registry+https://github.com/rust-lang/crates.io-index)" = "2e3f41c1f289fca6b5c9b1843a1a7fc83259799a72152d0ad61d7ea65e87c8da"
 "checksum wasm-bindgen 0.2.42 (registry+https://github.com/rust-lang/crates.io-index)" = "ffde3534e5fa6fd936e3260cd62cd644b8656320e369388f9303c955895e35d4"
 "checksum wasm-bindgen-backend 0.2.42 (registry+https://github.com/rust-lang/crates.io-index)" = "40c0543374a7ae881cdc5d32d19de28d1d1929e92263ffa7e31712cc2d53f9f1"
 "checksum wasm-bindgen-macro 0.2.42 (registry+https://github.com/rust-lang/crates.io-index)" = "f914c94c2c5f4c9364510ca2429e59c92157ec89429243bcc245e983db990a71"

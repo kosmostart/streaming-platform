@@ -45,34 +45,41 @@ fn main() {
     let config: Config = toml::from_str(&config).unwrap();
     println!("{:#?}", config);
 
-    let hub_path = config.hub_path
-        .expect("hub path is empty");
+    match config.hubs {
+        Some(hubs) => {
+            let hub_path = config.hub_path.clone()
+                .expect("hub path is empty, but hubs are present");
 
-    for hub in config.hubs.unwrap() {
+            for hub in hubs {
 
-        match hub.file_name {
-            Some(file_name) => {                
-                match hub.config {
-                    Some(config) => {
-                        std::process::Command::new(hub_path.clone() + "/" + &file_name)
-                            .arg(toml::to_string(&config)
-                                .expect("serialization to TOML string failed, check hub config")
-                            )
-                            .spawn()
-                            .expect(&format!("{} command failed to start", file_name));
+                match hub.file_name {
+                    Some(file_name) => {                
+                        match hub.config {
+                            Some(config) => {
+                                std::process::Command::new(hub_path.clone() + "/" + &file_name)
+                                    .arg(toml::to_string(&config)
+                                        .expect("serialization to TOML string failed, check hub config")
+                                    )
+                                    .spawn()
+                                    .expect(&format!("{} command failed to start", file_name));
+                            }
+                            None => {
+                                std::process::Command::new(hub_path.clone() + "/" + &file_name)
+                                    .spawn()
+                                    .expect(&format!("{} command failed to start", file_name));
+                            }
+                        }
                     }
                     None => {
-                        std::process::Command::new(hub_path.clone() + "/" + &file_name)
-                            .spawn()
-                            .expect(&format!("{} command failed to start", file_name));
+                        println!("hub with empty file name, please note");
                     }
                 }
-            }
-            None => {
-                println!("hub with empty file name, please note");
+
             }
         }
-
+        None => {
+            println!("no hubs are configured to run");
+        }
     }
 
     match config.services {

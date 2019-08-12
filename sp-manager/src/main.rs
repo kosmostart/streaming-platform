@@ -29,13 +29,12 @@ struct Config {
 }
 
 fn main() {
-
     let config_path = std::env::args().nth(1)
         .expect("config location not passed as argument");
 
     let file = File::open(config_path)
         .expect("failed to open config");
-            
+
     let mut buf_reader = BufReader::new(file);
 
     let mut config = String::new();

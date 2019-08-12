@@ -35,7 +35,7 @@ fn main() {
 
     let file = File::open(config_path)
         .expect("failed to open config");
-    //let file = File::open("ddl/".to_owned() + &service.path() + "/" + &domain.path() + ".sql")?;
+            
     let mut buf_reader = BufReader::new(file);
 
     let mut config = String::new();

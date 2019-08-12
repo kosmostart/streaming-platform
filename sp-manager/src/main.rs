@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::BufReader;
 use std::io::prelude::*;
@@ -7,12 +8,14 @@ use warp::Filter;
 
 #[derive(Debug, Deserialize)]
 struct Hub {
-    file_name: Option<String>
+    file_name: Option<String>,
+    config: Option<toml::Value>
 }
 
 #[derive(Debug, Deserialize)]
 struct Service {
-    file_name: Option<String>
+    file_name: Option<String>,
+    config: Option<toml::Value>
 }
 
 /// This is what we're going to decode into. Each field is optional, meaning
@@ -49,17 +52,28 @@ fn main() {
     for hub in config.hubs.unwrap() {
 
         match hub.file_name {
-            Some(file_name) => {
-                std::process::Command::new(hub_path.clone() + "/" + &file_name)
-                    //.arg("&")
-                    .spawn()
-                    .expect(&format!("{} command failed to start", file_name));
+            Some(file_name) => {                
+                match hub.config {
+                    Some(config) => {
+                        std::process::Command::new(hub_path.clone() + "/" + &file_name)
+                            .arg(toml::to_string(&config)
+                                .expect("serialization to TOML string failed, check hub config")
+                            )
+                            .spawn()
+                            .expect(&format!("{} command failed to start", file_name));
+                    }
+                    None => {
+                        std::process::Command::new(hub_path.clone() + "/" + &file_name)
+                            .spawn()
+                            .expect(&format!("{} command failed to start", file_name));
+                    }
+                }
             }
             None => {
                 println!("hub with empty file name, please note");
             }
         }
-        
+
     }
 
     match config.services {
@@ -71,10 +85,21 @@ fn main() {
 
                 match service.file_name {
                     Some(file_name) => {
-                        std::process::Command::new(service_path.clone() + "/" + &file_name)
-                            //.arg("&")
-                            .spawn()
-                            .expect(&format!("{} command failed to start", file_name));
+                        match service.config {
+                            Some(config) => {
+                                std::process::Command::new(service_path.clone() + "/" + &file_name)
+                                    .arg(toml::to_string(&config)
+                                        .expect("serialization to TOML string failed, check service config")
+                                    )
+                                    .spawn()
+                                    .expect(&format!("{} command failed to start", file_name));
+                            }
+                            None => {
+                                std::process::Command::new(service_path.clone() + "/" + &file_name)                                    
+                                    .spawn()
+                                    .expect(&format!("{} command failed to start", file_name));
+                            }
+                        }
                     }
                     None => {
                         println!("service with empty file name, please note");

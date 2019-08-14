@@ -5,7 +5,7 @@ use ws::{Request, Builder, Handler, Sender, Message, Handshake, CloseCode};
 use sp_dto::uuid::Uuid;
 use cookie::Cookie;
 use sp_dto::{MsgMeta, MsgKind, MsgSource};
-use crate::{AuthData, Config};
+use crate::AuthData;
 use crate::proto::{ClientKind, ServerMsg, ClientMsg, MagicBall, MagicBall2};
 use crate::error::Error;
 
@@ -264,7 +264,7 @@ fn test_scenarios() {
     let server = std::thread::Builder::new()
         .name("server".to_owned())
         .spawn(|| {
-            start("0.0.0.0".to_owned(), 60000, Config {})
+            start("0.0.0.0".to_owned(), 60000, HashMap::new())
         })
         .unwrap();
 

@@ -15,8 +15,3 @@ pub use crate::error::Error;
 pub struct AuthData {
 
 }
-
-#[derive(Clone)]
-pub struct Config {
-
-}

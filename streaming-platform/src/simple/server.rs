@@ -5,7 +5,7 @@ use ws::{Request, Builder, Handler, Sender, Message, Handshake, CloseCode};
 use sp_dto::bytes::{Buf, BufMut};
 use sp_dto::uuid::Uuid;
 use sp_dto::{MsgMeta, MsgKind, MsgSource};
-use crate::{AuthData, Config};
+use crate::AuthData;
 use crate::proto::{ClientKind, ServerMsg, ClientMsg, MagicBall, MagicBall2};
 use crate::error::Error;
 
@@ -13,7 +13,7 @@ struct WsServer {
     net_addr: Option<String>,
     auth_data: Option<AuthData>,
     ws: Sender,
-    config: Config,
+    config: HashMap<String, String>,
     tx: crossbeam::channel::Sender<ServerMsg>,
     client_kind: Option<ClientKind>,
     addr: Option<String>,
@@ -230,7 +230,7 @@ impl Handler for WsServer {
 
 }
 
-pub fn start(host: String, port: u16, config: Config) {
+pub fn start(host: String, port: u16, config: HashMap<String, String>) {
 
     let (tx, rx) = crossbeam::channel::unbounded();
 
@@ -282,7 +282,7 @@ pub fn start(host: String, port: u16, config: Config) {
     server.listen(format!("{}:{}", host, port));
 }
 
-pub fn start_with_link(host: String, port: u16, link_client_name: String, link_to_host: String, config: Config) {
+pub fn start_with_link(host: String, port: u16, link_client_name: String, link_to_host: String, config: HashMap<String, String>) {
 
     let (tx, rx) = crossbeam::channel::unbounded();    
 
@@ -341,7 +341,7 @@ fn test_scenarios() {
     let server = std::thread::Builder::new()
         .name("server".to_owned())
         .spawn(|| {
-            start("0.0.0.0".to_owned(), 60000, Config {})
+            start("0.0.0.0".to_owned(), 60000, HashMap::new())
         })
         .unwrap();
 

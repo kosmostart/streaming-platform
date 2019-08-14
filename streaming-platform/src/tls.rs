@@ -8,7 +8,7 @@ use ws::util::TcpStream;
 use openssl::ssl::{SslAcceptor, SslAcceptorBuilder, SslMethod, SslStream, SslConnectorBuilder, SslConnector, SslVerifyMode};
 use openssl::pkey::PKey;
 use openssl::x509::{X509, X509Ref};
-use crate::{AuthData, Config};
+use crate::AuthData;
 use crate::proto::Route;
 use crate::error::Error;
 
@@ -16,9 +16,9 @@ struct WssServer {
     net_addr: Option<String>,
     auth_data: Option<AuthData>,
     ws: Sender,
-    route_msg: fn(Config, String, AuthData) -> Route,
+    route_msg: fn(HashMap<String, String>, String, AuthData) -> Route,
     ssl: Rc<SslAcceptor>,
-    config: Config,
+    config: HashMap<String, String>,
     addr: Option<String>
 }
 
@@ -115,7 +115,7 @@ fn read_file(name: &str) -> std::io::Result<Vec<u8>> {
     Ok(buf)
 }
 
-pub fn start_tls(host: String, port: u16, route_msg: fn(Config, String, AuthData) -> Route, config: Config) {
+pub fn start_tls(host: String, port: u16, route_msg: fn(HashMap<String, String>, String, AuthData) -> Route, config: HashMap<String, String>) {
     let settings = Settings::default();
 
     let cert = {
@@ -201,6 +201,6 @@ pub fn connect_tls(host: String) {
     });
 }
 
-pub fn route_message(config: Config, data: String, auth_data: AuthData) -> Route {
+pub fn route_message(config: HashMap<String, String>, data: String, auth_data: AuthData) -> Route {
     Route::ToSender("Error".to_string())
 }

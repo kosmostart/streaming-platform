@@ -17,7 +17,7 @@ struct WsServer {
     tx: crossbeam::channel::Sender<ServerMsg>,
     client_kind: Option<ClientKind>,
     addr: Option<String>,
-    magic_ball: Option<MagicBall2>
+    link_magic_ball: Option<MagicBall2>
 }
 
 impl Handler for WsServer {
@@ -150,7 +150,7 @@ impl Handler for WsServer {
 
                                         match client_kind {
                                             ClientKind::App => {
-                                                match &self.magic_ball {
+                                                match &self.link_magic_ball {
                                                     Some(magic_ball) => {                                                        
                                                         msg_meta.tx = "AppHub".to_owned();
 
@@ -244,7 +244,7 @@ pub fn start(host: String, port: u16, config: HashMap<String, String>) {
             tx: tx.clone(),
             client_kind: None,
             addr: None,
-            magic_ball: None
+            link_magic_ball: None
         }
 
     }).unwrap();
@@ -298,7 +298,7 @@ pub fn start_with_link(host: String, port: u16, link_client_name: String, link_t
             tx: tx.clone(),
             client_kind: None,
             addr: None,
-            magic_ball: Some(magic_ball.clone())
+            link_magic_ball: Some(magic_ball.clone())
         }
 
     }).unwrap();

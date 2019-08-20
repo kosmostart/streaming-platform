@@ -11,4 +11,5 @@ edition = "2018"
 serde = "*"
 serde_derive = "*"
 toml = "*"
+sysinfo = "*"
 warp = { git = "https://github.com/seanmonstar/warp" }

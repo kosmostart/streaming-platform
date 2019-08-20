@@ -4,6 +4,7 @@ use std::io::BufReader;
 use std::io::prelude::*;
 use std::net::SocketAddr;
 use serde_derive::Deserialize;
+use sysinfo::{ProcessExt, SystemExt};
 use warp::Filter;
 
 #[derive(Debug, Deserialize)]
@@ -16,6 +17,11 @@ struct Hub {
 struct Service {
     file_name: Option<String>,
     config: Option<toml::Value>
+}
+
+struct Process {
+    pub id: usize,
+    pub name: String
 }
 
 /// This is what we're going to decode into. Each field is optional, meaning
@@ -45,6 +51,23 @@ fn main() {
     let config: Config = toml::from_str(&config).unwrap();
     println!("{:#?}", config);
 
+    let mut system = sysinfo::System::new();
+
+    // First we update all information of our system struct.
+    system.refresh_all();
+
+    let mut running = vec![];
+
+    for (pid, proc_) in system.get_process_list() {
+        //println!("{}:{} => status: {:?}", pid, proc_.name(), proc_.status());
+
+        running.push(Process {
+            id: *pid,
+            name: proc_.name().to_owned()
+        });
+    }
+
+
     match config.hubs {
         Some(hubs) => {
             let hub_path = config.hub_path.clone()
@@ -53,7 +76,10 @@ fn main() {
             for hub in hubs {
 
                 match hub.file_name {
-                    Some(file_name) => {                
+                    Some(file_name) => {
+                        
+                        fix_running(&running, &file_name);
+
                         match hub.config {
                             Some(config) => {
                                 std::process::Command::new(hub_path.clone() + "/" + &file_name)
@@ -88,9 +114,11 @@ fn main() {
                 .expect("service path is empty, but services are present");
 
             for service in services {
-
                 match service.file_name {
                     Some(file_name) => {
+
+                        fix_running(&running, &file_name);
+
                         match service.config {
                             Some(config) => {
                                 std::process::Command::new(service_path.clone() + "/" + &file_name)
@@ -128,4 +156,33 @@ fn main() {
 	
     let addr = "0.0.0.0:49999".parse::<SocketAddr>().unwrap();
     warp::serve(routes).run(addr);
+}
+
+fn fix_running(running: &Vec<Process>, name: &str) {
+    for process in running {
+        if process.name == name {
+            stop_process(process.id, &process.name);
+        }
+    }
+}
+
+fn stop_process(id: usize, name: &str) {
+    println!("attempt to stop process {} with id {}", name, id);
+
+    if cfg!(windows) {
+        std::process::Command::new("taskkill")
+            .arg("/F")
+            .arg("/PID")
+            .arg(id.to_string())
+            .output()
+            .expect(&format!("process stop failed, {}, id {}", name, id));
+    }
+    else {
+        std::process::Command::new("kill")            
+            .arg(id.to_string())
+            .output()
+            .expect(&format!("process stop failed, {}, id {}", name, id));
+    }
+
+    println!("process stop ok, {}, id {}", name, id);
 }

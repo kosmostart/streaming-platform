@@ -51,6 +51,8 @@ fn main() {
     let config: Config = toml::from_str(&config).unwrap();
     println!("{:#?}", config);
 
+    println!("quering system data");
+
     let mut system = sysinfo::System::new();
 
     // First we update all information of our system struct.
@@ -159,6 +161,8 @@ fn main() {
 }
 
 fn fix_running(running: &Vec<Process>, name: &str) {
+    println!("fixing running processes for {}", name);
+
     for process in running {
         if process.name == name {
             stop_process(process.id, &process.name);

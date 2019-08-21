@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::fs::File;
 use std::io::BufReader;
 use std::io::prelude::*;
@@ -64,7 +63,7 @@ fn main() {
         //println!("{}:{} => status: {:?}", pid, proc_.name(), proc_.status());
 
         running.push(Process {
-            id: *pid,
+            id: *pid as usize,
             name: proc_.name().to_owned()
         });
     }
@@ -82,6 +81,8 @@ fn main() {
                         
                         fix_running(&running, &file_name);
 
+                        println!("starting {}", file_name);
+
                         match hub.config {
                             Some(config) => {
                                 std::process::Command::new(hub_path.clone() + "/" + &file_name)
@@ -97,6 +98,8 @@ fn main() {
                                     .expect(&format!("{} command failed to start", file_name));
                             }
                         }
+
+                        println!("done starting {}", file_name);
                     }
                     None => {
                         println!("hub with empty file name, please note");
@@ -121,6 +124,8 @@ fn main() {
 
                         fix_running(&running, &file_name);
 
+                        println!("starting {}", file_name);
+
                         match service.config {
                             Some(config) => {
                                 std::process::Command::new(service_path.clone() + "/" + &file_name)
@@ -136,6 +141,8 @@ fn main() {
                                     .expect(&format!("{} command failed to start", file_name));
                             }
                         }
+
+                        println!("done starting {}", file_name);
                     }
                     None => {
                         println!("service with empty file name, please note");
@@ -149,6 +156,8 @@ fn main() {
         }
     }
 
+    println!("starting command server");
+
     let routes = warp::path("hello")
         .and(warp::path::param())
         .and(warp::header("user-agent"))
@@ -156,7 +165,7 @@ fn main() {
             format!("Hello {}, whose agent is {}", param, agent)
         });
 	
-    let addr = "0.0.0.0:49999".parse::<SocketAddr>().unwrap();
+    let addr = "0.0.0.0:49999".parse::<SocketAddr>().unwrap();    
     warp::serve(routes).run(addr);
 }
 
@@ -168,6 +177,8 @@ fn fix_running(running: &Vec<Process>, name: &str) {
             stop_process(process.id, &process.name);
         }
     }
+
+    println!("done for {}", name);
 }
 
 fn stop_process(id: usize, name: &str) {

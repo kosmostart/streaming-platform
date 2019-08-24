@@ -29,7 +29,7 @@ impl MsgMeta {
         let split: Vec<&str> = self.key.split(".").collect();
 
         if index >= split.len() {
-            return Err("index equals or more than key parts lenght".to_owned());
+            return Err("index equals or more than key parts length".to_owned());
         }
 
         return Ok(split[index].to_owned())
@@ -38,7 +38,7 @@ impl MsgMeta {
         let split: Vec<&str> = self.key.split(".").collect();
 
         if index >= split.len() {
-            return Err("index equals or more than key parts lenght".to_owned());
+            return Err("index equals or more than key parts length".to_owned());
         }
 
         return Ok(split[index] == value)

@@ -15,7 +15,7 @@ pub struct CmpSpec {
 }
 
 impl CmpSpec {
-    // this methods work for child components, note this: tx: self.rx.clone(),
+    // these methods work for child components, note this: tx: self.rx.clone(),
     pub fn new_rx(&self, rx: &str) -> CmpSpec {
         CmpSpec {
             tx: self.rx.clone(),

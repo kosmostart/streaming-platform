@@ -6,9 +6,29 @@ use uuid::Uuid;
 pub use bytes;
 pub use uuid;
 
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct CmpSpec {
+    pub tx: String,
+    pub rx: String,
+    pub app_addr: String,
+    pub client_addr: String
+}
+
+impl Default for CmpSpec {
+    fn default() -> Self {
+        CmpSpec {
+            tx: String::new(),
+            rx: String::new(),
+            app_addr: String::new(),
+            client_addr: String::new()
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum MsgSource {
-    Component(String, String, String),
+    // Component, app, auth info
+    Component(CmpSpec),
     Service(String)
 }
 
@@ -44,8 +64,8 @@ impl MsgMeta {
         return Ok(split[index] == value)
     }
     pub fn cmp_addr(&self) -> Option<String> {
-        match self.source {
-            MsgSource::Component(ref addr, _, _) => Some(addr.to_owned()),
+        match &self.source {
+            MsgSource::Component(spec) => Some(spec.rx.clone()),
             _ => None
         }
     } 

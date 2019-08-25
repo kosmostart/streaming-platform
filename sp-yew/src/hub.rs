@@ -5,7 +5,7 @@ use yew::callback::Callback;
 use yew::prelude::worker::*;
 use yew::services::console::ConsoleService;
 use yew::agent::HandlerId;
-use sp_dto::MsgMeta;
+use sp_dto::{MsgSource, MsgKind, uuid::Uuid, MsgMeta, CmpSpec};
 
 pub struct Worker {
     link: AgentLink<Worker>,
@@ -22,6 +22,125 @@ pub enum Request {
 #[derive(Serialize, Deserialize, Debug)]
 pub enum Response {
     Msg(MsgMeta, Value)
+}
+
+pub struct Hub {
+    hub: Box<Bridge<Worker>>,
+    spec: CmpSpec
+}
+
+impl Hub {    
+    pub fn new(spec: CmpSpec, callback: Callback<Response>) -> Hub {
+        let mut hub = Worker::bridge(callback);
+
+        hub.send(Request::Auth(spec.rx.clone()));
+
+        Hub {
+            hub,
+            spec
+        }        
+    }
+    pub fn new_no_auth(spec: CmpSpec, callback: Callback<Response>) -> Hub {
+        Hub {
+            hub: Worker::bridge(callback),
+            spec
+        }        
+    }
+    pub fn auth(&mut self, spec: CmpSpec) {
+        self.spec = spec;
+
+        self.hub.send(Request::Auth(self.spec.rx.clone()));
+    }
+    pub fn send_event(&mut self, rx: &str, key: &str, payload: Value) {
+        self.hub.send(Request::Msg(
+            MsgMeta {
+                tx: self.spec.rx.clone(),
+                rx: rx.to_owned(),
+                key: key.to_owned(),
+                kind: MsgKind::Event,
+                correlation_id: Uuid::new_v4(),
+                source: MsgSource::Component(self.spec.clone()),
+                payload_size: 0,
+                attachments: vec![]
+            }, 
+            payload
+        ));
+    }
+    pub fn rpc(&mut self, rx: &str, key: &str, payload: Value) {
+        self.hub.send(Request::Msg(
+            MsgMeta {
+                tx: self.spec.rx.clone(),
+                rx: rx.to_owned(),
+                key: key.to_owned(),
+                kind: MsgKind::RpcRequest,
+                correlation_id: Uuid::new_v4(),
+                source: MsgSource::Component(self.spec.clone()),
+                payload_size: 0,
+                attachments: vec![]
+            },
+            payload
+        ));
+    }
+    pub fn proxy_msg(&mut self, rx: &str, msg_meta: MsgMeta, payload: Value) {
+        self.hub.send(Request::Msg(
+            MsgMeta {
+                tx: self.spec.rx.clone(),
+                rx: rx.to_owned(),
+                key: msg_meta.key,
+                kind: msg_meta.kind,
+                correlation_id: msg_meta.correlation_id,
+                source: msg_meta.source,
+                payload_size: 0,
+                attachments: vec![]
+            },
+            payload
+        ));
+    }
+    pub fn send_event_tx(&mut self, key: &str, payload: Value) {
+        self.hub.send(Request::Msg(
+            MsgMeta {
+                tx: self.spec.rx.clone(),
+                rx: self.spec.tx.clone(),
+                key: key.to_owned(),
+                kind: MsgKind::Event,
+                correlation_id: Uuid::new_v4(),
+                source: MsgSource::Component(self.spec.clone()),
+                payload_size: 0,
+                attachments: vec![]
+            }, 
+            payload
+        ));
+    }
+    pub fn rpc_tx(&mut self, key: &str, payload: Value) {
+        self.hub.send(Request::Msg(
+            MsgMeta {
+                tx: self.spec.rx.clone(),
+                rx: self.spec.tx.clone(),
+                key: key.to_owned(),
+                kind: MsgKind::RpcRequest,
+                correlation_id: Uuid::new_v4(),
+                source: MsgSource::Component(self.spec.clone()),
+                payload_size: 0,
+                attachments: vec![]
+            },
+            payload
+        ));
+    }
+    pub fn proxy_msg_tx(&mut self, msg_meta: MsgMeta, payload: Value) {
+        self.hub.send(Request::Msg(
+            MsgMeta {
+                tx: self.spec.rx.clone(),
+                rx: self.spec.tx.clone(),
+                key: msg_meta.key,
+                kind: msg_meta.kind,
+                correlation_id: msg_meta.correlation_id,
+                source: msg_meta.source,
+                payload_size: 0,
+                attachments: vec![]
+            },
+            payload
+        ));
+    }
 }
 
 impl Transferable for Request { }

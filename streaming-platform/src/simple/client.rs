@@ -47,10 +47,10 @@ impl Handler for WsClient {
                         match self.client_kind {
                             ClientKind::Hub => {
                                 match msg_meta.source {
-                                    MsgSource::Component(app_addr, component_addr, client_addr) => {
+                                    MsgSource::Component(spec) => {
                                         match &self.linked_tx {
                                             Some(linked_tx) => {
-                                                linked_tx.send(ServerMsg::SendMsg(client_addr, data));
+                                                linked_tx.send(ServerMsg::SendMsg(spec.client_addr, data));
                                             }
                                             None => debug!("Linked tx missing!")
                                         }

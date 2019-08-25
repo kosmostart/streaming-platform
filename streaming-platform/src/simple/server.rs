@@ -155,8 +155,8 @@ impl Handler for WsServer {
                                                         msg_meta.tx = "AppHub".to_owned();
 
                                                         match msg_meta.source {
-                                                            MsgSource::Component(_, _, ref mut client_addr) => {
-                                                                *client_addr = addr.clone();
+                                                            MsgSource::Component(ref mut spec) => {
+                                                                spec.client_addr = addr.clone();
                                                             }
                                                             _ => {}
                                                         }

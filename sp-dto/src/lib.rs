@@ -14,6 +14,26 @@ pub struct CmpSpec {
     pub client_addr: String
 }
 
+impl CmpSpec {
+    // this methods work for child components, note this: tx: self.rx.clone(),
+    pub fn new_rx(&self, rx: &str) -> CmpSpec {
+        CmpSpec {
+            tx: self.rx.clone(),
+            rx: rx.to_owned(),
+            app_addr: self.app_addr.clone(),
+            client_addr: self.client_addr.clone()
+        }
+    }
+    pub fn add_to_rx(&self, delta: &str) -> CmpSpec {
+        CmpSpec {
+            tx: self.rx.clone(),
+            rx: self.rx.clone() + "." + delta,
+            app_addr: self.app_addr.clone(),
+            client_addr: self.client_addr.clone()
+        }
+    }
+}
+
 impl Default for CmpSpec {
     fn default() -> Self {
         CmpSpec {

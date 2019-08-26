@@ -68,6 +68,7 @@ fn main() {
         });
     }
 
+    fix_running_self(&running);
 
     match config.hubs {
         Some(hubs) => {
@@ -167,6 +168,28 @@ fn main() {
 	
     let addr = "0.0.0.0:49999".parse::<SocketAddr>().unwrap();    
     warp::serve(routes).run(addr);
+}
+
+fn fix_running_self(running: &Vec<Process>) {
+    let name = std::env::current_exe()
+        .expect("failed to get current_exe result")
+        .file_name()
+        .expect("empty file name for current_exe")
+        .to_str()
+        .expect("failed to convert file name OsStr to str")
+        .to_owned();
+
+    println!("fixing running processes for {}", name);
+
+    let id = std::process::id() as usize;
+
+    for process in running {
+        if process.name == name && process.id != id {
+            stop_process(process.id, &process.name);
+        }
+    }
+
+    println!("done for {}", name);
 }
 
 fn fix_running(running: &Vec<Process>, name: &str) {

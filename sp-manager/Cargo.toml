@@ -8,6 +8,7 @@ edition = "2018"
 
 [dependencies]
 
+crossbeam = "*"
 serde = "*"
 serde_derive = "*"
 toml = "*"

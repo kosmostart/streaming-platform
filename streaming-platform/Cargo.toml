@@ -7,6 +7,7 @@ edition = "2018"
 [dependencies]
 
 log = "*"
+crossbeam = "*"
 serde = "*"
 serde_derive = "*"
 serde_json = "*"
@@ -14,5 +15,4 @@ url = "2.0"
 openssl = "*"
 cookie = "*"
 ws = { version = "*", features = ["ssl"] }
-crossbeam = "*"
 sp-dto = { path = "../sp-dto" }

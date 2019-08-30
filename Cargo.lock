@@ -1219,6 +1219,7 @@ dependencies = [
 name = "sp-manager"
 version = "0.1.0"
 dependencies = [
+ "crossbeam 0.7.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.98 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_derive 1.0.98 (registry+https://github.com/rust-lang/crates.io-index)",
  "sysinfo 0.9.1 (registry+https://github.com/rust-lang/crates.io-index)",

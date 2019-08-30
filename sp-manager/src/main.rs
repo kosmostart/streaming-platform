@@ -198,7 +198,7 @@ fn main() {
             warp::path("stop")
             .and(warp::path::param())
             .map(|name: String| {
-                let q = started.get(&name);
+                //let q = started.get(&name);
 
                 "".to_owned()
             })

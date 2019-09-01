@@ -66,6 +66,21 @@ impl Hub {
             payload
         ));
     }
+    pub fn send_event_with_source(&mut self, rx: &str, key: &str, payload: Value, source: MsgSource) {
+        self.hub.send(Request::Msg(
+            MsgMeta {
+                tx: self.spec.rx.clone(),
+                rx: rx.to_owned(),
+                key: key.to_owned(),
+                kind: MsgKind::Event,
+                correlation_id: Uuid::new_v4(),
+                source,
+                payload_size: 0,
+                attachments: vec![]
+            }, 
+            payload
+        ));
+    }
     pub fn rpc(&mut self, rx: &str, key: &str, payload: Value) {
         self.hub.send(Request::Msg(
             MsgMeta {
@@ -75,6 +90,21 @@ impl Hub {
                 kind: MsgKind::RpcRequest,
                 correlation_id: Uuid::new_v4(),
                 source: MsgSource::Component(self.spec.clone()),
+                payload_size: 0,
+                attachments: vec![]
+            },
+            payload
+        ));
+    }
+    pub fn rpc_with_source(&mut self, rx: &str, key: &str, payload: Value, source: MsgSource) {
+        self.hub.send(Request::Msg(
+            MsgMeta {
+                tx: self.spec.rx.clone(),
+                rx: rx.to_owned(),
+                key: key.to_owned(),
+                kind: MsgKind::RpcRequest,
+                correlation_id: Uuid::new_v4(),
+                source,
                 payload_size: 0,
                 attachments: vec![]
             },
@@ -111,6 +141,21 @@ impl Hub {
             payload
         ));
     }
+    pub fn send_event_tx_with_source(&mut self, key: &str, payload: Value, source: MsgSource) {
+        self.hub.send(Request::Msg(
+            MsgMeta {
+                tx: self.spec.rx.clone(),
+                rx: self.spec.tx.clone(),
+                key: key.to_owned(),
+                kind: MsgKind::Event,
+                correlation_id: Uuid::new_v4(),
+                source,
+                payload_size: 0,
+                attachments: vec![]
+            }, 
+            payload
+        ));
+    }
     pub fn rpc_tx(&mut self, key: &str, payload: Value) {
         self.hub.send(Request::Msg(
             MsgMeta {
@@ -120,6 +165,21 @@ impl Hub {
                 kind: MsgKind::RpcRequest,
                 correlation_id: Uuid::new_v4(),
                 source: MsgSource::Component(self.spec.clone()),
+                payload_size: 0,
+                attachments: vec![]
+            },
+            payload
+        ));
+    }
+    pub fn rpc_tx_with_source(&mut self, key: &str, payload: Value, source: MsgSource) {
+        self.hub.send(Request::Msg(
+            MsgMeta {
+                tx: self.spec.rx.clone(),
+                rx: self.spec.tx.clone(),
+                key: key.to_owned(),
+                kind: MsgKind::RpcRequest,
+                correlation_id: Uuid::new_v4(),
+                source,
                 payload_size: 0,
                 attachments: vec![]
             },

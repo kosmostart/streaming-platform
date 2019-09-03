@@ -1,5 +1,5 @@
 [package]
-name = "sp-ci"
+name = "sp-do"
 version = "0.1.0"
 authors = ["Maximb <sprayrules@gmail.com>"]
 edition = "2018"

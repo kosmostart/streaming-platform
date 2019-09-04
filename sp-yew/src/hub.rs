@@ -5,7 +5,7 @@ use yew::callback::Callback;
 use yew::prelude::worker::*;
 use yew::services::console::ConsoleService;
 use yew::agent::HandlerId;
-use sp_dto::{MsgSource, MsgKind, uuid::Uuid, MsgMeta, CmpSpec};
+use sp_dto::{Participator, MsgKind, uuid::Uuid, MsgMeta, Route, RouteSpec, CmpSpec};
 
 pub struct Worker {
     link: AgentLink<Worker>,
@@ -59,29 +59,17 @@ impl Hub {
                 key: key.to_owned(),
                 kind: MsgKind::Event,
                 correlation_id: Uuid::new_v4(),
-                source: MsgSource::Component(self.spec.clone()),
+                route: Route {
+                    source: Participator::Component(self.spec.clone()),
+                    spec: RouteSpec::Simple
+                },
                 payload_size: 0,
                 attachments: vec![]
             }, 
             payload
         ));
     }
-    pub fn send_event_with_source(&mut self, rx: &str, key: &str, payload: Value, source: MsgSource) {
-        self.hub.send(Request::Msg(
-            MsgMeta {
-                tx: self.spec.rx.clone(),
-                rx: rx.to_owned(),
-                key: key.to_owned(),
-                kind: MsgKind::Event,
-                correlation_id: Uuid::new_v4(),
-                source,
-                payload_size: 0,
-                attachments: vec![]
-            }, 
-            payload
-        ));
-    }
-    pub fn rpc(&mut self, rx: &str, key: &str, payload: Value) {
+    pub fn send_rpc(&mut self, rx: &str, key: &str, payload: Value) {
         self.hub.send(Request::Msg(
             MsgMeta {
                 tx: self.spec.rx.clone(),
@@ -89,28 +77,16 @@ impl Hub {
                 key: key.to_owned(),
                 kind: MsgKind::RpcRequest,
                 correlation_id: Uuid::new_v4(),
-                source: MsgSource::Component(self.spec.clone()),
+                route: Route {
+                    source: Participator::Component(self.spec.clone()),
+                    spec: RouteSpec::Simple
+                },
                 payload_size: 0,
                 attachments: vec![]
             },
             payload
         ));
-    }
-    pub fn rpc_with_source(&mut self, rx: &str, key: &str, payload: Value, source: MsgSource) {
-        self.hub.send(Request::Msg(
-            MsgMeta {
-                tx: self.spec.rx.clone(),
-                rx: rx.to_owned(),
-                key: key.to_owned(),
-                kind: MsgKind::RpcRequest,
-                correlation_id: Uuid::new_v4(),
-                source,
-                payload_size: 0,
-                attachments: vec![]
-            },
-            payload
-        ));
-    }
+    }    
     pub fn proxy_msg(&mut self, rx: &str, msg_meta: MsgMeta, payload: Value) {
         self.hub.send(Request::Msg(
             MsgMeta {
@@ -119,7 +95,7 @@ impl Hub {
                 key: msg_meta.key,
                 kind: msg_meta.kind,
                 correlation_id: msg_meta.correlation_id,
-                source: msg_meta.source,
+                route: msg_meta.route,
                 payload_size: 0,
                 attachments: vec![]
             },
@@ -134,29 +110,17 @@ impl Hub {
                 key: key.to_owned(),
                 kind: MsgKind::Event,
                 correlation_id: Uuid::new_v4(),
-                source: MsgSource::Component(self.spec.clone()),
+                route: Route {
+                    source: Participator::Component(self.spec.clone()),
+                    spec: RouteSpec::Simple
+                },
                 payload_size: 0,
                 attachments: vec![]
             }, 
             payload
         ));
-    }
-    pub fn send_event_tx_with_source(&mut self, key: &str, payload: Value, source: MsgSource) {
-        self.hub.send(Request::Msg(
-            MsgMeta {
-                tx: self.spec.rx.clone(),
-                rx: self.spec.tx.clone(),
-                key: key.to_owned(),
-                kind: MsgKind::Event,
-                correlation_id: Uuid::new_v4(),
-                source,
-                payload_size: 0,
-                attachments: vec![]
-            }, 
-            payload
-        ));
-    }
-    pub fn rpc_tx(&mut self, key: &str, payload: Value) {
+    }    
+    pub fn send_rpc_tx(&mut self, key: &str, payload: Value) {
         self.hub.send(Request::Msg(
             MsgMeta {
                 tx: self.spec.rx.clone(),
@@ -164,28 +128,16 @@ impl Hub {
                 key: key.to_owned(),
                 kind: MsgKind::RpcRequest,
                 correlation_id: Uuid::new_v4(),
-                source: MsgSource::Component(self.spec.clone()),
+                route: Route {
+                    source: Participator::Component(self.spec.clone()),
+                    spec: RouteSpec::Simple
+                },
                 payload_size: 0,
                 attachments: vec![]
             },
             payload
         ));
-    }
-    pub fn rpc_tx_with_source(&mut self, key: &str, payload: Value, source: MsgSource) {
-        self.hub.send(Request::Msg(
-            MsgMeta {
-                tx: self.spec.rx.clone(),
-                rx: self.spec.tx.clone(),
-                key: key.to_owned(),
-                kind: MsgKind::RpcRequest,
-                correlation_id: Uuid::new_v4(),
-                source,
-                payload_size: 0,
-                attachments: vec![]
-            },
-            payload
-        ));
-    }
+    }    
     pub fn proxy_msg_tx(&mut self, msg_meta: MsgMeta, payload: Value) {
         self.hub.send(Request::Msg(
             MsgMeta {
@@ -194,7 +146,58 @@ impl Hub {
                 key: msg_meta.key,
                 kind: msg_meta.kind,
                 correlation_id: msg_meta.correlation_id,
-                source: msg_meta.source,
+                route: msg_meta.route,
+                payload_size: 0,
+                attachments: vec![]
+            },
+            payload
+        ));
+    }
+    pub fn send_event_app(&mut self, key: &str, payload: Value) {
+        self.hub.send(Request::Msg(
+            MsgMeta {
+                tx: self.spec.rx.clone(),
+                rx: self.spec.app_addr.clone(),
+                key: key.to_owned(),
+                kind: MsgKind::Event,
+                correlation_id: Uuid::new_v4(),
+                route: Route {
+                    source: Participator::Component(self.spec.clone()),
+                    spec: RouteSpec::Simple
+                },
+                payload_size: 0,
+                attachments: vec![]
+            }, 
+            payload
+        ));
+    }    
+    pub fn send_rpc_app(&mut self, key: &str, payload: Value) {
+        self.hub.send(Request::Msg(
+            MsgMeta {
+                tx: self.spec.rx.clone(),
+                rx: self.spec.app_addr.clone(),
+                key: key.to_owned(),
+                kind: MsgKind::RpcRequest,
+                correlation_id: Uuid::new_v4(),
+                route: Route {
+                    source: Participator::Component(self.spec.clone()),
+                    spec: RouteSpec::Simple
+                },
+                payload_size: 0,
+                attachments: vec![]
+            },
+            payload
+        ));
+    }    
+    pub fn proxy_msg_app(&mut self, msg_meta: MsgMeta, payload: Value) {
+        self.hub.send(Request::Msg(
+            MsgMeta {
+                tx: self.spec.rx.clone(),
+                rx: self.spec.app_addr.clone(),
+                key: msg_meta.key,
+                kind: msg_meta.kind,
+                correlation_id: msg_meta.correlation_id,
+                route: msg_meta.route,
                 payload_size: 0,
                 attachments: vec![]
             },

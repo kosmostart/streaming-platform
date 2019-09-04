@@ -4,7 +4,7 @@ use sp_dto::bytes::Buf;
 use ws::{Request, Builder, Handler, Sender, Message, Handshake, CloseCode};
 use sp_dto::uuid::Uuid;
 use cookie::Cookie;
-use sp_dto::{MsgMeta, MsgKind, MsgSource};
+use sp_dto::{MsgMeta, MsgKind, Participator};
 use crate::AuthData;
 use crate::proto::{ClientKind, ServerMsg, ClientMsg, MagicBall, MagicBall2};
 use crate::error::Error;
@@ -46,8 +46,8 @@ impl Handler for WsClient {
 
                         match self.client_kind {
                             ClientKind::Hub => {
-                                match msg_meta.source {
-                                    MsgSource::Component(spec) => {
+                                match msg_meta.route.source {
+                                    Participator::Component(spec) => {
                                         match &self.linked_tx {
                                             Some(linked_tx) => {
                                                 linked_tx.send(ServerMsg::SendMsg(spec.client_addr, data));
@@ -55,7 +55,7 @@ impl Handler for WsClient {
                                             None => debug!("Linked tx missing!")
                                         }
                                     }
-                                    MsgSource::Service(addr) => {
+                                    Participator::Service(addr) => {
 
                                     }
                                 }

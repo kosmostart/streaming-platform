@@ -4,7 +4,7 @@ use cookie::Cookie;
 use ws::{Request, Builder, Handler, Sender, Message, Handshake, CloseCode};
 use sp_dto::bytes::{Buf, BufMut};
 use sp_dto::uuid::Uuid;
-use sp_dto::{MsgMeta, MsgKind, MsgSource};
+use sp_dto::{MsgMeta, MsgKind, Participator};
 use crate::AuthData;
 use crate::proto::{ClientKind, ServerMsg, ClientMsg, MagicBall, MagicBall2};
 use crate::error::Error;
@@ -154,8 +154,8 @@ impl Handler for WsServer {
                                                     Some(magic_ball) => {                                                        
                                                         msg_meta.tx = "AppHub".to_owned();
 
-                                                        match msg_meta.source {
-                                                            MsgSource::Component(ref mut spec) => {
+                                                        match msg_meta.route.source {
+                                                            Participator::Component(ref mut spec) => {
                                                                 spec.client_addr = addr.clone();
                                                             }
                                                             _ => {}

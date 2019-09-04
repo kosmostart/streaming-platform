@@ -188,7 +188,25 @@ impl Hub {
             },
             payload
         ));
-    }    
+    }
+    pub fn send_rpc_app_with_route_spec(&mut self, key: &str, payload: Value, spec: RouteSpec) {
+        self.hub.send(Request::Msg(
+            MsgMeta {
+                tx: self.spec.rx.clone(),
+                rx: self.spec.app_addr.clone(),
+                key: key.to_owned(),
+                kind: MsgKind::RpcRequest,
+                correlation_id: Uuid::new_v4(),
+                route: Route {
+                    source: Participator::Component(self.spec.clone()),
+                    spec
+                },
+                payload_size: 0,
+                attachments: vec![]
+            },
+            payload
+        ));
+    }
     pub fn proxy_msg_app(&mut self, msg_meta: MsgMeta, payload: Value) {
         self.hub.send(Request::Msg(
             MsgMeta {

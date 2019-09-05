@@ -62,13 +62,27 @@ impl<T, R> MagicBall<T, R> where T: Debug, T: serde::Serialize, for<'de> T: serd
 	pub fn get_addr(&self) -> String {
 		self.addr.clone()
 	}
-    pub fn send_event(&self, addr: &str, key: &str, payload: T, route: Route) -> Result<(), Error> {        
+    pub fn send_event(&self, addr: &str, key: &str, payload: T) -> Result<(), Error> {
+        let route = Route {
+            source: Participator::Service(self.addr.clone()),
+            spec: RouteSpec::Simple
+        };
+
         let dto = event_dto(self.addr.clone(), addr.to_owned(), key.to_owned(), payload, route)?;
 
         self.sender.send(Message::Binary(dto));
         
         Ok(())
-    }    
+    }
+    pub fn send_event_with_route(&self, addr: &str, key: &str, payload: T, route: Route) -> Result<(), Error> {
+        info!("send_event, route {:?}, target addr {}, key {}, payload {:?}, ", route, addr, key, payload);
+
+        let dto = event_dto(self.addr.clone(), addr.to_owned(), key.to_owned(), payload, route)?;
+
+        self.sender.send(Message::Binary(dto));
+        
+        Ok(())
+    }
     pub fn reply_to_rpc(&self, addr: String, key: String, correlation_id: Uuid, payload: R, route: Route) -> Result<(), Error> {        
         let dto = reply_to_rpc_dto(self.addr.clone(), addr, key, correlation_id, payload, route)?;
 
@@ -90,7 +104,34 @@ impl<T, R> MagicBall<T, R> where T: Debug, T: serde::Serialize, for<'de> T: serd
 
         Ok((msg_meta, payload))
     }
-    pub fn rpc(&self, addr: &str, key: &str, payload: T, route: Route) -> Result<(MsgMeta, R), Error> {
+    pub fn send_rpc(&self, addr: &str, key: &str, payload: T) -> Result<(MsgMeta, R), Error> {
+        let route = Route {
+            source: Participator::Service(self.addr.clone()),
+            spec: RouteSpec::Simple
+        };
+
+		info!("send_rpc, route {:?}, target addr {}, key {}, payload {:?}, ", route, addr, key, payload);
+		
+        let (correlation_id, dto) = rpc_dto_with_correlation_id(self.addr.clone(), addr.to_owned(), key.to_owned(), payload, route)?;
+        let (rpc_tx, rpc_rx) = crossbeam::channel::unbounded();
+        
+        self.rpc_tx.send(ClientMsg::AddRpc(correlation_id, rpc_tx));        
+        self.sender.send(Message::Binary(dto));
+
+        let res = match rpc_rx.recv_timeout(std::time::Duration::from_secs(30)) {
+            Ok((msg_meta, len, data)) => {
+                let payload = &data[len + 4..];
+                let payload = serde_json::from_slice::<R>(&data[len + 4..])?;
+                Ok((msg_meta, payload))
+            }
+            Err(err) => Err(err)?
+        };
+
+        self.rpc_tx.send(ClientMsg::RemoveRpc(correlation_id));
+
+        res
+    }
+    pub fn rpc_with_route(&self, addr: &str, key: &str, payload: T, route: Route) -> Result<(MsgMeta, R), Error> {
 		info!("rpc call, route {:?}, target addr {}, key {}, payload {:?}, ", route, addr, key, payload);
 		
         let (correlation_id, dto) = rpc_dto_with_correlation_id(self.addr.clone(), addr.to_owned(), key.to_owned(), payload, route)?;

@@ -88,20 +88,22 @@ pub struct MsgMeta {
 }
 
 impl MsgMeta {
-    pub fn key_part(&self, index: usize) -> Result<String, String> {
+    /// Zero based index for key part, . is used as a separator.
+    pub fn key_part(&self, index: usize) -> Result<&str, String> {
         let split: Vec<&str> = self.key.split(".").collect();
 
         if index >= split.len() {
-            return Err("index equals or more than key parts length".to_owned());
+            return Err("index equals or superior to key parts length".to_owned());
         }
 
-        return Ok(split[index].to_owned())
+        return Ok(split[index])
     }
+    /// Compares key part with passed value, index is zero based, . is used as a separator.
     pub fn match_key_part(&self, index: usize, value: &str) -> Result<bool, String> {
         let split: Vec<&str> = self.key.split(".").collect();
 
         if index >= split.len() {
-            return Err("index equals or more than key parts length".to_owned());
+            return Err("index equals or superior to key parts length".to_owned());
         }
 
         return Ok(split[index] == value)

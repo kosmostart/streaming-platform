@@ -259,7 +259,7 @@ impl Agent for Worker {
 
     // Handle incoming messages form components of other agents.
     fn handle(&mut self, msg: Self::Input, who: HandlerId) {
-        self.console.log(&format!("hub: {:?}", msg));        
+        //self.console.log(&format!("hub: {:?}", msg));        
         match msg {
             Request::Auth(addr) => {
                 self.clients.insert(addr, who);

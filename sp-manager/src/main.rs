@@ -84,108 +84,191 @@ fn main() {
         });
     }
 
-    fix_running_self(&running);    
+    fix_running_self(&running);
 
-    let mut started = std::collections::HashMap::new();    
+    let (started_tx, started_rx) = crossbeam::channel::unbounded();
 
-    match config.hubs {
-        Some(hubs) => {
-            let hub_path = config.hub_path.clone()
-                .expect("hub path is empty, but hubs are present");
+    let start_tx = started_tx.clone();
+    let stop_tx = started_tx.clone();
 
-            for hub in hubs {
+    let stated_processes = std::thread::Builder::new()
+        .name("started-processes".to_owned())
+        .spawn(move || {
+            let mut started = std::collections::HashMap::new();
 
-                match hub.file_name {
-                    Some(file_name) => {
-                        
-                        fix_running(&running, &file_name);
+            match config.hubs {
+                Some(hubs) => {
+                    let hub_path = config.hub_path.clone()
+                        .expect("hub path is empty, but hubs are present");
 
-                        println!("starting {}", file_name);
+                    for hub in hubs {
 
-                        let instance = match hub.config {
-                            Some(config) => {
-                                std::process::Command::new(hub_path.clone() + "/" + &file_name)
-                                    .arg(toml::to_string(&config)
-                                        .expect("serialization to TOML string failed, check hub config")
-                                    )
-                                    .spawn()
-                                    .expect(&format!("{} command failed to start", file_name))
+                        match hub.file_name {
+                            Some(file_name) => {
+                                
+                                fix_running(&running, &file_name);
+
+                                println!("starting {}", file_name);
+
+                                let instance = match hub.config {
+                                    Some(config) => {
+                                        std::process::Command::new(hub_path.clone() + "/" + &file_name)
+                                            .arg(toml::to_string(&config)
+                                                .expect("serialization to TOML string failed, check hub config")
+                                            )
+                                            .spawn()
+                                            .expect(&format!("{} command failed to start", file_name))
+                                    }
+                                    None => {
+                                        std::process::Command::new(hub_path.clone() + "/" + &file_name)
+                                            .spawn()
+                                            .expect(&format!("{} command failed to start", file_name))
+                                    }
+                                };
+
+                                started.insert(file_name.clone(), StartedProcess {
+                                    name: file_name.clone(),
+                                    r#type: ProcessType::Hub,
+                                    instance
+                                });
+
+                                println!("done starting {}", file_name);
                             }
                             None => {
-                                std::process::Command::new(hub_path.clone() + "/" + &file_name)
-                                    .spawn()
-                                    .expect(&format!("{} command failed to start", file_name))
+                                println!("hub with empty file name, please note");
                             }
-                        };
+                        }
 
-                        started.insert(file_name.clone(), StartedProcess {
-                            name: file_name.clone(),
-                            r#type: ProcessType::Hub,
-                            instance
-                        });
-
-                        println!("done starting {}", file_name);
-                    }
-                    None => {
-                        println!("hub with empty file name, please note");
                     }
                 }
-
-            }
-        }
-        None => {
-            println!("no hubs are configured to run");
-        }
-    }
-
-    match config.services {
-        Some(services) => {
-            let service_path = config.service_path.clone()
-                .expect("service path is empty, but services are present");
-
-            for service in services {
-                match service.file_name {
-                    Some(file_name) => {
-
-                        fix_running(&running, &file_name);
-
-                        println!("starting {}", file_name);
-
-                        let instance = match service.config {
-                            Some(config) => {
-                                std::process::Command::new(service_path.clone() + "/" + &file_name)
-                                    .arg(toml::to_string(&config)
-                                        .expect("serialization to TOML string failed, check service config")
-                                    )
-                                    .spawn()
-                                    .expect(&format!("{} command failed to start", file_name))
-                            }
-                            None => {
-                                std::process::Command::new(service_path.clone() + "/" + &file_name)                                    
-                                    .spawn()
-                                    .expect(&format!("{} command failed to start", file_name))
-                            }
-                        };
-
-                        started.insert(file_name.clone(), StartedProcess {
-                            name: file_name.clone(),
-                            r#type: ProcessType::Service,
-                            instance
-                        });
-
-                        println!("done starting {}", file_name);
-                    }
-                    None => {
-                        println!("service with empty file name, please note");
-                    }
+                None => {
+                    println!("no hubs are configured to run");
                 }
             }
 
-        }
-        None => {
-            println!("no services are configured to run");
-        }
-    }
+            match config.services {
+                Some(ref services) => {
+                    let service_path = config.service_path.clone()
+                        .expect("service path is empty, but services are present");
+
+                    for service in services {
+                        match &service.file_name {
+                            Some(file_name) => {
+
+                                fix_running(&running, &file_name);
+
+                                println!("starting {}", file_name);
+
+                                let instance = match &service.config {
+                                    Some(config) => {
+                                        std::process::Command::new(service_path.clone() + "/" + &file_name)
+                                            .arg(toml::to_string(&config)
+                                                .expect("serialization to TOML string failed, check service config")
+                                            )
+                                            .spawn()
+                                            .expect(&format!("{} command failed to start", file_name))
+                                    }
+                                    None => {
+                                        std::process::Command::new(service_path.clone() + "/" + &file_name)                                    
+                                            .spawn()
+                                            .expect(&format!("{} command failed to start", file_name))
+                                    }
+                                };
+
+                                started.insert(file_name.clone(), StartedProcess {
+                                    name: file_name.clone(),
+                                    r#type: ProcessType::Service,
+                                    instance
+                                });
+
+                                println!("done starting {}", file_name);
+                            }
+                            None => {
+                                println!("service with empty file name, please note");
+                            }
+                        }
+                    }
+
+                }
+                None => {
+                    println!("no services are configured to run");
+                }
+            }
+
+            loop {
+                let msg = started_rx.recv().unwrap();
+
+                match msg {
+                    Msg::StartProcess(name) => {
+                        println!("starting {}", name);
+
+                        match &config.services {
+                            Some(services) => {
+                                
+                                let service_path = config.service_path.clone()
+                                    .expect("service path is empty, but services are present");                                
+
+                                match services.iter().find(|x| x.file_name == Some(name.clone())) {
+                                    Some(service) => {
+
+                                        fix_running(&running, &name);
+
+                                        println!("starting {}", name);
+
+                                        let instance = match &service.config {
+                                            Some(config) => {
+                                                std::process::Command::new(service_path.clone() + "/" + &name)
+                                                    .arg(toml::to_string(&config)
+                                                        .expect("serialization to TOML string failed, check service config")
+                                                    )
+                                                    .spawn()
+                                                    .expect(&format!("{} command failed to start", name))
+                                            }
+                                            None => {
+                                                std::process::Command::new(service_path.clone() + "/" + &name)                                    
+                                                    .spawn()
+                                                    .expect(&format!("{} command failed to start", name))
+                                            }
+                                        };
+
+                                        started.insert(name.clone(), StartedProcess {
+                                            name: name.clone(),
+                                            r#type: ProcessType::Service,
+                                            instance
+                                        });
+
+                                        println!("done starting {}", name);
+                                    }
+                                    None => {
+                                        println!("service with empty file name, please note");
+                                    }
+                                }
+                            }
+                            None => {
+                                println!("service {} not found", name);
+                            }
+                        }
+
+                    }
+                    Msg::StopProcess(name) => {
+                        println!("stopping {}", name);
+
+                        match started.get_mut(&name) {
+                            Some(process) => {
+                                println!("found {} in started", name);
+                                let res = process.instance.kill();
+                                println!("stop result for {} {:?}", name, res);
+                            }
+                            None => {
+                                println!("{} not founded in started", name);
+                            }
+                        }
+                    }
+                }
+                
+            }
+        })
+        .unwrap();    
 
     println!("starting command server");
 
@@ -195,13 +278,22 @@ fn main() {
             format!("Hello, your agent is {}", agent)
         })
         .or(
-            warp::path("stop")
-            .and(warp::path::param())
-            .map(|name: String| {
-                //let q = started.get(&name);
+            warp::path("start")
+                .and(warp::path::param())
+                .map(move |name: String| {
+                    start_tx.clone().send(Msg::StartProcess(name));
 
-                "".to_owned()
-            })
+                    "operation requested successfully".to_owned()
+                })
+            .or(
+                warp::path("stop")
+                    .and(warp::path::param())
+                    .map(move |name: String| {
+                        stop_tx.send(Msg::StopProcess(name));
+
+                        "operation requested successfully".to_owned()
+                    })
+            )            
         )
         .or(
             warp::path("start")

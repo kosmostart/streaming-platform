@@ -5,6 +5,6 @@ members = [
 	"sp-dto",
 	"sp-manager",
 	"sp-yew",
-	"sp-do",
+	"sp-build",
 	"sp-delivery"
 ]

@@ -1,7 +1,9 @@
 [package]
-name = "sp-do"
+name = "sp-build"
 version = "0.1.0"
 authors = ["Maximb <sprayrules@gmail.com>"]
 edition = "2018"
 
 [dependencies]
+
+lz4 = "*"

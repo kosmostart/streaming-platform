@@ -64,7 +64,8 @@ pub enum RouteSpec {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Route {
     pub source: Participator,
-    pub spec: RouteSpec
+    pub spec: RouteSpec,
+    pub points: Vec<Participator>
 }
 
 #[derive(Debug, Serialize, Deserialize)]

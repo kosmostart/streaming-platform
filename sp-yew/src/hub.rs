@@ -61,7 +61,8 @@ impl Hub {
                 correlation_id: Uuid::new_v4(),
                 route: Route {
                     source: Participator::Component(self.spec.clone()),
-                    spec: RouteSpec::Simple
+                    spec: RouteSpec::Simple,
+                    points: vec![Participator::Component(self.spec.clone())]
                 },
                 payload_size: 0,
                 attachments: vec![]
@@ -79,7 +80,8 @@ impl Hub {
                 correlation_id: Uuid::new_v4(),
                 route: Route {
                     source: Participator::Component(self.spec.clone()),
-                    spec: RouteSpec::Simple
+                    spec: RouteSpec::Simple,
+                    points: vec![Participator::Component(self.spec.clone())]
                 },
                 payload_size: 0,
                 attachments: vec![]
@@ -87,7 +89,9 @@ impl Hub {
             payload
         ));
     }    
-    pub fn proxy_msg(&mut self, rx: &str, msg_meta: MsgMeta, payload: Value) {
+    pub fn proxy_msg(&mut self, rx: &str, mut msg_meta: MsgMeta, payload: Value) {
+        msg_meta.route.points.push(Participator::Component(self.spec.clone()));
+
         self.hub.send(Request::Msg(
             MsgMeta {
                 tx: self.spec.rx.clone(),
@@ -112,7 +116,8 @@ impl Hub {
                 correlation_id: Uuid::new_v4(),
                 route: Route {
                     source: Participator::Component(self.spec.clone()),
-                    spec: RouteSpec::Simple
+                    spec: RouteSpec::Simple,
+                    points: vec![Participator::Component(self.spec.clone())]
                 },
                 payload_size: 0,
                 attachments: vec![]
@@ -130,7 +135,8 @@ impl Hub {
                 correlation_id: Uuid::new_v4(),
                 route: Route {
                     source: Participator::Component(self.spec.clone()),
-                    spec: RouteSpec::Simple
+                    spec: RouteSpec::Simple,
+                    points: vec![Participator::Component(self.spec.clone())]
                 },
                 payload_size: 0,
                 attachments: vec![]
@@ -138,7 +144,9 @@ impl Hub {
             payload
         ));
     }    
-    pub fn proxy_msg_tx(&mut self, msg_meta: MsgMeta, payload: Value) {
+    pub fn proxy_msg_tx(&mut self, mut msg_meta: MsgMeta, payload: Value) {
+        msg_meta.route.points.push(Participator::Component(self.spec.clone()));
+
         self.hub.send(Request::Msg(
             MsgMeta {
                 tx: self.spec.rx.clone(),
@@ -163,7 +171,8 @@ impl Hub {
                 correlation_id: Uuid::new_v4(),
                 route: Route {
                     source: Participator::Component(self.spec.clone()),
-                    spec: RouteSpec::Simple
+                    spec: RouteSpec::Simple,
+                    points: vec![Participator::Component(self.spec.clone())]
                 },
                 payload_size: 0,
                 attachments: vec![]
@@ -181,7 +190,8 @@ impl Hub {
                 correlation_id: Uuid::new_v4(),
                 route: Route {
                     source: Participator::Component(self.spec.clone()),
-                    spec: RouteSpec::Simple
+                    spec: RouteSpec::Simple,
+                    points: vec![Participator::Component(self.spec.clone())]
                 },
                 payload_size: 0,
                 attachments: vec![]
@@ -199,7 +209,8 @@ impl Hub {
                 correlation_id: Uuid::new_v4(),
                 route: Route {
                     source: Participator::Component(self.spec.clone()),
-                    spec
+                    spec,
+                    points: vec![Participator::Component(self.spec.clone())]
                 },
                 payload_size: 0,
                 attachments: vec![]
@@ -207,7 +218,9 @@ impl Hub {
             payload
         ));
     }
-    pub fn proxy_msg_app(&mut self, msg_meta: MsgMeta, payload: Value) {
+    pub fn proxy_msg_app(&mut self, mut msg_meta: MsgMeta, payload: Value) {
+        msg_meta.route.points.push(Participator::Component(self.spec.clone()));
+
         self.hub.send(Request::Msg(
             MsgMeta {
                 tx: self.spec.rx.clone(),

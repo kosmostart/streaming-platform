@@ -65,7 +65,8 @@ impl<T, R> MagicBall<T, R> where T: Debug, T: serde::Serialize, for<'de> T: serd
     pub fn send_event(&self, addr: &str, key: &str, payload: T) -> Result<(), Error> {
         let route = Route {
             source: Participator::Service(self.addr.clone()),
-            spec: RouteSpec::Simple
+            spec: RouteSpec::Simple,
+            points: vec![Participator::Service(self.addr.to_owned())]
         };
 
         let dto = event_dto(self.addr.clone(), addr.to_owned(), key.to_owned(), payload, route)?;
@@ -74,8 +75,10 @@ impl<T, R> MagicBall<T, R> where T: Debug, T: serde::Serialize, for<'de> T: serd
         
         Ok(())
     }
-    pub fn send_event_with_route(&self, addr: &str, key: &str, payload: T, route: Route) -> Result<(), Error> {
+    pub fn send_event_with_route(&self, addr: &str, key: &str, payload: T, mut route: Route) -> Result<(), Error> {
         info!("send_event, route {:?}, target addr {}, key {}, payload {:?}, ", route, addr, key, payload);
+
+        route.points.push(Participator::Service(self.addr.to_owned()));
 
         let dto = event_dto(self.addr.clone(), addr.to_owned(), key.to_owned(), payload, route)?;
 
@@ -83,7 +86,9 @@ impl<T, R> MagicBall<T, R> where T: Debug, T: serde::Serialize, for<'de> T: serd
         
         Ok(())
     }
-    pub fn reply_to_rpc(&self, addr: String, key: String, correlation_id: Uuid, payload: R, route: Route) -> Result<(), Error> {        
+    pub fn reply_to_rpc(&self, addr: String, key: String, correlation_id: Uuid, payload: R, mut route: Route) -> Result<(), Error> {
+        route.points.push(Participator::Service(self.addr.to_owned()));
+
         let dto = reply_to_rpc_dto(self.addr.clone(), addr, key, correlation_id, payload, route)?;
 
         self.sender.send(Message::Binary(dto));
@@ -107,7 +112,8 @@ impl<T, R> MagicBall<T, R> where T: Debug, T: serde::Serialize, for<'de> T: serd
     pub fn send_rpc(&self, addr: &str, key: &str, payload: T) -> Result<(MsgMeta, R), Error> {
         let route = Route {
             source: Participator::Service(self.addr.clone()),
-            spec: RouteSpec::Simple
+            spec: RouteSpec::Simple,
+            points: vec![Participator::Service(self.addr.to_owned())]
         };
 
 		info!("send_rpc, route {:?}, target addr {}, key {}, payload {:?}, ", route, addr, key, payload);
@@ -131,8 +137,10 @@ impl<T, R> MagicBall<T, R> where T: Debug, T: serde::Serialize, for<'de> T: serd
 
         res
     }
-    pub fn rpc_with_route(&self, addr: &str, key: &str, payload: T, route: Route) -> Result<(MsgMeta, R), Error> {
+    pub fn rpc_with_route(&self, addr: &str, key: &str, payload: T, mut route: Route) -> Result<(MsgMeta, R), Error> {
 		info!("rpc call, route {:?}, target addr {}, key {}, payload {:?}, ", route, addr, key, payload);
+
+        route.points.push(Participator::Service(self.addr.to_owned()));
 		
         let (correlation_id, dto) = rpc_dto_with_correlation_id(self.addr.clone(), addr.to_owned(), key.to_owned(), payload, route)?;
         let (rpc_tx, rpc_rx) = crossbeam::channel::unbounded();
@@ -167,8 +175,23 @@ impl MagicBall2 {
     }
 	pub fn get_addr(&self) -> String {
 		self.addr.clone()
-	}
-    pub fn send_event(&self, addr: &str, key: &str, mut payload: Vec<u8>, route: Route) -> Result<(), Error> {                
+	}    
+    pub fn send_event(&self, addr: &str, key: &str, mut payload: Vec<u8>) -> Result<(), Error> {
+        let route = Route {
+            source: Participator::Service(self.addr.clone()),
+            spec: RouteSpec::Simple,
+            points: vec![Participator::Service(self.addr.to_owned())]
+        };
+
+        let dto = event_dto2(self.addr.clone(), addr.to_owned(), key.to_owned(), payload, route)?;
+
+        self.sender.send(Message::Binary(dto));
+        
+        Ok(())
+    }
+    pub fn send_event_with_route(&self, addr: &str, key: &str, mut payload: Vec<u8>, mut route: Route) -> Result<(), Error> {
+        route.points.push(Participator::Service(self.addr.to_owned()));
+
         let dto = event_dto2(self.addr.clone(), addr.to_owned(), key.to_owned(), payload, route)?;
 
         self.sender.send(Message::Binary(dto));
@@ -180,7 +203,9 @@ impl MagicBall2 {
         
         Ok(())
     }
-    pub fn reply_to_rpc(&self, addr: &str, key: &str, correlation_id: Uuid, mut payload: Vec<u8>, route: Route) -> Result<(), Error> {        
+    pub fn reply_to_rpc(&self, addr: &str, key: &str, correlation_id: Uuid, mut payload: Vec<u8>, mut route: Route) -> Result<(), Error> {
+        route.points.push(Participator::Service(self.addr.to_owned()));
+
         let dto = reply_to_rpc_dto2(self.addr.clone(), addr.to_owned(), key.to_owned(), correlation_id, payload, route)?;        
 
         self.sender.send(Message::Binary(dto));
@@ -199,7 +224,36 @@ impl MagicBall2 {
 
         Ok((msg_meta, payload.to_vec()))
     }
-    pub fn rpc(&self, addr: &str, key: &str, mut payload: Vec<u8>, route: Route) -> Result<(MsgMeta, Vec<u8>), Error> {
+    pub fn rpc(&self, addr: &str, key: &str, mut payload: Vec<u8>) -> Result<(MsgMeta, Vec<u8>), Error> {
+        let route = Route {
+            source: Participator::Service(self.addr.clone()),
+            spec: RouteSpec::Simple,
+            points: vec![Participator::Service(self.addr.to_owned())]
+        };
+
+        let (correlation_id, dto) = rpc_dto_with_correlation_id_2(self.addr.clone(), addr.to_owned(), key.to_owned(), payload, route)?;
+
+        let (rpc_tx, rpc_rx) = crossbeam::channel::unbounded();
+        
+        self.rpc_tx.send(ClientMsg::AddRpc(correlation_id, rpc_tx));
+        
+        self.sender.send(Message::Binary(dto));
+
+        let res = match rpc_rx.recv_timeout(std::time::Duration::from_secs(30)) {
+            Ok((msg_meta, len, data)) => {
+                let payload = &data[len + 4..];        
+                Ok((msg_meta, payload.to_vec()))
+            }
+            Err(err) => Err(err)?
+        };
+
+        self.rpc_tx.send(ClientMsg::RemoveRpc(correlation_id));
+
+        res
+    }
+    pub fn rpc_with_route(&self, addr: &str, key: &str, mut payload: Vec<u8>, mut route: Route) -> Result<(MsgMeta, Vec<u8>), Error> {
+        route.points.push(Participator::Service(self.addr.to_owned()));
+
         let (correlation_id, dto) = rpc_dto_with_correlation_id_2(self.addr.clone(), addr.to_owned(), key.to_owned(), payload, route)?;
 
         let (rpc_tx, rpc_rx) = crossbeam::channel::unbounded();
@@ -236,7 +290,8 @@ impl MagicBall2 {
 
         let mut msg_meta = res?;
 
-        msg_meta.tx = tx;
+        msg_meta.tx = tx;        
+        msg_meta.route.points.push(Participator::Service(self.addr.to_owned()));
 
         let mut msg_meta = serde_json::to_vec(&msg_meta)?;
                                                       
@@ -272,6 +327,7 @@ impl MagicBall2 {
         let correlation_id = msg_meta.correlation_id;
 
         msg_meta.tx = tx;
+        msg_meta.route.points.push(Participator::Service(self.addr.to_owned()));
 
         let mut msg_meta = serde_json::to_vec(&msg_meta)?;
                                                       

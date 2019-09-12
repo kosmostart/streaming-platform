@@ -1283,19 +1283,19 @@ version = "0.6.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
+name = "sp-build"
+version = "0.1.0"
+dependencies = [
+ "lz4 1.23.1 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "sp-delivery"
 version = "0.1.0"
 dependencies = [
  "env_logger 0.6.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
  "warp 0.1.19 (git+https://github.com/seanmonstar/warp)",
-]
-
-[[package]]
-name = "sp-do"
-version = "0.1.0"
-dependencies = [
- "lz4 1.23.1 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]

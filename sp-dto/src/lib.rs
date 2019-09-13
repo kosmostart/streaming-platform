@@ -61,14 +61,14 @@ pub enum RouteSpec {
     Client(Participator)
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Route {
     pub source: Participator,
     pub spec: RouteSpec,
     pub points: Vec<Participator>
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MsgMeta {
     /// Addr of message sender
     pub tx: String,
@@ -145,14 +145,14 @@ impl MsgMeta {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum MsgKind {
     Event,
     RpcRequest,
     RpcResponse
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Attachment {
 	pub name: String,
     pub size: u32

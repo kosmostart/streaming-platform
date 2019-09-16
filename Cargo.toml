@@ -2,6 +2,7 @@
 
 members = [
 	"streaming-platform",
+	"sp-tokio",
 	"sp-dto",
 	"sp-manager",
 	"sp-yew",

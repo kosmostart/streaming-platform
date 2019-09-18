@@ -1,3 +1,4 @@
+use std::{thread, time};
 use std::fs::File;
 use std::io::BufReader;
 use std::io::prelude::*;
@@ -87,6 +88,12 @@ fn main() {
     }
 
     fix_running_self(&running);
+
+    println!("waiting for socket clean up");
+
+    thread::sleep(time::Duration::from_millis(10000));
+
+    println!("done");
 
     let (started_tx, started_rx) = crossbeam::channel::unbounded();
 

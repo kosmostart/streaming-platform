@@ -1399,6 +1399,7 @@ name = "sp-tokio"
 version = "0.1.0"
 dependencies = [
  "tokio 0.2.0-alpha.4 (git+https://github.com/tokio-rs/tokio)",
+ "tokio-io 0.2.0-alpha.4 (git+https://github.com/tokio-rs/tokio)",
 ]
 
 [[package]]

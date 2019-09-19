@@ -1,9 +1,10 @@
 use std::error::Error;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::prelude::*;
-
-//#[tokio::main]
-async fn start() -> Result<(), Box<dyn std::error::Error>> {
+use tokio_io::split::split;
+/*
+#[tokio::main]
+async fn start() -> Result<(), Box<dyn Error>> {
     let mut listener = TcpListener::bind("127.0.0.1:12346").await?;
 
     println!("ok!");
@@ -39,18 +40,22 @@ async fn start() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 }
-
+*/
+#[tokio::main]
 async fn connect() -> Result<(), Box<dyn Error>> {
     // Connect to a peer 
-    let mut socket = TcpStream::connect("127.0.0.1:12346").await.unwrap();
-    let (mut socket_read, mut socket_write) = socket.split();    
-
+      
+    
     tokio::spawn(async move {
         let mut buf = [0; 1024];
         // In a loop, read data from the socket and write the data back.
         println!("client loop");        
-        socket_write.write_all(b"hello world!").await.unwrap();
-
+        //socket_write.write_all(b"hello world!").await.unwrap();
+        // 
+        
+        //let mut socket = TcpStream::connect("127.0.0.1:12346").await.unwrap();
+        //let (mut socket_read, mut socket_write) = split(socket); //socket.split();
+ /*
         loop {
             println!("client read");
             // Write some data.            
@@ -65,13 +70,19 @@ async fn connect() -> Result<(), Box<dyn Error>> {
             };
             println!("client n is {}", n);
         }
-    });    
+        */
+    });
+
+    //if let Err(e) = socket_write.write_all(b"hello").await {
+    //    println!("failed to write to socket; err = {:?}", e);
+    //}
 
     Ok(())
 }
 
 #[test]
 fn test_all() {
+    /*
     let server = std::thread::Builder::new()
         .name("server".to_owned())
         .spawn(move || {
@@ -84,6 +95,7 @@ fn test_all() {
     use std::{thread, time};
 
     thread::sleep(time::Duration::from_millis(5000));
+    */
 
     let res = connect();
             

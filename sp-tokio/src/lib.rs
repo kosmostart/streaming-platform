@@ -1,3 +1,6 @@
+pub mod server;
+pub mod client;
+
 use std::error::Error;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::prelude::*;

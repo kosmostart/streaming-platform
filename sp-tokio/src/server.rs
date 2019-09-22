@@ -3,8 +3,8 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::prelude::*;
 use tokio_io::split::split;
 
-#[tokio::main]
-async fn start() -> Result<(), Box<dyn Error>> {
+//#[tokio::main]
+pub async fn start() -> Result<(), Box<dyn Error>> {
     let mut listener = TcpListener::bind("127.0.0.1:12346").await?;
 
     println!("ok!");

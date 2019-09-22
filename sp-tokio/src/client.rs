@@ -4,7 +4,7 @@ use tokio::prelude::*;
 use tokio_io::split::split;
 
 #[tokio::main]
-async fn connect() -> Result<(), Box<dyn Error>> {
+pub async fn connect() -> Result<(), Box<dyn Error>> {
     // Connect to a peer 
     let mut socket = TcpStream::connect("127.0.0.1:12346").await.unwrap();
     let (mut socket_read, mut socket_write) = split(socket); //socket.split();

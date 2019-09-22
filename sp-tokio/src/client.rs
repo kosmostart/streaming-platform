@@ -12,15 +12,14 @@ pub fn q() {
 
 async fn connect() -> Result<(), Box<dyn Error>> {    
     let mut stream = TcpStream::connect("127.0.0.1:12346").await?;
+    let (mut socket_read, mut socket_write) = split(stream);
 
-    let (mut socket_read, mut socket_write) = split(stream); //socket.split();      
-
-    let mut b2 = [0; 10];
+    let mut buf = [0; 1024];
 
     socket_write.write_all(b"hello world!").await?;
 
     loop {
-        let n = socket_read.read(&mut b2).await?;
+        let n = socket_read.read(&mut buf).await?;
         println!("client n is {:?}", n);
     }
 

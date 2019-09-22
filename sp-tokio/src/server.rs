@@ -1,9 +1,14 @@
 use std::error::Error;
+use tokio::runtime::Runtime;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::prelude::*;
 use tokio_io::split::split;
 
-//#[tokio::main]
+pub fn q() {
+    let rt = Runtime::new().unwrap();
+    
+     rt.block_on(start());
+}
 pub async fn start() -> Result<(), Box<dyn Error>> {
     let mut listener = TcpListener::bind("127.0.0.1:12346").await?;
 
@@ -38,5 +43,5 @@ pub async fn start() -> Result<(), Box<dyn Error>> {
                 println!("server write ok");
             }
         });
-    }
+    }    
 }

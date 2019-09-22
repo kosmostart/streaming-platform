@@ -1,39 +1,28 @@
-use std::error::Error;
-use tokio::net::{TcpListener, TcpStream};
+use tokio::runtime::Runtime;
+use tokio::net::TcpStream;
 use tokio::prelude::*;
+use std::error::Error;
 use tokio_io::split::split;
 
-#[tokio::main]
-pub async fn connect() -> Result<(), Box<dyn Error>> {
-    // Connect to a peer 
-    let mut socket = TcpStream::connect("127.0.0.1:12346").await.unwrap();
-    let (mut socket_read, mut socket_write) = split(socket); //socket.split();
+pub fn q() {
+    let rt = Runtime::new().unwrap();
     
-    tokio::spawn(async move {
-        let mut buf = [0; 1024];
-        // In a loop, read data from the socket and write the data back.
-        println!("client loop");        
-        socket_write.write_all(b"hello world!").await.unwrap();        
- 
-        loop {
-            println!("client read");
-            // Write some data.            
-            let n = match socket_read.read(&mut buf).await {
-                // socket closed
-                Ok(n) if n == 0 => return,
-                Ok(n) => n,
-                Err(e) => {
-                    println!("failed to read from socket; err = {:?}", e);
-                    return;
-                }
-            };
-            println!("client n is {}", n);
-        }        
-    });
+     rt.block_on(connect());
+}
 
-    //if let Err(e) = socket_write.write_all(b"hello").await {
-    //    println!("failed to write to socket; err = {:?}", e);
-    //}
+async fn connect() -> Result<(), Box<dyn Error>> {    
+    let mut stream = TcpStream::connect("127.0.0.1:12346").await?;
+
+    let (mut socket_read, mut socket_write) = split(stream); //socket.split();      
+
+    let mut b2 = [0; 10];
+
+    socket_write.write_all(b"hello world!").await?;
+
+    loop {
+        let n = socket_read.read(&mut b2).await?;
+        println!("client n is {:?}", n);
+    }
 
     Ok(())
 }

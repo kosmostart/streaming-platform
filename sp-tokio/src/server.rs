@@ -4,6 +4,14 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::prelude::*;
 use tokio_io::split::split;
 
+pub enum State {
+    Len,
+    Data {
+        len: usize,
+        bytes_read: usize
+    }
+}
+
 pub fn q() {
     let rt = Runtime::new().unwrap();
     
@@ -19,37 +27,83 @@ pub async fn start() -> Result<(), Box<dyn Error>> {
         let (mut socket_read, mut socket_write) = split(stream);
 
         tokio::spawn(async move {
+            let mut len_buf = [0; 4];
             let mut buf = [0; 1024];
+            let mut state = State::Len;
 
-            // In a loop, read data from the socket and write the data back.
             loop {
-                let n = match socket_read.read(&mut buf).await {
-                    // socket closed
-                    Ok(n) if n == 0 => {
-                        println!("server return");
-                        return
-                    }
-                    Ok(n) => {
-                        println!("server n");
+                match state {
+                    State::Len => {
+                        let n = match socket_read.read(&mut len_buf).await {
+                            Ok(n) => n,                    
+                            Err(e) => {
+                                println!("failed to read from socket; err = {:?}", e);
+                                return;
+                            }
+                        };
 
-                        n
-                    }
-                    Err(e) => {
-                        println!("failed to read from socket; err = {:?}", e);
-                        return;
-                    }
-                };
+                        println!("server n is {}", n);
 
-                println!("server n is {}", n);
+                        match n {
+                            0 => {
+                                // socket closed ?
+                                println!("returning, perhaps socket was closed");
+                                return;
+                            }
+                            4 => state = State::Data { len: n, bytes_read: 0 },
+                            _ => {
+                                println!("4 bytes needed on start, please reconnect with proper connection");
+                                return;
+                            }
+                        }
 
-                // Write the data back
-                if let Err(e) = socket_write.write_all(&buf[0..n]).await {
-                    println!("failed to write to socket; err = {:?}", e);
-                    return;
+                        /*
+                        // Write the data back                    
+                        if let Err(e) = socket_write.write_all(&buf[0..n]).await {
+                            println!("failed to write to socket; err = {:?}", e);
+                            return;
+                        }
+
+                        println!("server write ok");
+                        }
+                        */                    
+                    }
+                    State::Data { len, bytes_read } => {
+                        let n = match socket_read.read(&mut buf).await {
+                            Ok(n) => n,                    
+                            Err(e) => {
+                                println!("failed to read from socket; err = {:?}", e);
+                                return;
+                            }
+                        };
+
+                        println!("server n is {}", n);
+
+                        match n {
+                            0 => {
+                                // socket closed ?
+                                println!("returning, perhaps socket was closed");
+                                return;
+                            }                            
+                            _ => {
+                                let bytes_amount = bytes_read + n;
+
+                                if bytes_amount == len {
+                                    let state = State::Len;
+                                } else 
+
+                                if bytes_amount > len {
+                                    let state = State::Len;
+                                } else 
+
+                                if bytes_amount < len {
+                                    let state = State::Data { len, bytes_read: bytes_amount };
+                                }                                                         
+                            }
+                        }
+                    }
                 }
-
-                println!("server write ok");
             }
         });
-    }    
+    }
 }

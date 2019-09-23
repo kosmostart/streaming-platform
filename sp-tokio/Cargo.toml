@@ -8,5 +8,8 @@ edition = "2018"
 
 [dependencies]
 
+log = "*"
+crossbeam = "*"
 tokio = { git = "https://github.com/tokio-rs/tokio" }
 tokio-io = { git = "https://github.com/tokio-rs/tokio" }
+sp-dto = { path = "../sp-dto" }

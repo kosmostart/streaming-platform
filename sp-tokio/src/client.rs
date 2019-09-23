@@ -21,7 +21,5 @@ async fn connect() -> Result<(), Box<dyn Error>> {
     loop {
         let n = socket_read.read(&mut buf).await?;
         println!("client n is {:?}", n);
-    }
-
-    Ok(())
+    }    
 }

@@ -28,13 +28,14 @@ pub async fn start() -> Result<(), Box<dyn Error>> {
 
         tokio::spawn(async move {
             let mut len_buf = [0; 4];
-            let mut buf = [0; 1024];
+            let mut data_buf = [0; 1024];
             let mut state = State::Len;
+            let mut acc = vec![];
 
             loop {
                 match state {
                     State::Len => {
-                        let n = match socket_read.read(&mut len_buf).await {
+                        let n = match socket_read.read_exact(&mut len_buf).await {
                             Ok(n) => n,                    
                             Err(e) => {
                                 println!("failed to read from socket; err = {:?}", e);
@@ -69,7 +70,7 @@ pub async fn start() -> Result<(), Box<dyn Error>> {
                         */                    
                     }
                     State::Data { len, bytes_read } => {
-                        let n = match socket_read.read(&mut buf).await {
+                        let n = match socket_read.read(&mut data_buf).await {
                             Ok(n) => n,                    
                             Err(e) => {
                                 println!("failed to read from socket; err = {:?}", e);
@@ -90,14 +91,17 @@ pub async fn start() -> Result<(), Box<dyn Error>> {
 
                                 if bytes_amount == len {
                                     let state = State::Len;
+                                    acc.extend_from_slice(&data_buf);
                                 } else 
 
                                 if bytes_amount > len {
                                     let state = State::Len;
+                                    let offset = bytes_amount - len;                                    
                                 } else 
 
                                 if bytes_amount < len {
                                     let state = State::Data { len, bytes_read: bytes_amount };
+                                    acc.extend_from_slice(&data_buf);
                                 }                                                         
                             }
                         }

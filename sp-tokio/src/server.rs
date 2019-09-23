@@ -12,12 +12,13 @@ pub enum State {
     }
 }
 
-pub fn q() {
+pub fn start() {
     let rt = Runtime::new().unwrap();
     
-     rt.block_on(start());
+    rt.block_on(start_future());
 }
-pub async fn start() -> Result<(), Box<dyn Error>> {
+
+async fn start_future() -> Result<(), Box<dyn Error>> {
     let mut listener = TcpListener::bind("127.0.0.1:12346").await?;
 
     println!("ok!");

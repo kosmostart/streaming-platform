@@ -10,6 +10,7 @@ edition = "2018"
 
 log = "*"
 crossbeam = "*"
+bytes = "*"
 tokio = { git = "https://github.com/tokio-rs/tokio" }
 tokio-io = { git = "https://github.com/tokio-rs/tokio" }
 serde = "*"

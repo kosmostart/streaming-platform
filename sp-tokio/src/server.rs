@@ -1,4 +1,5 @@
 use std::error::Error;
+use bytes::Buf;
 use tokio::runtime::Runtime;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::prelude::*;
@@ -36,6 +37,7 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
 
             loop {
                 match state {
+
                     State::Len => {
                         let n = match socket_read.read_exact(&mut len_buf).await {
                             Ok(n) => n,                    
@@ -53,7 +55,12 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
                                 println!("returning, perhaps socket was closed");
                                 return;
                             }
-                            4 => state = State::Data { len: n, bytes_read: 0 },
+                            4 => {
+                                let mut cursor = std::io::Cursor::new(len_buf);
+                                let len = cursor.get_u32_be();
+
+                                state = State::Data { len: len as usize, bytes_read: 0 };
+                            }
                             _ => {
                                 println!("4 bytes needed on start, please reconnect with proper connection");
                                 return;

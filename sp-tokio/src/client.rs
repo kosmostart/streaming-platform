@@ -12,7 +12,7 @@ pub fn connect() {
     rt.block_on(connect_future());
 }
 
-fn connect_future() -> Result<(), Box<dyn Error>> {    
+async fn connect_future() -> Result<(), Box<dyn Error>> {
     let mut stream = TcpStream::connect("127.0.0.1:12346").await?;
     let (mut socket_read, mut socket_write) = split(stream);
 

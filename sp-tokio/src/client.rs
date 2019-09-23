@@ -1,7 +1,8 @@
+use std::error::Error;
+use bytes::BufMut;
 use tokio::runtime::Runtime;
 use tokio::net::TcpStream;
 use tokio::prelude::*;
-use std::error::Error;
 use tokio_io::split::split;
 use serde_json::json;
 use sp_dto::*;
@@ -16,7 +17,7 @@ async fn connect_future() -> Result<(), Box<dyn Error>> {
     let mut stream = TcpStream::connect("127.0.0.1:12346").await?;
     let (mut socket_read, mut socket_write) = split(stream);
 
-    let mut buf = [0; 1024];
+    let mut data_buf = [0; 1024];
 
     let route = Route {
         source: Participator::Service("qwe".to_owned()),
@@ -27,10 +28,19 @@ async fn connect_future() -> Result<(), Box<dyn Error>> {
     let rpc_dto = rpc_dto("asd".to_owned(), "qwe".to_owned(), "key".to_owned(), json!({        
     }), route).unwrap();
 
+    let mut buf = vec![];
+
+    let len = rpc_dto.len();
+
+    println!("len {}", len);
+
+    buf.put_u32_be(len as u32);
+
+    socket_write.write_all(&buf).await?;
     socket_write.write_all(&rpc_dto).await?;
 
     loop {
-        let n = socket_read.read(&mut buf).await?;
+        let n = socket_read.read(&mut data_buf).await?;
         println!("client n is {:?}", n);
     }    
 }

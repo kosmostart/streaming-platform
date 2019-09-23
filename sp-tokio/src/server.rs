@@ -4,6 +4,7 @@ use tokio::runtime::Runtime;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::prelude::*;
 use tokio_io::split::split;
+use sp_dto::*;
 
 pub enum State {
     Len,
@@ -56,6 +57,8 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
                                 return;
                             }
                             4 => {
+                                //acc.extend_from_slice(&len_buf);
+
                                 let mut cursor = std::io::Cursor::new(len_buf);
                                 let len = cursor.get_u32_be();
 
@@ -101,7 +104,15 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
                                 if bytes_amount == len {
                                     let state = State::Len;
 
-                                    acc.extend_from_slice(&data_buf);
+                                    acc.extend_from_slice(&data_buf[..n]);
+
+                                    println!("bytes_amount == len");
+
+                                    println!("len {}", acc.len());
+
+                                    let q = get_msg_meta(&acc).unwrap();
+
+                                    println!("{:?}", q);
                                 } else 
 
                                 if bytes_amount > len {
@@ -110,12 +121,20 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
 
                                     acc.extend_from_slice(&data_buf[..offset]);
                                     next.extend_from_slice(&data_buf[offset..]);
+
+                                    println!("bytes_amount > len");
+
+                                    let q = get_msg_meta(&acc).unwrap();
+
+                                    println!("{:?}", q);
                                 } else 
 
                                 if bytes_amount < len {
                                     let state = State::Data { len, bytes_read: bytes_amount };
 
-                                    acc.extend_from_slice(&data_buf);
+                                    acc.extend_from_slice(&data_buf[..n]);
+
+                                    println!("bytes_amount < len");
                                 }                                                         
                             }
                         }

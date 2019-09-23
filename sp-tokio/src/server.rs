@@ -31,6 +31,7 @@ pub async fn start() -> Result<(), Box<dyn Error>> {
             let mut data_buf = [0; 1024];
             let mut state = State::Len;
             let mut acc = vec![];
+            let mut next = vec![];
 
             loop {
                 match state {
@@ -91,16 +92,21 @@ pub async fn start() -> Result<(), Box<dyn Error>> {
 
                                 if bytes_amount == len {
                                     let state = State::Len;
+
                                     acc.extend_from_slice(&data_buf);
                                 } else 
 
                                 if bytes_amount > len {
                                     let state = State::Len;
-                                    let offset = bytes_amount - len;                                    
+                                    let offset = bytes_amount - len;
+
+                                    acc.extend_from_slice(&data_buf[..offset]);
+                                    next.extend_from_slice(&data_buf[offset..]);
                                 } else 
 
                                 if bytes_amount < len {
                                     let state = State::Data { len, bytes_read: bytes_amount };
+
                                     acc.extend_from_slice(&data_buf);
                                 }                                                         
                             }

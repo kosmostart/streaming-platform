@@ -7,5 +7,6 @@ members = [
 	"sp-manager",
 	"sp-yew",
 	"sp-build",
-	"sp-delivery"
+	"sp-init-host",
+	"sp-init"
 ]

@@ -1,5 +1,5 @@
 [package]
-name = "sp-manager"
+name = "sp-init-host"
 version = "0.1.0"
 authors = ["Maximb <sprayrules@gmail.com>"]
 edition = "2018"
@@ -8,9 +8,6 @@ edition = "2018"
 
 [dependencies]
 
-crossbeam = "*"
-serde = "*"
-serde_derive = "*"
-toml = "*"
-sysinfo = "*"
+log = "*"
+env_logger = "*"
 warp = { git = "https://github.com/seanmonstar/warp", features = ["tls"] }

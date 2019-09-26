@@ -113,6 +113,43 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
                                     let q = get_msg_meta(&acc).unwrap();
 
                                     println!("{:?}", q);
+
+                                    use tokio::fs::File;
+                                    use tokio::prelude::*;
+
+                                    let file_name = "Cargo.toml";
+
+                                    let mut contents = [0; 1024];                                    
+
+                                    match File::open(file_name).await {
+                                        Ok(mut file) => {
+                                            loop {
+                                                match file.read(&mut contents).await {
+                                                    Ok(n) => {
+                                                        println!("file read n {}", n);
+
+                                                        if n < 1024 {
+                                                            return;
+                                                        }
+                                                    }
+                                                    Err(err) => {
+                                                        println!("failed to read from file {} {:?}", file_name, err);
+                                                        return;
+                                                    }
+                                                }
+
+                                                if let Err(err) = socket_write.write_all(&contents).await {
+                                                    println!("failed to write to socket {:?}", err);
+                                                    return;
+                                                }
+
+                                                println!("server write ok");
+                                            }                                                                                        
+                                        }
+                                        Err(err) => {
+                                            println!("error opening file {} {:?}", file_name, err);    
+                                        }
+                                    }                                    
                                 } else 
 
                                 if bytes_amount > len {
@@ -122,11 +159,7 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
                                     acc.extend_from_slice(&data_buf[..offset]);
                                     next.extend_from_slice(&data_buf[offset..]);
 
-                                    println!("bytes_amount > len");
-
-                                    let q = get_msg_meta(&acc).unwrap();
-
-                                    println!("{:?}", q);
+                                    println!("bytes_amount > len");                                    
                                 } else 
 
                                 if bytes_amount < len {

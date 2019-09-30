@@ -1,0 +1,16 @@
+[package]
+name = "sp-tokio-tls"
+version = "0.1.0"
+authors = ["Maximb <sprayrules@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+
+futures = { package = "futures-preview", version = "0.3.0-alpha.16", features = ["io-compat"] }
+tokio-rustls = { git = "https://github.com/quininer/tokio-rustls", branch = "tokio-0.2" }
+romio = "0.3.0-alpha.8"
+structopt = "0.2"
+webpki-roots = "*"
+tokio-stdin-stdout = "0.1"

@@ -5,6 +5,17 @@ use std::path::{Path, PathBuf};
 use lz4::{Decoder, EncoderBuilder};
 
 fn main() {
+    let file = File::create("foo.tar").unwrap();
+    let mut a = tar::Builder::new(file);
+
+    a.append_dir_all("bardir", "c:/src/tar-test").unwrap();
+
+    
+    let mut ar = tar::Archive::new(File::open("foo.tar").unwrap());
+    ar.unpack("foo").unwrap();
+}
+
+fn main2() {
     println!("LZ4 version: {}", lz4::version());
 
     let path = Path::new("");

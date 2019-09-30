@@ -237,9 +237,6 @@ impl Hub {
     }
 }
 
-impl Transferable for Request { }
-impl Transferable for Response { }
-
 pub enum Msg {    
 }
 

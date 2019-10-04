@@ -1425,19 +1425,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sp-init"
-version = "0.1.0"
-
-[[package]]
-name = "sp-init-host"
-version = "0.1.0"
-dependencies = [
- "env_logger 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "log 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
- "warp 0.1.20 (git+https://github.com/seanmonstar/warp)",
-]
-
-[[package]]
 name = "sp-manager"
 version = "0.1.0"
 dependencies = [
@@ -1446,6 +1433,15 @@ dependencies = [
  "serde_derive 1.0.101 (registry+https://github.com/rust-lang/crates.io-index)",
  "sysinfo 0.9.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "toml 0.5.3 (registry+https://github.com/rust-lang/crates.io-index)",
+ "warp 0.1.20 (git+https://github.com/seanmonstar/warp)",
+]
+
+[[package]]
+name = "sp-public-host"
+version = "0.1.0"
+dependencies = [
+ "env_logger 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "log 0.3.9 (registry+https://github.com/rust-lang/crates.io-index)",
  "warp 0.1.20 (git+https://github.com/seanmonstar/warp)",
 ]
 
@@ -1481,6 +1477,10 @@ dependencies = [
 name = "spin"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
+name = "spup"
+version = "0.1.0"
 
 [[package]]
 name = "stable_deref_trait"

@@ -272,6 +272,7 @@ impl Agent for Worker {
         //self.console.log(&format!("hub: {:?}", msg));        
         match msg {
             Request::Auth(addr) => {
+                self.console.log(&format!("hub auth: {}", addr));
                 self.clients.insert(addr, who);
             }
             Request::Msg(msg_meta, payload) => {

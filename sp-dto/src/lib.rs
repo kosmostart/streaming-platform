@@ -90,6 +90,9 @@ pub struct MsgMeta {
 
 impl MsgMeta {
     /// Zero based index for key part, . is used as a separator.
+    pub fn view(&self) -> String {
+        format!("{} -> {} {} {:?}", self.tx, self.rx, self.key, self.kind)
+    }
     pub fn key_part(&self, index: usize) -> Result<&str, String> {
         let split: Vec<&str> = self.key.split(".").collect();
 

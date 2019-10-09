@@ -11,7 +11,14 @@ use lz4::{Decoder, EncoderBuilder};
 #[derive(Debug, Deserialize)]
 struct Config {
     result_file_tag: String,
+    dirs: Option<Vec<TargetDir>>,
     files: Vec<TargetFile>
+}
+
+#[derive(Debug, Deserialize)]
+struct TargetDir {
+    arch_name: String,
+    path: String
 }
 
 #[derive(Debug, Deserialize)]
@@ -21,7 +28,7 @@ struct TargetFile {
 
 pub fn pack() {    
     let config_path = std::env::args().nth(1)
-        .expect("config location not passed as argument");
+        .expect("path to config file not passed as argument");
 
     let file = File::open(config_path)
         .expect("failed to open config");
@@ -59,14 +66,24 @@ pub fn pack() {
 
         let mut a = tar::Builder::new(ar_file);
 
+        match config.dirs {
+            Some(dirs) => {
+                for target_dir in dirs {
+                    a.append_dir_all(target_dir.arch_name, target_dir.path)
+                        .expect("failed to append target dir to archive");
+                }
+            }
+            None => {}
+        }
+
         for target_file in config.files {
             let path = Path::new(&target_file.path);
             let mut f = File::open(path)
                 .expect("failed to open target file");
 
-            a.append_file(path.file_name().unwrap(), &mut f)
+            a.append_file(path.file_name().expect("failed to get file_name"), &mut f)
                 .expect("failed to append target file to archive");
-        }        
+        }
     }    
 
     compress(&from, &to)

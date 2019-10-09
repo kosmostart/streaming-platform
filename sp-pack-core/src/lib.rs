@@ -58,7 +58,7 @@ pub fn pack() {
         })
         .collect();
 
-    let to = config.result_file_tag + "-" + &to;
+    let to = config.result_file_tag + "." + &to;
 
     {
         let ar_file = File::create(&from)

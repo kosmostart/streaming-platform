@@ -1,5 +1,5 @@
 [package]
-name = "spup"
+name = "sp-pack-core"
 version = "0.1.0"
 authors = ["Maximb <sprayrules@gmail.com>"]
 edition = "2018"
@@ -8,4 +8,9 @@ edition = "2018"
 
 [dependencies]
 
-sp-pack-core = { path = "../sp-pack-core" }
+rand = "0.7"
+serde = "*"
+serde_derive = "*"
+toml = "*"
+tar = "*"
+lz4 = "*"

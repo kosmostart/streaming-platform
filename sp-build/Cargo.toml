@@ -6,5 +6,4 @@ edition = "2018"
 
 [dependencies]
 
-tar = "*"
-lz4 = "*"
+sp-pack-core = { path = "../sp-pack-core" }

@@ -54,7 +54,7 @@ struct Config {
 
 fn main() {
     let config_path = std::env::args().nth(1)
-        .expect("config location not passed as argument");
+        .expect("path to config file not passed as argument");
 
     let file = File::open(config_path)
         .expect("failed to open config");
@@ -66,7 +66,8 @@ fn main() {
     buf_reader.read_to_string(&mut config)
         .expect("failed to read config");
 
-    let config: Config = toml::from_str(&config).unwrap();
+    let config: Config = toml::from_str(&config)
+        .expect("failed to deserialize config");
     println!("{:#?}", config);
 
     println!("quering system data");

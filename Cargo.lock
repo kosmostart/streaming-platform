@@ -1409,8 +1409,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 name = "sp-build"
 version = "0.1.0"
 dependencies = [
- "lz4 1.23.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "tar 0.4.26 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sp-pack-core 0.1.0",
 ]
 
 [[package]]
@@ -1434,6 +1433,18 @@ dependencies = [
  "sysinfo 0.9.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "toml 0.5.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "warp 0.1.20 (git+https://github.com/seanmonstar/warp)",
+]
+
+[[package]]
+name = "sp-pack-core"
+version = "0.1.0"
+dependencies = [
+ "lz4 1.23.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "rand 0.7.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serde 1.0.101 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serde_derive 1.0.101 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tar 0.4.26 (registry+https://github.com/rust-lang/crates.io-index)",
+ "toml 0.5.3 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -1481,6 +1492,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 [[package]]
 name = "spup"
 version = "0.1.0"
+dependencies = [
+ "sp-pack-core 0.1.0",
+]
 
 [[package]]
 name = "stable_deref_trait"

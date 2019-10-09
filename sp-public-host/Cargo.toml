@@ -10,4 +10,7 @@ edition = "2018"
 
 log = "*"
 env_logger = "*"
+serde = "*"
+serde_derive = "*"
+toml = "*"
 warp = { git = "https://github.com/seanmonstar/warp", features = ["tls"] }

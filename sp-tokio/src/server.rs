@@ -3,15 +3,35 @@ use bytes::Buf;
 use tokio::runtime::Runtime;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::prelude::*;
+use tokio::fs::File;                                    
 use tokio_io::split::split;
 use sp_dto::*;
 
-pub enum State {
-    Len,
-    Data {
-        len: usize,
-        bytes_read: usize
+struct State {
+    pub operation: Operation,
+    pub len: usize,
+    pub bytes_read: usize
+}
+
+impl State {
+    fn switch_to_len(&mut self) {
+        self.operation = Operation::Len;
+        self.len = 0;
+        self.bytes_read = 0;
     }
+    fn switch_to_data(&mut self, len: usize) {
+        self.operation = Operation::Data;
+        self.len = len;
+        self.bytes_read = 0;
+    }
+    fn increment(&mut self, delta: usize) {
+        self.bytes_read = self.bytes_read + delta;
+    }
+}
+
+pub enum Operation {
+    Len,
+    Data
 }
 
 pub fn start() {
@@ -32,14 +52,26 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
         tokio::spawn(async move {
             let mut len_buf = [0; 4];
             let mut data_buf = [0; 1024];
-            let mut state = State::Len;
+
+            let mut state = State {
+                operation: Operation::Len,
+                len: 0,
+                bytes_read: 0
+            };
+
+            println!("state initialized");
+            
             let mut acc = vec![];
             let mut next = vec![];
 
             loop {
-                match state {
+                println!("server loop");
 
-                    State::Len => {
+                match state.operation {
+
+                    Operation::Len => {
+                        println!("len");
+
                         let n = match socket_read.read_exact(&mut len_buf).await {
                             Ok(n) => n,                    
                             Err(e) => {
@@ -62,7 +94,7 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
                                 let mut cursor = std::io::Cursor::new(len_buf);
                                 let len = cursor.get_u32_be();
 
-                                state = State::Data { len: len as usize, bytes_read: 0 };
+                                state.switch_to_data(len as usize);
                             }
                             _ => {
                                 println!("4 bytes needed on start, please reconnect with proper connection");
@@ -81,7 +113,7 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
                         }
                         */                    
                     }
-                    State::Data { len, bytes_read } => {
+                    Operation::Data => {
                         let n = match socket_read.read(&mut data_buf).await {
                             Ok(n) => n,                    
                             Err(e) => {
@@ -99,23 +131,22 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
                                 return;
                             }                            
                             _ => {
-                                let bytes_amount = bytes_read + n;
+                                state.increment(n);
 
-                                if bytes_amount == len {
-                                    let state = State::Len;
+                                println!("bytes_read {}", state.bytes_read);
+
+                                if state.bytes_read == state.len {
+                                    state.switch_to_len();
 
                                     acc.extend_from_slice(&data_buf[..n]);
 
-                                    println!("bytes_amount == len");
+                                    println!("bytes_read == len");
 
-                                    println!("len {}", acc.len());
+                                    println!("acc len {}", acc.len());
 
                                     let q = get_msg_meta(&acc).unwrap();
 
-                                    println!("{:?}", q);
-
-                                    use tokio::fs::File;
-                                    use tokio::prelude::*;
+                                    println!("{:?}", q);                                    
 
                                     let file_name = "Cargo.toml";
 
@@ -150,29 +181,28 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
                                             println!("error opening file {} {:?}", file_name, err);    
                                         }
                                     }                                    
-                                } else 
+                                } else
 
-                                if bytes_amount > len {
-                                    let state = State::Len;
-                                    let offset = bytes_amount - len;
+                                if state.bytes_read > state.len {
+                                    let offset = state.bytes_read - state.len;
+
+                                    state.switch_to_len();                                    
 
                                     acc.extend_from_slice(&data_buf[..offset]);
                                     next.extend_from_slice(&data_buf[offset..]);
 
-                                    println!("bytes_amount > len");                                    
+                                    println!("bytes_read > len");                                    
                                 } else 
 
-                                if bytes_amount < len {
-                                    let state = State::Data { len, bytes_read: bytes_amount };
-
+                                if state.bytes_read < state.len {                                    
                                     acc.extend_from_slice(&data_buf[..n]);
 
-                                    println!("bytes_amount < len");
+                                    println!("bytes_read < len");
                                 }                                                         
                             }
                         }
                     }
-                }
+                }  
             }
         });
     }

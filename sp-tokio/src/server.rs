@@ -4,7 +4,8 @@ use tokio::runtime::Runtime;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::prelude::*;
 use tokio::fs::File;                                    
-use tokio_io::split::split;
+use tokio_io::split::{split, WriteHalf};
+use serde_json::Value;
 use sp_dto::*;
 
 struct State {
@@ -47,7 +48,7 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
 
     loop {
         let (mut stream, _) = listener.accept().await?;
-        let (mut socket_read, mut socket_write) = split(stream);
+        let (mut socket_read, mut socket_write) = split(stream);        
 
         tokio::spawn(async move {
             let mut len_buf = [0; 4];
@@ -61,8 +62,7 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
 
             println!("state initialized");
             
-            let mut acc = vec![];
-            let mut next = vec![];
+            let mut acc = vec![];            
 
             loop {
                 println!("server loop");
@@ -137,66 +137,23 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
 
                                 if state.bytes_read == state.len {
                                     state.switch_to_len();
-
                                     acc.extend_from_slice(&data_buf[..n]);
-
                                     println!("bytes_read == len");
-
                                     println!("acc len {}", acc.len());
-
-                                    let q = get_msg_meta(&acc).unwrap();
-
-                                    println!("{:?}", q);                                    
-
-                                    let file_name = "Cargo.toml";
-
-                                    let mut contents = [0; 1024];                                    
-
-                                    match File::open(file_name).await {
-                                        Ok(mut file) => {
-                                            loop {
-                                                match file.read(&mut contents).await {
-                                                    Ok(n) => {
-                                                        println!("file read n {}", n);
-
-                                                        if n < 1024 {
-                                                            return;
-                                                        }
-                                                    }
-                                                    Err(err) => {
-                                                        println!("failed to read from file {} {:?}", file_name, err);
-                                                        return;
-                                                    }
-                                                }
-
-                                                if let Err(err) = socket_write.write_all(&contents).await {
-                                                    println!("failed to write to socket {:?}", err);
-                                                    return;
-                                                }
-
-                                                println!("server write ok");
-                                            }                                                                                        
-                                        }
-                                        Err(err) => {
-                                            println!("error opening file {} {:?}", file_name, err);    
-                                        }
-                                    }                                    
+                                    process(&mut acc, &mut socket_write).await;
                                 } else
 
                                 if state.bytes_read > state.len {
                                     let offset = state.bytes_read - state.len;
-
                                     state.switch_to_len();                                    
-
                                     acc.extend_from_slice(&data_buf[..offset]);
-                                    next.extend_from_slice(&data_buf[offset..]);
-
+                                    process(&mut acc, &mut socket_write).await;
+                                    acc.extend_from_slice(&data_buf[..n]);
                                     println!("bytes_read > len");                                    
                                 } else 
 
                                 if state.bytes_read < state.len {                                    
                                     acc.extend_from_slice(&data_buf[..n]);
-
                                     println!("bytes_read < len");
                                 }                                                         
                             }
@@ -206,4 +163,54 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
             }
         });
     }
+}
+
+async fn process(acc: &mut Vec<u8>, socket_write: &mut WriteHalf<TcpStream>) {
+    let msg_meta = get_msg_meta(&acc).unwrap();
+
+    println!("{:?}", msg_meta);
+
+    match msg_meta.key.as_ref() {   
+        "Auth" => {
+            let payload: Value = get_payload(&msg_meta, acc).unwrap();
+        }
+        _ => {
+            
+            let file_name = "Cargo.toml";
+
+            let mut contents = [0; 1024];                                    
+
+            match File::open(file_name).await {
+                Ok(mut file) => {
+                    loop {
+                        match file.read(&mut contents).await {
+                            Ok(n) => {
+                                println!("file read n {}", n);
+
+                                if n < 1024 {
+                                    return;
+                                }
+                            }
+                            Err(err) => {
+                                println!("failed to read from file {} {:?}", file_name, err);
+                                return;
+                            }
+                        }
+
+                        if let Err(err) = socket_write.write_all(&contents).await {
+                            println!("failed to write to socket {:?}", err);
+                            return;
+                        }
+
+                        println!("server write ok");
+                    }                                                                                        
+                }
+                Err(err) => {
+                    println!("error opening file {} {:?}", file_name, err);    
+                }
+            }            
+        }
+    }
+
+    acc.clear();
 }

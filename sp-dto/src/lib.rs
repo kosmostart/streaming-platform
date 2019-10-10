@@ -588,3 +588,15 @@ pub fn get_msg<T>(data: &[u8]) -> Result<(MsgMeta, T, Vec<(String, Vec<u8>)>), E
 
     Ok((msg_meta, payload, attachments))
 }
+
+pub fn get_payload<T>(msg_meta: &MsgMeta, data: &[u8]) -> Result<T, Error> where T: Debug, T: serde::Serialize, for<'de> T: serde::Deserialize<'de> {
+    let mut buf = std::io::Cursor::new(data);    
+    let len = buf.get_u32_be();
+    let msg_meta_offset = (len + 4) as usize;    
+
+    let payload_offset = msg_meta_offset + msg_meta.payload_size as usize;
+
+    let payload = serde_json::from_slice::<T>(&data[msg_meta_offset..payload_offset])?;    
+
+    Ok(payload)
+}

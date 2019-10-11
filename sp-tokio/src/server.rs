@@ -1,4 +1,5 @@
 use std::error::Error;
+use std::collections::HashMap;
 use bytes::Buf;
 use tokio::runtime::Runtime;
 use tokio::net::{TcpListener, TcpStream};
@@ -36,19 +37,20 @@ pub enum Operation {
 }
 
 pub fn start() {
-    let rt = Runtime::new().unwrap();
+    let rt = Runtime::new().expect("failed to create runtime"); 
     
     rt.block_on(start_future());
 }
 
 async fn start_future() -> Result<(), Box<dyn Error>> {
     let mut listener = TcpListener::bind("127.0.0.1:12346").await?;
+    //let mut clients = HashMap::new();
 
     println!("ok!");
 
     loop {
-        let (mut stream, _) = listener.accept().await?;
-        let (mut socket_read, mut socket_write) = split(stream);        
+        let (mut stream, addr) = listener.accept().await?;
+        let (mut socket_read, mut socket_write) = split(stream);
 
         tokio::spawn(async move {
             let mut len_buf = [0; 4];
@@ -137,23 +139,30 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
 
                                 if state.bytes_read == state.len {
                                     state.switch_to_len();
+
                                     acc.extend_from_slice(&data_buf[..n]);
+
                                     println!("bytes_read == len");
                                     println!("acc len {}", acc.len());
+
                                     process(&mut acc, &mut socket_write).await;
                                 } else
 
                                 if state.bytes_read > state.len {
                                     let offset = state.bytes_read - state.len;
-                                    state.switch_to_len();                                    
+                                    state.switch_to_len();
+
                                     acc.extend_from_slice(&data_buf[..offset]);
+
                                     process(&mut acc, &mut socket_write).await;
+
                                     acc.extend_from_slice(&data_buf[..n]);
                                     println!("bytes_read > len");                                    
                                 } else 
 
                                 if state.bytes_read < state.len {                                    
                                     acc.extend_from_slice(&data_buf[..n]);
+
                                     println!("bytes_read < len");
                                 }                                                         
                             }

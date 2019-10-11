@@ -306,7 +306,7 @@ pub fn start_with_link(host: String, port: u16, link_client_name: String, link_t
     let clients = std::thread::Builder::new()
         .name("clients".to_owned())
         .spawn(move || {
-            let mut clients = HashMap::new();            
+            let mut clients = HashMap::new();
 
             loop {
                 let msg = rx.recv().unwrap();

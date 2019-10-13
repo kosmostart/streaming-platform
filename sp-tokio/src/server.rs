@@ -206,8 +206,8 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
     }
 }
 
-async fn process(acc: &mut Vec<u8>, socket_write: &mut WriteHalf<'_>, config: &Config) {
-    let msg_meta = get_msg_meta(&acc).unwrap();
+async fn process(acc: &mut Vec<u8>, socket_write: &mut WriteHalf<'_>, config: &Config) -> Result<(), Box<dyn Error>> {
+    let msg_meta = get_msg_meta(&acc)?;
 
     println!("{:?}", msg_meta);
 
@@ -215,8 +215,8 @@ async fn process(acc: &mut Vec<u8>, socket_write: &mut WriteHalf<'_>, config: &C
         "Hub.GetFile" => {
             match &config.dirs {
                 Some(dirs) => {
-                    let payload: Value = get_payload(&msg_meta, acc).unwrap();
-                    let access_key = payload["access_key"].as_str().unwrap();
+                    let payload: Value = get_payload(&msg_meta, acc)?;
+                    let access_key = payload["access_key"].as_str().ok_or("no access_key in payload")?;
 
                     match dirs.iter().find(|x| x.access_key == access_key) {
                         Some(target_dir) => {
@@ -227,37 +227,36 @@ async fn process(acc: &mut Vec<u8>, socket_write: &mut WriteHalf<'_>, config: &C
                                     let path = target.path();
 
                                     if path.is_file() {                                        
-                                        let mut contents = [0; 1024];
+                                        let mut file_buf = [0; 1024];
+
+                                        /*
 
                                         match File::open(&path).await {
                                             Ok(mut file) => {
                                                 loop {
-                                                    match file.read(&mut contents).await {
+                                                    match file.read(&mut file_buf).await {
                                                         Ok(n) => {
                                                             println!("file read n {}", n);
 
-                                                            if n < 1024 {
+                                                            if let Err(err) = socket_write.write_all(&file_buf).await {
+                                                                println!("failed to write to socket {:?}", err);
                                                                 return;
                                                             }
+
+                                                            println!("server write ok");
                                                         }
                                                         Err(err) => {
                                                             println!("failed to read from file {:?} {:?}", path, err);
                                                             return;
                                                         }
-                                                    }
-
-                                                    if let Err(err) = socket_write.write_all(&contents).await {
-                                                        println!("failed to write to socket {:?}", err);
-                                                        return;
-                                                    }
-
-                                                    println!("server write ok");
+                                                    }                                                    
                                                 }                                                                                        
                                             }
                                             Err(err) => {
                                                 println!("error opening file {:?} {:?}", path, err);
                                             }
                                         }
+                                        */
                                     }
                                 }
                                 None => {
@@ -280,5 +279,16 @@ async fn process(acc: &mut Vec<u8>, socket_write: &mut WriteHalf<'_>, config: &C
         }
     }
 
-    acc.clear();
+    acc.clear();    
+
+    Ok(())
+}
+
+async fn dog() -> Result<(), serde_json::Error> {
+    let data = vec![];
+
+    let msg_meta = get_msg_meta(&data)?;
+    let payload: Value = get_payload(&msg_meta, &data)?;
+
+    Ok(())
 }

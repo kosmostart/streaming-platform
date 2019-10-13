@@ -179,11 +179,12 @@ async fn process(acc: &mut Vec<u8>, socket_write: &mut WriteHalf<TcpStream>) {
 
     println!("{:?}", msg_meta);
 
-    match msg_meta.key.as_ref() {   
-        "Auth" => {
+    match msg_meta.key.as_ref() {
+        "Hub.GetFile" => {
+
             let payload: Value = get_payload(&msg_meta, acc).unwrap();
-        }
-        _ => {
+
+            let access_key = payload["access_key"].as_str().unwrap();
             
             let file_name = "Cargo.toml";
 
@@ -218,6 +219,9 @@ async fn process(acc: &mut Vec<u8>, socket_write: &mut WriteHalf<TcpStream>) {
                     println!("error opening file {} {:?}", file_name, err);    
                 }
             }            
+        }
+        _ => {
+
         }
     }
 

@@ -213,69 +213,54 @@ async fn process(acc: &mut Vec<u8>, socket_write: &mut WriteHalf<'_>, config: &C
 
     match msg_meta.key.as_ref() {
         "Hub.GetFile" => {
-            match &config.dirs {
-                Some(dirs) => {
-                    let payload: Value = get_payload(&msg_meta, acc)?;
-                    let access_key = payload["access_key"].as_str().ok_or("no access_key in payload")?;
+            let dirs = config.dirs.as_ref().ok_or("file requested, but config dirs are empty")?;
 
-                    match dirs.iter().find(|x| x.access_key == access_key) {
-                        Some(target_dir) => {
+            let payload: Value = get_payload(&msg_meta, acc)?;
 
-                            match fs::read_dir(&target_dir.path).unwrap().nth(0) {
-                                Some(target) => {
-                                    let target = target.unwrap();
-                                    let path = target.path();
+            let access_key = payload["access_key"].as_str().ok_or("no access_key in payload")?;
 
-                                    if path.is_file() {                                        
-                                        let mut file_buf = [0; 1024];
+            let target_dir = dirs.iter().find(|x| x.access_key == access_key).ok_or("no target directory found for access key")?;
 
-                                        /*
+            let target = fs::read_dir(&target_dir.path)?.nth(0).ok_or("no files in target dir")?;
+            
+            let target = target?;
+            let path = target.path();
 
-                                        match File::open(&path).await {
-                                            Ok(mut file) => {
-                                                loop {
-                                                    match file.read(&mut file_buf).await {
-                                                        Ok(n) => {
-                                                            println!("file read n {}", n);
+            if path.is_file() {                                        
+                let mut file_buf = [0; 1024];
 
-                                                            if let Err(err) = socket_write.write_all(&file_buf).await {
-                                                                println!("failed to write to socket {:?}", err);
-                                                                return;
-                                                            }
+                /*
 
-                                                            println!("server write ok");
-                                                        }
-                                                        Err(err) => {
-                                                            println!("failed to read from file {:?} {:?}", path, err);
-                                                            return;
-                                                        }
-                                                    }                                                    
-                                                }                                                                                        
-                                            }
-                                            Err(err) => {
-                                                println!("error opening file {:?} {:?}", path, err);
-                                            }
-                                        }
-                                        */
+                match File::open(&path).await {
+                    Ok(mut file) => {
+                        loop {
+                            match file.read(&mut file_buf).await {
+                                Ok(n) => {
+                                    println!("file read n {}", n);
+
+                                    if let Err(err) = socket_write.write_all(&file_buf).await {
+                                        println!("failed to write to socket {:?}", err);
+                                        return;
                                     }
+
+                                    println!("server write ok");
                                 }
-                                None => {
-
+                                Err(err) => {
+                                    println!("failed to read from file {:?} {:?}", path, err);
+                                    return;
                                 }
-                            }                            
-                        }
-                        None => {
-
-                        }
-                    }                    
+                            }                                                    
+                        }                                                                                        
+                    }
+                    Err(err) => {
+                        println!("error opening file {:?} {:?}", path, err);
+                    }
                 }
-                None => {
-
-                }
-            }                        
+                */
+            }
+                                    
         }
         _ => {
-
         }
     }
 

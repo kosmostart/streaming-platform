@@ -1,5 +1,9 @@
 use std::error::Error;
 use std::collections::HashMap;
+use std::io::prelude::*;
+use std::io::BufReader;
+use std::fs::{self, DirEntry};
+use std::path::Path;
 use bytes::Buf;
 use tokio::runtime::Runtime;
 use tokio::net::{TcpListener, TcpStream, tcp::split::WriteHalf};
@@ -9,9 +13,16 @@ use serde_json::Value;
 use serde_derive::Deserialize;
 use sp_dto::*;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 struct Config {
-    host: String    
+    host: String,
+    dirs: Option<Vec<Dir>>
+}
+
+#[derive(Debug, Deserialize, Clone)]
+struct Dir {
+    access_key: String,
+    path: String
 }
 
 struct State {
@@ -48,17 +59,34 @@ pub fn start() {
 }
 
 async fn start_future() -> Result<(), Box<dyn Error>> {
-    let mut listener = TcpListener::bind("127.0.0.1:12346").await?;
+    let config_path = std::env::args().nth(1)
+        .expect("path to config file not passed as argument");
+
+    let file = std::fs::File::open(config_path)
+        .expect("failed to open config");
+
+    let mut buf_reader = BufReader::new(file);
+
+    let mut config = String::new();
+
+    buf_reader.read_to_string(&mut config)
+        .expect("failed to read config");
+
+    let config: Config = toml::from_str(&config)
+        .expect("failed to deserialize config");	
+
+    let mut listener = TcpListener::bind(&config.host).await?;
     //let mut clients = HashMap::new();
 
-    println!("ok!");
+    println!("ok");
 
     loop {
-        let (mut stream, addr) = listener.accept().await?;        
+        let (mut stream, addr) = listener.accept().await?;
+        let config = config.clone();
 
         tokio::spawn(async move {
             let (mut socket_read, mut socket_write) = stream.split();
-            
+
             let mut len_buf = [0; 4];
             let mut data_buf = [0; 1024];
 
@@ -66,9 +94,7 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
                 operation: Operation::Len,
                 len: 0,
                 bytes_read: 0
-            };
-
-            println!("state initialized");
+            };            
             
             let mut acc = vec![];            
 
@@ -151,7 +177,7 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
                                     println!("bytes_read == len");
                                     println!("acc len {}", acc.len());
 
-                                    process(&mut acc, &mut socket_write).await;
+                                    process(&mut acc, &mut socket_write, &config).await;
                                 } else
 
                                 if state.bytes_read > state.len {
@@ -160,7 +186,7 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
 
                                     acc.extend_from_slice(&data_buf[..offset]);
 
-                                    process(&mut acc, &mut socket_write).await;
+                                    process(&mut acc, &mut socket_write, &config).await;
 
                                     acc.extend_from_slice(&data_buf[..n]);
                                     println!("bytes_read > len");                                    
@@ -180,51 +206,74 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
     }
 }
 
-async fn process(acc: &mut Vec<u8>, socket_write: &mut WriteHalf<'_>) {
+async fn process(acc: &mut Vec<u8>, socket_write: &mut WriteHalf<'_>, config: &Config) {
     let msg_meta = get_msg_meta(&acc).unwrap();
 
     println!("{:?}", msg_meta);
 
     match msg_meta.key.as_ref() {
         "Hub.GetFile" => {
+            match &config.dirs {
+                Some(dirs) => {
+                    let payload: Value = get_payload(&msg_meta, acc).unwrap();
+                    let access_key = payload["access_key"].as_str().unwrap();
 
-            let payload: Value = get_payload(&msg_meta, acc).unwrap();
+                    match dirs.iter().find(|x| x.access_key == access_key) {
+                        Some(target_dir) => {
 
-            let access_key = payload["access_key"].as_str().unwrap();
-            
-            let file_name = "Cargo.toml";
+                            match fs::read_dir(&target_dir.path).unwrap().nth(0) {
+                                Some(target) => {
+                                    let target = target.unwrap();
+                                    let path = target.path();
 
-            let mut contents = [0; 1024];                                    
+                                    if path.is_file() {                                        
+                                        let mut contents = [0; 1024];
 
-            match File::open(file_name).await {
-                Ok(mut file) => {
-                    loop {
-                        match file.read(&mut contents).await {
-                            Ok(n) => {
-                                println!("file read n {}", n);
+                                        match File::open(&path).await {
+                                            Ok(mut file) => {
+                                                loop {
+                                                    match file.read(&mut contents).await {
+                                                        Ok(n) => {
+                                                            println!("file read n {}", n);
 
-                                if n < 1024 {
-                                    return;
+                                                            if n < 1024 {
+                                                                return;
+                                                            }
+                                                        }
+                                                        Err(err) => {
+                                                            println!("failed to read from file {:?} {:?}", path, err);
+                                                            return;
+                                                        }
+                                                    }
+
+                                                    if let Err(err) = socket_write.write_all(&contents).await {
+                                                        println!("failed to write to socket {:?}", err);
+                                                        return;
+                                                    }
+
+                                                    println!("server write ok");
+                                                }                                                                                        
+                                            }
+                                            Err(err) => {
+                                                println!("error opening file {:?} {:?}", path, err);
+                                            }
+                                        }
+                                    }
                                 }
-                            }
-                            Err(err) => {
-                                println!("failed to read from file {} {:?}", file_name, err);
-                                return;
-                            }
-                        }
+                                None => {
 
-                        if let Err(err) = socket_write.write_all(&contents).await {
-                            println!("failed to write to socket {:?}", err);
-                            return;
+                                }
+                            }                            
                         }
+                        None => {
 
-                        println!("server write ok");
-                    }                                                                                        
+                        }
+                    }                    
                 }
-                Err(err) => {
-                    println!("error opening file {} {:?}", file_name, err);    
+                None => {
+
                 }
-            }            
+            }                        
         }
         _ => {
 

@@ -1,6 +1,6 @@
 use std::fs::File;
-use std::io::BufReader;
 use std::io::prelude::*;
+use std::io::BufReader;
 use std::net::SocketAddr;
 use serde_derive::Deserialize;
 use warp::Filter;

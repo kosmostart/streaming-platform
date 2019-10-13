@@ -1424,7 +1424,7 @@ dependencies = [
  "serde_json 1.0.41 (registry+https://github.com/rust-lang/crates.io-index)",
  "sp-dto 0.1.0",
  "tokio 0.2.0-alpha.6 (git+https://github.com/tokio-rs/tokio)",
- "tokio-io 0.2.0-alpha.6 (git+https://github.com/tokio-rs/tokio)",
+ "toml 0.5.3 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]

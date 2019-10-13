@@ -2,12 +2,17 @@ use std::error::Error;
 use std::collections::HashMap;
 use bytes::Buf;
 use tokio::runtime::Runtime;
-use tokio::net::{TcpListener, TcpStream};
+use tokio::net::{TcpListener, TcpStream, tcp::split::WriteHalf};
 use tokio::prelude::*;
-use tokio::fs::File;                                    
-use tokio_io::split::{split, WriteHalf};
+use tokio::fs::File;
 use serde_json::Value;
+use serde_derive::Deserialize;
 use sp_dto::*;
+
+#[derive(Debug, Deserialize)]
+struct Config {
+    host: String    
+}
 
 struct State {
     pub operation: Operation,
@@ -49,10 +54,11 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
     println!("ok!");
 
     loop {
-        let (mut stream, addr) = listener.accept().await?;
-        let (mut socket_read, mut socket_write) = split(stream);
+        let (mut stream, addr) = listener.accept().await?;        
 
         tokio::spawn(async move {
+            let (mut socket_read, mut socket_write) = stream.split();
+            
             let mut len_buf = [0; 4];
             let mut data_buf = [0; 1024];
 
@@ -174,7 +180,7 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
     }
 }
 
-async fn process(acc: &mut Vec<u8>, socket_write: &mut WriteHalf<TcpStream>) {
+async fn process(acc: &mut Vec<u8>, socket_write: &mut WriteHalf<'_>) {
     let msg_meta = get_msg_meta(&acc).unwrap();
 
     println!("{:?}", msg_meta);

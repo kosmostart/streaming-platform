@@ -12,8 +12,8 @@ log = "*"
 crossbeam = "*"
 bytes = "*"
 tokio = { git = "https://github.com/tokio-rs/tokio" }
-tokio-io = { git = "https://github.com/tokio-rs/tokio" }
 serde = "*"
 serde_derive = "*"
 serde_json = "*"
+toml = "*"
 sp-dto = { path = "../sp-dto" }

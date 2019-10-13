@@ -76,16 +76,22 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
         .expect("failed to deserialize config");	
 
     let mut listener = TcpListener::bind(&config.host).await?;
-    //let mut clients = HashMap::new();
+
+    //let mut clients = vec![];
+
+    let (tx, rx) = crossbeam::channel::unbounded();
 
     println!("ok");
 
     loop {
         let (mut stream, addr) = listener.accept().await?;
         let config = config.clone();
+        let tx = tx.clone();
 
         tokio::spawn(async move {
             let (mut socket_read, mut socket_write) = stream.split();
+
+            tx.send(stream);
 
             let mut len_buf = [0; 4];
             let mut data_buf = [0; 1024];
@@ -177,7 +183,7 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
                                     println!("bytes_read == len");
                                     println!("acc len {}", acc.len());
 
-                                    process(&mut acc, &mut socket_write, &config).await;
+                                    //process(&mut acc, &mut socket_write, &config).await;
                                 } else
 
                                 if state.bytes_read > state.len {
@@ -186,7 +192,7 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
 
                                     acc.extend_from_slice(&data_buf[..offset]);
 
-                                    process(&mut acc, &mut socket_write, &config).await;
+                                    //process(&mut acc, &mut socket_write, &config).await;
 
                                     acc.extend_from_slice(&data_buf[..n]);
                                     println!("bytes_read > len");                                    
@@ -206,6 +212,15 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
     }
 }
 
+/*
+//let (tx, rx) = crossbeam::channel::unbounded();
+
+//loop {
+//    let q: Result<i32, _> = rx.recv();
+//}
+*/
+
+/*
 async fn process(acc: &mut Vec<u8>, socket_write: &mut WriteHalf<'_>, config: &Config) -> Result<(), Box<dyn Error>> {
     let msg_meta = get_msg_meta(&acc)?;
 
@@ -230,15 +245,15 @@ async fn process(acc: &mut Vec<u8>, socket_write: &mut WriteHalf<'_>, config: &C
 
                 loop {
                     let n = file.read(&mut file_buf).await?;
-                    
+
                     println!("file read n {}", n);
 
                     socket_write.write_all(&file_buf).await?;
                 }                
             }
-                                    
         }
         _ => {
+
         }
     }
 
@@ -246,12 +261,4 @@ async fn process(acc: &mut Vec<u8>, socket_write: &mut WriteHalf<'_>, config: &C
 
     Ok(())
 }
-
-async fn dog() -> Result<(), serde_json::Error> {
-    let data = vec![];
-
-    let msg_meta = get_msg_meta(&data)?;
-    let payload: Value = get_payload(&msg_meta, &data)?;
-
-    Ok(())
-}
+*/

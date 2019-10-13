@@ -59,11 +59,3 @@ pub async fn connect_future() {
 
     //Ok(())
 }
-
-/*
-//let (tx, rx) = crossbeam::channel::unbounded();
-
-//loop {
-//    let q: Result<i32, _> = rx.recv();
-//}
-*/

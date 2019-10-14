@@ -1,3 +1,4 @@
+use std::fmt;
 use std::error::Error;
 use std::collections::HashMap;
 use std::io::prelude::*;
@@ -39,6 +40,27 @@ struct State {
     pub acc: Vec<u8>
 }
 
+#[derive(Debug)]
+enum StateError {
+    StreamClosed,
+    NotEnoughBytesForLen
+}
+
+impl fmt::Display for StateError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "SuperErrorSideKick is here!")
+    }
+}
+
+impl Error for StateError {
+    fn description(&self) -> &str {
+        match self {
+            StateError::StreamClosed => "stream was closed",
+            StateError::NotEnoughBytesForLen => "4 bytes needed on start for message"
+        }
+    }
+}
+
 impl State {
     fn new() -> State {
         State {
@@ -63,94 +85,83 @@ impl State {
     fn increment(&mut self, delta: usize) {
         self.bytes_read = self.bytes_read + delta;
     }
-    async fn read_msg(&mut self, socket_read: &mut ReadHalf<'_>) {
-        match self.operation {
-            Operation::Len => {
-                println!("len");
+    async fn read_msg(&mut self, socket_read: &mut ReadHalf<'_>) -> Result<(), Box<dyn Error>> {
+        loop {
+            match self.operation {
+                Operation::Len => {
+                    println!("len");
 
-                let n = match socket_read.read_exact(&mut self.len_buf).await {
-                    Ok(n) => n,                    
-                    Err(e) => {
-                        println!("failed to read from socket; err = {:?}", e);
-                        return;
-                    }
-                };
+                    let n = socket_read.read_exact(&mut self.len_buf).await?;
 
-                println!("server n is {}", n);
+                    println!("server n is {}", n);
 
-                match n {
-                    0 => {
-                        // socket closed ?
-                        println!("returning, perhaps socket was closed");
-                        return;
-                    }
-                    4 => {
-                        //acc.extend_from_slice(&len_buf);
+                    match n {
+                        0 => {
+                            // socket closed ?
+                            return Err(Box::new(StateError::StreamClosed));
+                        }
+                        4 => {
+                            //acc.extend_from_slice(&len_buf);
 
-                        let mut cursor = std::io::Cursor::new(self.len_buf);
-                        let len = cursor.get_u32_be();
+                            let mut cursor = std::io::Cursor::new(self.len_buf);
+                            let len = cursor.get_u32_be();
 
-                        self.switch_to_data(len as usize);
-                    }
-                    _ => {
-                        println!("4 bytes needed on start, please reconnect with proper connection");
-                        return;
-                    }
-                }               
-            }
-            Operation::Data => {
-                let n = match socket_read.read(&mut self.data_buf).await {
-                    Ok(n) => n,                    
-                    Err(e) => {
-                        println!("failed to read from socket; err = {:?}", e);
-                        return;
-                    }
-                };
+                            self.switch_to_data(len as usize);
+                        }
+                        _ => {
+                            return Err(Box::new(StateError::NotEnoughBytesForLen));
+                        }
+                    }               
+                }
+                Operation::Data => {
+                    let n = socket_read.read(&mut self.data_buf).await?;
 
-                println!("server n is {}", n);
+                    println!("server n is {}", n);
 
-                match n {
-                    0 => {
-                        println!("returning, perhaps socket was closed");
-                        return;
-                    }                            
-                    _ => {
-                        self.increment(n);
+                    match n {
+                        0 => {
+                            return Err(Box::new(StateError::StreamClosed));
+                        }                            
+                        _ => {
+                            self.increment(n);
 
-                        println!("bytes_read {}", self.bytes_read);
+                            println!("bytes_read {}", self.bytes_read);
 
-                        if self.bytes_read == self.len {
-                            self.switch_to_len();
+                            if self.bytes_read == self.len {
+                                self.switch_to_len();
 
-                            self.acc.extend_from_slice(&mut self.data_buf[..n]);
+                                self.acc.extend_from_slice(&mut self.data_buf[..n]);
 
-                            println!("bytes_read == len");
-                            println!("acc len {}", self.acc.len());
+                                println!("bytes_read == len");
+                                println!("acc len {}", self.acc.len());
 
-                            //process(&mut acc, &mut socket_write, &config).await;
-                        } else
+                                //process(&mut acc, &mut socket_write, &config).await;
+                            } else
 
-                        if self.bytes_read > self.len {
-                            let offset = self.bytes_read - self.len;
-                            self.switch_to_len();
+                            if self.bytes_read > self.len {
+                                let offset = self.bytes_read - self.len;
+                                self.switch_to_len();
 
-                            self.acc.extend_from_slice(&mut self.data_buf[..offset]);
+                                self.acc.extend_from_slice(&mut self.data_buf[..offset]);
 
-                            //process(&mut acc, &mut socket_write, &config).await;
+                                //process(&mut acc, &mut socket_write, &config).await;
 
-                            self.acc.extend_from_slice(&mut self.data_buf[..n]);
-                            println!("bytes_read > len");                                    
-                        } else 
+                                self.acc.extend_from_slice(&mut self.data_buf[..n]);
+                                println!("bytes_read > len");                                    
+                            } else 
 
-                        if self.bytes_read < self.len {                                    
-                            self.acc.extend_from_slice(&mut self.data_buf[..n]);
+                            if self.bytes_read < self.len {                                    
+                                self.acc.extend_from_slice(&mut self.data_buf[..n]);
 
-                            println!("bytes_read < len");
-                        }                                                         
+                                println!("bytes_read < len");
+                            }                                                         
+                        }
                     }
                 }
             }
         }
+
+        Ok(())
     }
 }
 
@@ -264,7 +275,7 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
             let mut state = State::new();
 
             loop {
-                state.read_msg(&mut socket_read);
+                state.read_msg(&mut socket_read).await;
             }
         });
         

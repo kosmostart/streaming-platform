@@ -47,10 +47,16 @@ impl State {
     }
 }
 
-pub enum Operation {
+enum Operation {
     Len,
     Data
 }
+
+enum ClientMsg {
+    AddClient(TcpStream),
+    SendMsg
+}
+
 
 pub fn start() {
     let rt = Runtime::new().expect("failed to create runtime"); 
@@ -77,21 +83,78 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
 
     let mut listener = TcpListener::bind(&config.host).await?;
 
-    //let mut clients = vec![];
+    //let (tx, rx) = crossbeam::channel::unbounded();
 
-    let (tx, rx) = crossbeam::channel::unbounded();
+    /*
+    //let clients = std::thread::Builder::new()
+    //    .name("clients".to_owned())
+    //    .spawn(move || {
+    tokio::spawn(async move {                                         
+            let mut clients = vec![];            
+
+            loop {
+                let msg = rx.recv().expect("clients msg receive failed");
+
+                match msg {
+                    ClientMsg::AddClient(stream) => {
+                        clients.push(stream);
+
+                        tokio::spawn(async move {
+                            stream.write_all(&[]).await;
+                        });
+                    }
+                    ClientMsg::SendMsg => {
+                        
+
+                        //tokio::spawn(async move {
+                        //    stream.write_all(&[]).await;
+                        //});
+
+                        //stream.write_all(&[]).await;
+                    }
+                }                
+            }
+        //})
+        //.expect("failed to start clients thread");
+    });
+    */
 
     println!("ok");
 
     loop {
         let (mut stream, addr) = listener.accept().await?;
-        let config = config.clone();
-        let tx = tx.clone();
+
+        use std::sync::Arc;
+        use tokio::sync::Mutex;
+
+        let mut stream = Arc::new(Mutex::new(stream));
+
+        //tx.send(ClientMsg::AddClient(stream));
+
+        //let config = config.clone();
+        //let tx = tx.clone();
+        
+        /*
+        let (mut socket_read, mut socket_write) = clients.iter_mut().nth(0).unwrap().split();
+        
+        tokio::spawn(async {
+            //socket_write.write_all(&[]).await;
+        });
+        */
+
+        let mut stream2 = stream.clone();
+        let mut stream3 = stream.clone();
+        
+        //let (mut socket_read, mut socket_write) = stream.split();
+        
+        
 
         tokio::spawn(async move {
-            let (mut socket_read, mut socket_write) = stream.split();
+            let mut q = stream2.lock().await;
+            let (mut socket_read, mut socket_write) = q.split();
 
-            tx.send(stream);
+            //let (mut socket_read, mut socket_write) = stream.split();
+            //tx.send(stream);
 
             let mut len_buf = [0; 4];
             let mut data_buf = [0; 1024];
@@ -102,7 +165,12 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
                 bytes_read: 0
             };            
             
-            let mut acc = vec![];            
+            let mut acc = vec![];
+
+            tokio::spawn(async move {
+                let mut q = stream3.lock().await;
+                let (mut socket_read, mut socket_write) = q.split();
+            });           
 
             loop {
                 println!("server loop");
@@ -140,18 +208,7 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
                                 println!("4 bytes needed on start, please reconnect with proper connection");
                                 return;
                             }
-                        }
-
-                        /*
-                        // Write the data back                    
-                        if let Err(e) = socket_write.write_all(&buf[0..n]).await {
-                            println!("failed to write to socket; err = {:?}", e);
-                            return;
-                        }
-
-                        println!("server write ok");
-                        }
-                        */                    
+                        }               
                     }
                     Operation::Data => {
                         let n = match socket_read.read(&mut data_buf).await {
@@ -166,7 +223,6 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
 
                         match n {
                             0 => {
-                                // socket closed ?
                                 println!("returning, perhaps socket was closed");
                                 return;
                             }                            
@@ -209,6 +265,7 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
                 }  
             }
         });
+        
     }
 }
 

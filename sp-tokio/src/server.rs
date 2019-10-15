@@ -163,6 +163,9 @@ impl State {
 
         Ok(())
     }
+    fn send_msg(&mut self) {
+        
+    }
 }
 
 enum ClientMsg {
@@ -235,11 +238,11 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
     println!("ok");
 
     loop {
-        let (mut stream, addr) = listener.accept().await?;
+        let (mut stream, client_net_addr) = listener.accept().await?;
 
         println!("connected");
 
-        let (tx, rx) = crossbeam::channel::unbounded();
+        let (client_tx, client_rx) = crossbeam::channel::unbounded();
 
         use std::sync::Arc;
         use tokio::sync::Mutex;
@@ -294,11 +297,13 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
             let mut state = State::new();
 
             loop {
-                tx.send(1);
+                server_tx.send(ServerMsg::AddClient(client_addr, client_net_addr, client_tx));
                 
                 if state.read_msg(&mut socket_read).await.is_err() {
                     break;
                 }
+
+                server_tx.send(ServerMsg::RemoveClient(client_addr));
             }
         });
         

@@ -163,8 +163,10 @@ impl State {
 
         Ok(())
     }
-    fn send_msg(&mut self) {
-        
+    fn send_msg(&mut self) -> Result<(), Box<dyn Error>> {
+        let msg_meta = get_msg_meta(&self.acc)?;
+
+        Ok(())
     }
 }
 
@@ -242,7 +244,7 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
 
         println!("connected");
 
-        let (client_tx, client_rx) = crossbeam::channel::unbounded();
+        //let (client_tx, client_rx) = crossbeam::channel::unbounded();
 
         use std::sync::Arc;
         use tokio::sync::Mutex;
@@ -274,6 +276,7 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
             println!("1 stream ok");
 
             loop {
+                /*
                 match rx.recv() {
                     Ok(msg) => {
 
@@ -282,6 +285,7 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
                         break;
                     }
                 }
+                */
             }
         });
 
@@ -289,21 +293,18 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
             let mut q = stream2.lock().await;
             let (mut socket_read, mut socket_write) = q.split();
 
-            println!("2 stream ok");
-
-            //let (mut socket_read, mut socket_write) = stream.split();
-            //tx.send(stream);
+            println!("2 stream ok");            
             
             let mut state = State::new();
 
             loop {
-                server_tx.send(ServerMsg::AddClient(client_addr, client_net_addr, client_tx));
+                //server_tx.send(ServerMsg::AddClient(client_addr, client_net_addr, client_tx));
                 
                 if state.read_msg(&mut socket_read).await.is_err() {
                     break;
                 }
 
-                server_tx.send(ServerMsg::RemoveClient(client_addr));
+                //server_tx.send(ServerMsg::RemoveClient(client_addr));
             }
         });
         

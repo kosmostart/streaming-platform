@@ -306,16 +306,21 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
             
             let mut state = State::new();
 
-            state.read_msg(&mut socket_read).await;
+            match state.read_msg(&mut socket_read).await {
+                Ok(_) => {
+                    loop {
+                        if state.read_msg(&mut socket_read).await.is_err() {
+                            break;
+                        }
 
-            loop {
-                if state.read_msg(&mut socket_read).await.is_err() {
-                    break;
+                        // remove client because we have stopped reading from socket
+                        //server_tx.send(ServerMsg::RemoveClient(client_addr));
+                    }
                 }
+                Err(err) => {
 
-                // remove client because we have stopped reading from socket
-                //server_tx.send(ServerMsg::RemoveClient(client_addr));
-            }
+                }
+            }            
         });
         
     }

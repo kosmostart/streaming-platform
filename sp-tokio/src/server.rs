@@ -5,6 +5,7 @@ use std::io::prelude::*;
 use std::io::BufReader;
 use std::fs::{self, DirEntry};
 use std::path::Path;
+use std::net::SocketAddr;
 use bytes::Buf;
 use tokio::runtime::Runtime;
 use tokio::net::{TcpListener, TcpStream, tcp::split::ReadHalf};
@@ -24,6 +25,11 @@ struct Config {
 struct Dir {
     access_key: String,
     path: String
+}
+
+struct Client {
+    net_addr: SocketAddr,
+    tx: i32
 }
 
 enum Operation {
@@ -165,17 +171,17 @@ impl State {
     }    
 }
 
-fn send_msg(&self) -> Result<(), Box<dyn Error>> {
-    let msg_meta = get_msg_meta(&self.acc)?;
+fn send_msg(acc: &Vec<u8>, server_tx: i32) -> Result<(), Box<dyn Error>> {
+    let msg_meta = get_msg_meta(acc)?;
 
-    self.server_tx.send(ServerMsg::AddClient(msg_meta.rx, selfclient_net_addr, client_tx));
+    server_tx.send(ServerMsg::AddClient(msg_meta.rx, addr, client_tx));
 
     Ok(())
 }
 
-enum ClientMsg {
-    AddClient(TcpStream),
-    SendBuf
+enum ServerMsg {
+    AddClient(String, SocketAddr, i32),
+    SendBuf(String)
 }
 
 
@@ -204,41 +210,32 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
 
     let mut listener = TcpListener::bind(&config.host).await?;
 
-    //let (tx, rx) = crossbeam::channel::unbounded();
-
-    /*
-    //let clients = std::thread::Builder::new()
-    //    .name("clients".to_owned())
-    //    .spawn(move || {
-    tokio::spawn(async move {                                         
-            let mut clients = vec![];            
+    let (server_tx, server_rx) = crossbeam::channel::unbounded();
+    
+    let clients = std::thread::Builder::new()
+        .name("clients".to_owned())
+        .spawn(move || {    
+            let mut clients = HashMap::new();
 
             loop {
-                let msg = rx.recv().expect("clients msg receive failed");
+                let msg = server_rx.recv().expect("clients msg receive failed");
 
                 match msg {
-                    ClientMsg::AddClient(stream) => {
-                        clients.push(stream);
+                    ServerMsg::AddClient(addr, net_addr, tx) => {
+                        let client = Client { 
+                            net_addr,
+                            tx 
+                        };
 
-                        tokio::spawn(async move {
-                            stream.write_all(&[]).await;
-                        });
+                        clients.insert(addr, client);
                     }
-                    ClientMsg::SendMsg => {
-                        
-
-                        //tokio::spawn(async move {
-                        //    stream.write_all(&[]).await;
-                        //});
-
-                        //stream.write_all(&[]).await;
+                    ServerMsg::SendBuf(addr) => {
+                        let client = clients.get(&addr);
                     }
-                }                
+                }            
             }
-        //})
-        //.expect("failed to start clients thread");
-    });
-    */
+        })
+        .expect("failed to start clients thread");    
 
     println!("ok");
 
@@ -247,7 +244,7 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
 
         println!("connected");
 
-        //let (client_tx, client_rx) = crossbeam::channel::unbounded();
+        let (client_tx, client_rx) = crossbeam::channel::unbounded();
 
         use std::sync::Arc;
         use tokio::sync::Mutex;
@@ -278,17 +275,15 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
 
             println!("1 stream ok");
 
-            loop {
-                /*
-                match rx.recv() {
+            loop {                
+                match client_rx.recv() {
                     Ok(msg) => {
 
                     }
                     Err(err) => {
                         break;
                     }
-                }
-                */
+                }                
             }
         });
 

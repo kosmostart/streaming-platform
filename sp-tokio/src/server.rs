@@ -162,12 +162,15 @@ impl State {
         }
 
         Ok(())
-    }
-    fn send_msg(&mut self) -> Result<(), Box<dyn Error>> {
-        let msg_meta = get_msg_meta(&self.acc)?;
+    }    
+}
 
-        Ok(())
-    }
+fn send_msg(&self) -> Result<(), Box<dyn Error>> {
+    let msg_meta = get_msg_meta(&self.acc)?;
+
+    self.server_tx.send(ServerMsg::AddClient(msg_meta.rx, selfclient_net_addr, client_tx));
+
+    Ok(())
 }
 
 enum ClientMsg {
@@ -297,9 +300,7 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
             
             let mut state = State::new();
 
-            loop {
-                //server_tx.send(ServerMsg::AddClient(client_addr, client_net_addr, client_tx));
-                
+            loop {                               
                 if state.read_msg(&mut socket_read).await.is_err() {
                     break;
                 }

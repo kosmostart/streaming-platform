@@ -51,12 +51,19 @@ struct State {
 enum StateError {
     StreamClosed,
     NotEnoughBytesForLen,
-    Io(std::io::Error)
+    Io(std::io::Error),
+    SerdeJson(serde_json::Error)
 }
 
 impl From<std::io::Error> for StateError {
 	fn from(err: std::io::Error) -> StateError {
 		StateError::Io(err)
+	}
+}
+
+impl From<serde_json::Error> for StateError {
+	fn from(err: serde_json::Error) -> StateError {
+		StateError::SerdeJson(err)
 	}
 }
 
@@ -145,6 +152,8 @@ impl State {
                                 println!("acc len {}", self.acc.len());
 
                                 //process(&mut acc, &mut socket_write, &config).await;
+                                let msg_meta = get_msg_meta(&self.acc)?;
+                                println!("{:?}", msg_meta);
                             } else
 
                             if self.bytes_read > self.len {
@@ -154,6 +163,8 @@ impl State {
                                 self.acc.extend_from_slice(&mut self.data_buf[..offset]);
 
                                 //process(&mut acc, &mut socket_write, &config).await;
+                                let msg_meta = get_msg_meta(&self.acc)?;
+                                println!("{:?}", msg_meta);
 
                                 self.acc.extend_from_slice(&mut self.data_buf[..n]);
                                 println!("bytes_read > len");                                    

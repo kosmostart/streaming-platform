@@ -88,7 +88,30 @@ pub struct MsgMeta {
 	pub attachments: Vec<Attachment>
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum MsgKind {
+    Event,
+    RpcRequest,
+    RpcResponse
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Attachment {
+	pub name: String,
+    pub size: u32
+}
+
 impl MsgMeta {
+    /// Zero based index for key part, . is used as a separator.
+    pub fn content_len(&self) -> u32 {
+        let mut len = self.payload_size;
+
+        for attachment in &self.attachments {
+            len = len + attachment.size;
+        }
+
+        len
+    }
     /// Zero based index for key part, . is used as a separator.
     pub fn view(&self) -> String {
         format!("{} -> {} {} {:?}", self.tx, self.rx, self.key, self.kind)
@@ -148,24 +171,11 @@ impl MsgMeta {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub enum MsgKind {
-    Event,
-    RpcRequest,
-    RpcResponse
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Attachment {
-	pub name: String,
-    pub size: u32
-}
-
 pub fn event_dto<T>(tx: String, rx: String, key: String, payload: T, route: Route) -> Result<Vec<u8>, Error> where T: Debug, T: serde::Serialize, for<'de> T: serde::Deserialize<'de> {
     let mut payload = serde_json::to_vec(&payload)?;
     let correlation_id = Uuid::new_v4();
 
-    let mut msg_meta = MsgMeta {
+    let msg_meta = MsgMeta {
         tx,
         rx,
         key,
@@ -580,7 +590,7 @@ pub fn get_msg<T>(data: &[u8]) -> Result<(MsgMeta, T, Vec<(String, Vec<u8>)>), E
     let mut attachments = vec![];
     let mut attachment_offset = payload_offset;
 
-    for attachment in msg_meta.attachments.iter() {
+    for attachment in &msg_meta.attachments {
         let attachment_start = attachment_offset;
         attachment_offset = attachment_offset + attachment.size as usize;
         attachments.push((attachment.name.clone(), (&data[attachment_start..attachment_offset]).to_owned()))

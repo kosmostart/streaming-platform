@@ -269,7 +269,7 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
         use std::sync::Arc;
         use tokio::sync::Mutex;
 
-        let mut stream = Arc::new(Mutex::new(stream));
+        //let mut stream = Arc::new(Mutex::new(stream));
 
         //tx.send(ClientMsg::AddClient(stream));
 
@@ -282,16 +282,12 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
         tokio::spawn(async {
             //socket_write.write_all(&[]).await;
         });
-        */
-
-        let mut stream2 = stream.clone();
-        let mut stream3 = stream.clone();
-        
-        //let (mut socket_read, mut socket_write) = stream.split();
+        */                        
+        let (mut socket_read, mut socket_write) = stream.split();
         
         tokio::spawn(async move {
-            let mut q = stream3.lock().await;
-            let (mut socket_read, mut socket_write) = q.split();
+            //let mut q = stream3.lock().await;
+            //let (mut socket_read, mut socket_write) = q.split();
 
             println!("1 stream ok");
 
@@ -309,9 +305,9 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
             }
         });
 
-        tokio::spawn(async move {
-            let mut q = stream2.lock().await;
-            let (mut socket_read, mut socket_write) = q.split();
+        tokio::spawn(async move {            
+            //let mut q = stream2.lock().await;
+            //let (mut socket_read, mut socket_write) = q.split();
 
             println!("2 stream ok");            
             

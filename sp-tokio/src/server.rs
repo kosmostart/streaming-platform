@@ -167,7 +167,7 @@ impl State {
 
 enum ClientMsg {
     AddClient(TcpStream),
-    SendMsg
+    SendBuf
 }
 
 
@@ -239,6 +239,8 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
 
         println!("connected");
 
+        let (tx, rx) = crossbeam::channel::unbounded();
+
         use std::sync::Arc;
         use tokio::sync::Mutex;
 
@@ -267,6 +269,17 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
             let (mut socket_read, mut socket_write) = q.split();
 
             println!("1 stream ok");
+
+            loop {
+                match rx.recv() {
+                    Ok(msg) => {
+
+                    }
+                    Err(err) => {
+                        break;
+                    }
+                }
+            }
         });
 
         tokio::spawn(async move {
@@ -281,6 +294,8 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
             let mut state = State::new();
 
             loop {
+                tx.send(1);
+                
                 if state.read_msg(&mut socket_read).await.is_err() {
                     break;
                 }

@@ -13,6 +13,7 @@ use tokio::prelude::*;
 use tokio::fs::File;
 use serde_json::Value;
 use serde_derive::Deserialize;
+use crossbeam::channel::Sender;
 use sp_dto::*;
 
 #[derive(Debug, Deserialize, Clone)]
@@ -29,7 +30,7 @@ struct Dir {
 
 struct Client {
     net_addr: SocketAddr,
-    tx: i32
+    tx: Sender<i32>
 }
 
 enum Operation {
@@ -171,6 +172,7 @@ impl State {
     }    
 }
 
+/*
 fn send_msg(acc: &Vec<u8>, server_tx: i32) -> Result<(), Box<dyn Error>> {
     let msg_meta = get_msg_meta(acc)?;
 
@@ -178,10 +180,12 @@ fn send_msg(acc: &Vec<u8>, server_tx: i32) -> Result<(), Box<dyn Error>> {
 
     Ok(())
 }
+*/
 
 enum ServerMsg {
-    AddClient(String, SocketAddr, i32),
-    SendBuf(String)
+    AddClient(String, SocketAddr, Sender<i32>),
+    SendBuf(String),
+    RemoveClient(String)
 }
 
 
@@ -232,7 +236,10 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
                     ServerMsg::SendBuf(addr) => {
                         let client = clients.get(&addr);
                     }
-                }            
+                    ServerMsg::RemoveClient(addr) => {
+                        clients.remove(&addr);
+                    }
+                }     
             }
         })
         .expect("failed to start clients thread");    
@@ -300,7 +307,8 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
                     break;
                 }
 
-                //server_tx.send(ServerMsg::RemoveClient(client_addr));
+                // remove client because we have stopped reading from socket
+                server_tx.send(ServerMsg::RemoveClient(client_addr));
             }
         });
         

@@ -237,6 +237,8 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
     loop {
         let (mut stream, addr) = listener.accept().await?;
 
+        println!("connected");
+
         use std::sync::Arc;
         use tokio::sync::Mutex;
 
@@ -263,11 +265,15 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
         tokio::spawn(async move {
             let mut q = stream3.lock().await;
             let (mut socket_read, mut socket_write) = q.split();
+
+            println!("1 stream ok");
         });
 
         tokio::spawn(async move {
             let mut q = stream2.lock().await;
             let (mut socket_read, mut socket_write) = q.split();
+
+            println!("2 stream ok");
 
             //let (mut socket_read, mut socket_write) = stream.split();
             //tx.send(stream);
@@ -275,7 +281,9 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
             let mut state = State::new();
 
             loop {
-                state.read_msg(&mut socket_read).await;
+                if state.read_msg(&mut socket_read).await.is_err() {
+                    break;
+                }
             }
         });
         

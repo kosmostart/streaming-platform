@@ -13,7 +13,7 @@ pub fn connect() {
 }
 
 pub async fn connect_future() {
-    let mut stream = TcpStream::connect("127.0.0.1:12346").await.unwrap();
+    let mut stream = TcpStream::connect("127.0.0.1:60000").await.unwrap();
     let (mut socket_read, mut socket_write) = stream.split();
 
     //let mut data_buf = [0; 1024];

@@ -13,7 +13,7 @@ use tokio::prelude::*;
 use tokio::fs::File;
 use serde_json::Value;
 use serde_derive::Deserialize;
-use crossbeam::channel::Sender;
+use crossbeam::channel::{unbounded, select, Sender};
 use sp_dto::*;
 
 #[derive(Debug, Deserialize, Clone)]
@@ -283,8 +283,8 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
             //socket_write.write_all(&[]).await;
         });
         */                        
-        let (mut socket_read, mut socket_write) = stream.split();
         
+        /*
         tokio::spawn(async move {
             //let mut q = stream3.lock().await;
             //let (mut socket_read, mut socket_write) = q.split();
@@ -304,12 +304,14 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
                 */               
             }
         });
+        */
 
-        tokio::spawn(async move {            
+        tokio::spawn(async move {
+            let (mut socket_read, mut socket_write) = stream.split();           
             //let mut q = stream2.lock().await;
             //let (mut socket_read, mut socket_write) = q.split();
 
-            println!("2 stream ok");            
+            //println!("2 stream ok");            
             
             let mut state = State::new();
 

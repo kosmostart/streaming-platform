@@ -50,9 +50,17 @@ struct State {
 #[derive(Debug)]
 enum StateError {
     StreamClosed,
-    NotEnoughBytesForLen
+    NotEnoughBytesForLen,
+    Io(std::io::Error)
 }
 
+impl From<std::io::Error> for StateError {
+	fn from(err: std::io::Error) -> StateError {
+		StateError::Io(err)
+	}
+}
+
+/*
 impl fmt::Display for StateError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "SuperErrorSideKick is here!")
@@ -67,6 +75,7 @@ impl Error for StateError {
         }
     }
 }
+*/
 
 impl State {
     fn new() -> State {
@@ -92,7 +101,7 @@ impl State {
     fn increment(&mut self, delta: usize) {
         self.bytes_read = self.bytes_read + delta;
     }
-    async fn read_msg(&mut self, socket_read: &mut ReadHalf<'_>) -> Result<(), Box<dyn Error>> {
+    async fn read_msg(&mut self, socket_read: &mut ReadHalf<'_>) -> Result<(), StateError> {
         loop {
             match self.operation {
                 Operation::Len => {
@@ -103,10 +112,7 @@ impl State {
                     println!("server n is {}", n);
 
                     match n {
-                        0 => {
-                            // socket closed ?
-                            return Err(Box::new(StateError::StreamClosed));
-                        }
+                        0 => return Err(StateError::StreamClosed),
                         4 => {
                             //acc.extend_from_slice(&len_buf);
 
@@ -115,9 +121,7 @@ impl State {
 
                             self.switch_to_data(len as usize);
                         }
-                        _ => {
-                            return Err(Box::new(StateError::NotEnoughBytesForLen));
-                        }
+                        _ => return Err(StateError::NotEnoughBytesForLen)
                     }               
                 }
                 Operation::Data => {
@@ -126,9 +130,7 @@ impl State {
                     println!("server n is {}", n);
 
                     match n {
-                        0 => {
-                            return Err(Box::new(StateError::StreamClosed));
-                        }                            
+                        0 => return Err(StateError::StreamClosed),
                         _ => {
                             self.increment(n);
 
@@ -251,7 +253,7 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
 
         println!("connected");
 
-        let (client_tx, client_rx) = crossbeam::channel::unbounded();
+        //let (client_tx, client_rx) = crossbeam::channel::unbounded();
 
         use std::sync::Arc;
         use tokio::sync::Mutex;
@@ -282,7 +284,8 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
 
             println!("1 stream ok");
 
-            loop {                
+            loop {
+                /*
                 match client_rx.recv() {
                     Ok(msg) => {
 
@@ -290,7 +293,8 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
                     Err(err) => {
                         break;
                     }
-                }                
+                }
+                */               
             }
         });
 
@@ -302,13 +306,15 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
             
             let mut state = State::new();
 
-            loop {                               
+            state.read_msg(&mut socket_read).await;
+
+            loop {
                 if state.read_msg(&mut socket_read).await.is_err() {
                     break;
                 }
 
                 // remove client because we have stopped reading from socket
-                server_tx.send(ServerMsg::RemoveClient(client_addr));
+                //server_tx.send(ServerMsg::RemoveClient(client_addr));
             }
         });
         

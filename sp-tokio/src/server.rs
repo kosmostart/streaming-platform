@@ -100,6 +100,23 @@ impl Error for StateError {
 }
 */
 
+/// This enum describes how do we want to operate when reading data from socket
+#[derive(PartialEq)]
+enum ReadConfig {
+    /// Read one message and return it
+    ReadOne,
+    /// Continuosly stream incoming data
+    Stream
+}
+
+/// The result of reading function
+enum ReadResult {
+    /// A message, in case we configured state to read one message with ReadConfig::ReadOne
+    Msg(MsgMeta),
+    /// Reading process stop, in case we configured state for stream with ReadConfig::Stream
+    Stop
+}
+
 impl State {
     fn new() -> State {
         let (tx, rx) = unbounded();
@@ -128,7 +145,7 @@ impl State {
     fn increment(&mut self, delta: usize) {
         self.bytes_read = self.bytes_read + delta;
     }
-    async fn read_msg(&mut self, socket_read: &mut ReadHalf<'_>) -> Result<(), StateError> {
+    async fn read_msg(&mut self, config: ReadConfig, socket_read: &mut ReadHalf<'_>) -> Result<ReadResult, StateError> {
         loop {
             match self.operation {
                 Operation::Len => {
@@ -172,8 +189,10 @@ impl State {
                                 println!("acc len {}", self.acc.len());
 
                                 //process(&mut acc, &mut socket_write, &config).await;
-                                let msg_meta = get_msg_meta(&self.acc)?;
-                                println!("{:?}", msg_meta);
+                                
+                                if config == ReadConfig::ReadOne {
+                                    return Ok(ReadResult::Msg(get_msg_meta(&self.acc)?));
+                                }
                             } else
 
                             if self.bytes_read > self.len {
@@ -183,8 +202,10 @@ impl State {
                                 self.acc.extend_from_slice(&mut self.data_buf[..offset]);
 
                                 //process(&mut acc, &mut socket_write, &config).await;
-                                let msg_meta = get_msg_meta(&self.acc)?;
-                                println!("{:?}", msg_meta);
+                                
+                                if config == ReadConfig::ReadOne {
+                                    return Ok(ReadResult::Msg(get_msg_meta(&self.acc)?));
+                                }
 
                                 self.acc.extend_from_slice(&mut self.data_buf[..n]);
                                 println!("bytes_read > len");                                    
@@ -201,7 +222,7 @@ impl State {
             }
         }
 
-        Ok(())
+        Ok(ReadResult::Stop)
     }    
 }
 
@@ -299,7 +320,6 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
                     socket_write.write_all(&buf).await;
                 }
             }
-            
             
             /*
             match state.read_msg(&mut socket_read).await {

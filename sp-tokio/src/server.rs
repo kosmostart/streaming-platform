@@ -13,7 +13,7 @@ use tokio::prelude::*;
 use tokio::fs::File;
 use serde_json::Value;
 use serde_derive::Deserialize;
-use crossbeam::channel::{unbounded, select, Sender};
+use crossbeam::channel::{unbounded, select, Sender, Receiver};
 use sp_dto::*;
 
 #[derive(Debug, Deserialize, Clone)]
@@ -30,7 +30,7 @@ struct Dir {
 
 struct Client {
     net_addr: SocketAddr,
-    tx: Sender<i32>
+    tx: Sender<[u8; DATA_BUF_SIZE]>
 }
 
 enum Operation {
@@ -38,13 +38,24 @@ enum Operation {
     Data
 }
 
+const LEN_BUF_SIZE: usize = 4;
+const DATA_BUF_SIZE: usize = 1024;
+
+enum ServerMsg {
+    AddClient(String, SocketAddr, Sender<[u8; DATA_BUF_SIZE]>),
+    SendBuf(String, [u8; DATA_BUF_SIZE]),
+    RemoveClient(String)
+}
+
 struct State {
     pub operation: Operation,
     pub len: usize,
     pub bytes_read: usize,
-    pub len_buf: [u8; 4],
-    pub data_buf: [u8; 1024], 
-    pub acc: Vec<u8>
+    pub len_buf: [u8; LEN_BUF_SIZE],
+    pub data_buf: [u8; DATA_BUF_SIZE], 
+    pub acc: Vec<u8>,
+    pub tx: Sender<[u8; DATA_BUF_SIZE]>,
+    pub rx: Receiver<[u8; DATA_BUF_SIZE]>
 }
 
 #[derive(Debug)]
@@ -86,13 +97,17 @@ impl Error for StateError {
 
 impl State {
     fn new() -> State {
+        let (tx, rx) = unbounded();
+
         State {
             operation: Operation::Len,
             len: 0,
             bytes_read: 0,
-            len_buf: [0; 4],
-            data_buf: [0; 1024],
-            acc: vec![]
+            len_buf: [0; LEN_BUF_SIZE],
+            data_buf: [0; DATA_BUF_SIZE],
+            acc: vec![],
+            tx,
+            rx
         }  
     }
     fn switch_to_len(&mut self) {
@@ -120,7 +135,7 @@ impl State {
 
                     match n {
                         0 => return Err(StateError::StreamClosed),
-                        4 => {
+                        LEN_BUF_SIZE => {
                             //acc.extend_from_slice(&len_buf);
 
                             let mut cursor = std::io::Cursor::new(self.len_buf);
@@ -195,13 +210,6 @@ fn send_msg(acc: &Vec<u8>, server_tx: i32) -> Result<(), Box<dyn Error>> {
 }
 */
 
-enum ServerMsg {
-    AddClient(String, SocketAddr, Sender<i32>),
-    SendBuf(String),
-    RemoveClient(String)
-}
-
-
 pub fn start() {
     let rt = Runtime::new().expect("failed to create runtime"); 
     
@@ -246,7 +254,7 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
 
                         clients.insert(addr, client);
                     }
-                    ServerMsg::SendBuf(addr) => {
+                    ServerMsg::SendBuf(addr, buf) => {
                         let client = clients.get(&addr);
                     }
                     ServerMsg::RemoveClient(addr) => {
@@ -261,13 +269,12 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
 
     loop {
         let (mut stream, client_net_addr) = listener.accept().await?;
+        let server_tx = server_tx.clone();
 
         println!("connected");
 
-        //let (client_tx, client_rx) = crossbeam::channel::unbounded();
-
-        use std::sync::Arc;
-        use tokio::sync::Mutex;
+        //use std::sync::Arc;
+        //use tokio::sync::Mutex;
 
         //let mut stream = Arc::new(Mutex::new(stream));
 
@@ -307,14 +314,21 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
         */
 
         tokio::spawn(async move {
-            let (mut socket_read, mut socket_write) = stream.split();           
-            //let mut q = stream2.lock().await;
-            //let (mut socket_read, mut socket_write) = q.split();
+            let (mut socket_read, mut socket_write) = stream.split();
+            let (client_tx, client_rx) = crossbeam::channel::unbounded();
 
-            //println!("2 stream ok");            
+            server_tx.send(ServerMsg::AddClient("".to_owned(), client_net_addr, client_tx));          
             
             let mut state = State::new();
 
+            select! {
+                recv(client_rx) -> msg => {}
+                recv(state.rx) -> msg => {}
+            }
+
+            let q = 0;
+            
+            /*
             match state.read_msg(&mut socket_read).await {
                 Ok(_) => {
                     loop {
@@ -329,7 +343,8 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
                 Err(err) => {
 
                 }
-            }            
+            }
+            */    
         });
         
     }

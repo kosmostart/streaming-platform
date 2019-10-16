@@ -47,6 +47,11 @@ enum ServerMsg {
     RemoveClient(String)
 }
 
+enum BufRoute {
+    Broker([u8; DATA_BUF_SIZE]),
+    Socket([u8; DATA_BUF_SIZE])
+}
+
 struct State {
     pub operation: Operation,
     pub len: usize,
@@ -273,46 +278,6 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
 
         println!("connected");
 
-        //use std::sync::Arc;
-        //use tokio::sync::Mutex;
-
-        //let mut stream = Arc::new(Mutex::new(stream));
-
-        //tx.send(ClientMsg::AddClient(stream));
-
-        //let config = config.clone();
-        //let tx = tx.clone();
-        
-        /*
-        let (mut socket_read, mut socket_write) = clients.iter_mut().nth(0).unwrap().split();
-        
-        tokio::spawn(async {
-            //socket_write.write_all(&[]).await;
-        });
-        */                        
-        
-        /*
-        tokio::spawn(async move {
-            //let mut q = stream3.lock().await;
-            //let (mut socket_read, mut socket_write) = q.split();
-
-            println!("1 stream ok");
-
-            loop {
-                /*
-                match client_rx.recv() {
-                    Ok(msg) => {
-
-                    }
-                    Err(err) => {
-                        break;
-                    }
-                }
-                */               
-            }
-        });
-        */
-
         tokio::spawn(async move {
             let (mut socket_read, mut socket_write) = stream.split();
             let (client_tx, client_rx) = crossbeam::channel::unbounded();
@@ -321,12 +286,20 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
             
             let mut state = State::new();
 
-            select! {
-                recv(client_rx) -> msg => {}
-                recv(state.rx) -> msg => {}
-            }
+            let route = select! {
+                recv(state.rx) -> msg => BufRoute::Broker(msg.unwrap()),
+                recv(client_rx) -> msg => BufRoute::Socket(msg.unwrap())
+            };
 
-            let q = 0;
+            match route {
+                BufRoute::Broker(buf) => {
+                    server_tx.send(ServerMsg::SendBuf("".to_owned(), buf));
+                }
+                BufRoute::Socket(buf) => {
+                    socket_write.write_all(&buf).await;
+                }
+            }
+            
             
             /*
             match state.read_msg(&mut socket_read).await {

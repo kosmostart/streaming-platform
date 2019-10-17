@@ -9,11 +9,11 @@ use std::net::SocketAddr;
 use bytes::Buf;
 use tokio::runtime::Runtime;
 use tokio::net::{TcpListener, TcpStream, tcp::split::ReadHalf};
+use tokio::sync::mpsc::{self, Sender, Receiver};
 use tokio::prelude::*;
 use tokio::fs::File;
 use serde_json::Value;
 use serde_derive::Deserialize;
-use crossbeam::channel::{unbounded, select, Sender, Receiver};
 use sp_dto::*;
 
 #[derive(Debug, Deserialize, Clone)]
@@ -28,18 +28,14 @@ struct Dir {
     path: String
 }
 
+const MPSC_BUF_SIZE: usize = 1000;
+const LEN_BUF_SIZE: usize = 4;
+const DATA_BUF_SIZE: usize = 1024;
+
 struct Client {
     net_addr: SocketAddr,
     tx: Sender<[u8; DATA_BUF_SIZE]>
 }
-
-enum Operation {
-    Len,
-    Data
-}
-
-const LEN_BUF_SIZE: usize = 4;
-const DATA_BUF_SIZE: usize = 1024;
 
 enum ServerMsg {
     AddClient(String, SocketAddr, Sender<[u8; DATA_BUF_SIZE]>),
@@ -52,26 +48,13 @@ enum BufRoute {
     Socket([u8; DATA_BUF_SIZE])
 }
 
-struct State {
-    pub operation: Operation,
-    pub len: usize,
-    pub bytes_read: usize,
-    pub len_buf: [u8; LEN_BUF_SIZE],
-    pub data_buf: [u8; DATA_BUF_SIZE], 
-    pub acc: Vec<u8>,
-    pub tx: Sender<[u8; DATA_BUF_SIZE]>,
-    pub rx: Receiver<[u8; DATA_BUF_SIZE]>
-}
-
 #[derive(Debug)]
 enum ProcessError {
     StreamClosed,
     NotEnoughBytesForLen,
     IncorrectReadResult,
     Io(std::io::Error),
-    SerdeJson(serde_json::Error),
-    CrossbeamChannelRecv(crossbeam::channel::RecvError),
-    CrossbeamChannelSend(crossbeam::channel::SendError<ServerMsg>)
+    SerdeJson(serde_json::Error)    
 }
 
 impl From<std::io::Error> for ProcessError {
@@ -86,50 +69,19 @@ impl From<serde_json::Error> for ProcessError {
 	}
 }
 
-impl From<crossbeam::channel::RecvError> for ProcessError {
-	fn from(err: crossbeam::channel::RecvError) -> ProcessError {
-		ProcessError::CrossbeamChannelRecv(err)
-	}
-}
-
-impl From<crossbeam::channel::SendError<ServerMsg>> for ProcessError {
-	fn from(err: crossbeam::channel::SendError<ServerMsg>) -> ProcessError {
-		ProcessError::CrossbeamChannelSend(err)
-	}
-}
-
-/*
-impl fmt::Display for StateError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "SuperErrorSideKick is here!")
-    }
-}
-
-impl Error for StateError {
-    fn description(&self) -> &str {
-        match self {
-            StateError::StreamClosed => "stream was closed",
-            StateError::NotEnoughBytesForLen => "4 bytes needed on start for message"
-        }
-    }
-}
-*/
-
-/// This enum describes how do we want to operate when reading data from socket
-#[derive(PartialEq)]
-enum ReadConfig {
-    /// Read one message and return it
-    ReadOne,
-    /// Continuosly stream incoming data
-    Stream
-}
-
 /// The result of reading function
 enum ReadResult {
-    /// A message, in case we configured state to read one message with ReadConfig::ReadOne
-    Msg(MsgMeta),
-    /// Reading process stop, in case we configured state for stream with ReadConfig::Stream
-    Stop
+    /// Message data stream is prepended with MsgMeta struct
+    MsgMeta(MsgMeta),
+    /// Message data stream itself
+    Data([u8; LEN_BUF_SIZE])
+}
+
+// This is used internally for reading
+enum Operation {
+    Len,
+    MsgMeta,
+    Content
 }
 
 enum DataReadResult {
@@ -138,35 +90,49 @@ enum DataReadResult {
     ExtraDataRead(usize)
 }
 
+/// Data structure used for reading from socket
+struct State {
+    pub operation: Operation,
+    pub len: usize,
+    pub content_len: usize,
+    pub bytes_read: usize,
+    pub len_buf: [u8; LEN_BUF_SIZE],
+    pub data_buf: [u8; DATA_BUF_SIZE], 
+    pub acc: Vec<u8>    
+}
+
 impl State {
     fn new() -> State {
-        let (tx, rx) = unbounded();
-
         State {
             operation: Operation::Len,
             len: 0,
+            content_len: 0,
             bytes_read: 0,
             len_buf: [0; LEN_BUF_SIZE],
             data_buf: [0; DATA_BUF_SIZE],
-            acc: vec![],
-            tx,
-            rx
+            acc: vec![]            
         }  
     }
     fn switch_to_len(&mut self) {
         self.operation = Operation::Len;
         self.len = 0;
+        self.content_len = 0;
         self.bytes_read = 0;
     }
-    fn switch_to_data(&mut self, len: usize) {
-        self.operation = Operation::Data;
+    fn switch_to_msg_meta(&mut self, len: usize) {
+        self.operation = Operation::MsgMeta;
         self.len = len;
+        self.bytes_read = 0;
+    }
+    fn switch_to_content(&mut self, content_len: usize) {
+        self.operation = Operation::Content;
+        self.content_len = content_len;
         self.bytes_read = 0;
     }
     fn increment(&mut self, delta: usize) {
         self.bytes_read = self.bytes_read + delta;
     }
-    async fn read_msg(&mut self, config: ReadConfig, socket_read: &mut ReadHalf<'_>) -> Result<ReadResult, ProcessError> {
+    async fn read(&mut self, socket_read: &mut ReadHalf<'_>) -> Result<ReadResult, ProcessError> {
         loop {
             let mut data_res = DataReadResult::Continue;
 
@@ -188,15 +154,15 @@ impl State {
 
                             println!("len {}", len);
 
-                            self.switch_to_data(len as usize);
+                            self.switch_to_msg_meta(len as usize);
                         }
                         _ => return Err(ProcessError::NotEnoughBytesForLen)
                     }               
                 }
-                Operation::Data => {
+                Operation::MsgMeta => {
                     let n = socket_read.read(&mut self.data_buf).await?;
 
-                    println!("Operation::Data, server n is {}", n);
+                    println!("Operation::MsgMeta, server n is {}", n);
 
                     match n {
                         0 => return Err(ProcessError::StreamClosed),
@@ -205,9 +171,7 @@ impl State {
 
                             println!("bytes_read {}, len {}", self.bytes_read, self.len);
 
-                            if self.bytes_read == self.len {
-                                self.switch_to_len();
-
+                            if self.bytes_read == self.len {                                
                                 self.acc.extend_from_slice(&self.data_buf[..n]);
 
                                 println!("bytes_read == len");
@@ -245,35 +209,34 @@ impl State {
                                     let msg_meta = get_msg_meta(&self.acc)?;
 
                                     println!("{:?}", msg_meta);
-                                    println!("content len {}", msg_meta.content_len());
+                                    println!("content len {}", msg_meta.content_len());                                    
+
+                                    self.switch_to_content(msg_meta.content_len() as usize);
+
+                                    return Ok(ReadResult::MsgMeta(msg_meta));
                                 }
                                 DataReadResult::ExtraDataRead(offset) => {
                                     let msg_meta = get_msg_meta(&self.acc)?;
 
                                     println!("{:?}", msg_meta);
                                     println!("content len {}", msg_meta.content_len());
+
+                                    self.switch_to_content(msg_meta.content_len() as usize);
+
+                                    return Ok(ReadResult::MsgMeta(msg_meta));
                                 }
                                 DataReadResult::Continue => {}
-                            }                                               
+                            }
                         }
                     }
                 }
+                Operation::Content => {
+
+                }
             }
         }
-
-        Ok(ReadResult::Stop)
-    }    
+    }
 }
-
-/*
-fn send_msg(acc: &Vec<u8>, server_tx: i32) -> Result<(), Box<dyn Error>> {
-    let msg_meta = get_msg_meta(acc)?;
-
-    server_tx.send(ServerMsg::AddClient(msg_meta.rx, addr, client_tx));
-
-    Ok(())
-}
-*/
 
 pub fn start() {
     let rt = Runtime::new().expect("failed to create runtime"); 
@@ -300,35 +263,34 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
 
     let mut listener = TcpListener::bind(&config.host).await?;
 
-    let (server_tx, server_rx) = crossbeam::channel::unbounded();
+    let (mut server_tx, mut server_rx) = mpsc::channel(MPSC_BUF_SIZE);
+
+    tokio::spawn(async move {        
+        let mut clients = HashMap::new();
+
+        loop {
+            let msg = server_rx.recv().await.expect("clients msg receive failed");
+
+            match msg {
+                ServerMsg::AddClient(addr, net_addr, tx) => {
+                    let client = Client { 
+                        net_addr,
+                        tx 
+                    };
+
+                    clients.insert(addr, client);
+                }
+                ServerMsg::SendBuf(addr, buf) => {
+                    let client = clients.get(&addr);
+                }
+                ServerMsg::RemoveClient(addr) => {
+                    clients.remove(&addr);
+                }
+            }     
+        }
+    });
+
     
-    let clients = std::thread::Builder::new()
-        .name("clients".to_owned())
-        .spawn(move || {    
-            let mut clients = HashMap::new();
-
-            loop {
-                let msg = server_rx.recv().expect("clients msg receive failed");
-
-                match msg {
-                    ServerMsg::AddClient(addr, net_addr, tx) => {
-                        let client = Client { 
-                            net_addr,
-                            tx 
-                        };
-
-                        clients.insert(addr, client);
-                    }
-                    ServerMsg::SendBuf(addr, buf) => {
-                        let client = clients.get(&addr);
-                    }
-                    ServerMsg::RemoveClient(addr) => {
-                        clients.remove(&addr);
-                    }
-                }     
-            }
-        })
-        .expect("failed to start clients thread");    
 
     println!("ok");
 
@@ -349,9 +311,9 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
 
 async fn process(mut stream: TcpStream, client_net_addr: SocketAddr, server_tx: Sender<ServerMsg>) -> Result<(), ProcessError> {
     let (mut socket_read, mut socket_write) = stream.split();
-    let (client_tx, client_rx) = unbounded();
-
     let mut state = State::new();
+
+    /*
 
     let msg_meta = match state.read_msg(ReadConfig::ReadOne, &mut socket_read).await? {
         ReadResult::Msg(msg_meta) => msg_meta,
@@ -380,6 +342,7 @@ async fn process(mut stream: TcpStream, client_net_addr: SocketAddr, server_tx: 
             }
         }
     }
+    */
     
     /*
     match state.read_msg(&mut socket_read).await {

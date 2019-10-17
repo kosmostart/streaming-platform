@@ -59,7 +59,6 @@ struct State {
     pub len_buf: [u8; LEN_BUF_SIZE],
     pub data_buf: [u8; DATA_BUF_SIZE], 
     pub acc: Vec<u8>,
-    pub next: Vec<u8>,
     pub tx: Sender<[u8; DATA_BUF_SIZE]>,
     pub rx: Receiver<[u8; DATA_BUF_SIZE]>
 }
@@ -133,6 +132,12 @@ enum ReadResult {
     Stop
 }
 
+enum DataReadResult {
+    Continue,
+    Equality,
+    ExtraDataRead(usize)
+}
+
 impl State {
     fn new() -> State {
         let (tx, rx) = unbounded();
@@ -144,7 +149,6 @@ impl State {
             len_buf: [0; LEN_BUF_SIZE],
             data_buf: [0; DATA_BUF_SIZE],
             acc: vec![],
-            next: vec![],
             tx,
             rx
         }  
@@ -159,27 +163,16 @@ impl State {
         self.len = len;
         self.bytes_read = 0;
     }
-    fn reset(&mut self, len: usize) {
-        self.len = len;
-        self.bytes_read = 0;
-    }
     fn increment(&mut self, delta: usize) {
         self.bytes_read = self.bytes_read + delta;
     }
     async fn read_msg(&mut self, config: ReadConfig, socket_read: &mut ReadHalf<'_>) -> Result<ReadResult, ProcessError> {
         loop {
+            let mut data_res = DataReadResult::Continue;
+
             match self.operation {
                 Operation::Len => {
                     println!("len");
-
-                    if self.acc.len() > 0 {
-                        self.acc.clear();
-                    }
-
-                    if self.next.len() > 0 {
-                        self.acc.extend_from_slice(&self.next);
-                        self.next.clear();
-                    }
 
                     let n = socket_read.read_exact(&mut self.len_buf).await?;
 
@@ -193,6 +186,8 @@ impl State {
                             let mut cursor = std::io::Cursor::new(self.len_buf);
                             let len = cursor.get_u32_be();
 
+                            println!("len {}", len);
+
                             self.switch_to_data(len as usize);
                         }
                         _ => return Err(ProcessError::NotEnoughBytesForLen)
@@ -200,8 +195,6 @@ impl State {
                 }
                 Operation::Data => {
                     let n = socket_read.read(&mut self.data_buf).await?;
-
-                    let mut msg_meta = None;
 
                     println!("Operation::Data, server n is {}", n);
 
@@ -220,71 +213,48 @@ impl State {
                                 println!("bytes_read == len");
                                 println!("acc len {}", self.acc.len());
 
-                                match msg_meta {
-                                    Some(msg_meta) => {
-                                        match config {
-                                            ReadConfig::ReadOne => {
-                                                return Ok(ReadResult::Msg(msg_meta));
-                                            }
-                                            ReadConfig::Stream => {
-                                                
-                                            }
-                                        }
-                                    }
-                                    None => {
-                                        println!("1");
-
-                                        let current = get_msg_meta(&self.acc)?;
-
-                                        println!("{:?}",current);
-
-                                        self.reset(current.content_len() as usize);
-
-                                        msg_meta = Some(current);
-                                    }
-                                }
+                                data_res = DataReadResult::Equality;
                             } else
 
                             if self.bytes_read > self.len {
                                 let offset = self.bytes_read - self.len;
-                                self.switch_to_len();
 
-                                self.acc.extend_from_slice(&self.data_buf[..offset]);
+                                println!("offset {}", offset);
+
+                                self.acc.extend_from_slice(&self.data_buf[..n - offset]);
+
+                                //self.switch_to_len();
+
+                                //self.next.extend_from_slice(&self.data_buf[offset..n]);
                                 
-                                match msg_meta {
-                                    Some(msg_meta) => {
-                                        self.next.extend_from_slice(&self.data_buf[offset..n]);
+                                println!("bytes_read > len");
 
-                                        match config {
-                                            ReadConfig::ReadOne => {
-                                                return Ok(ReadResult::Msg(msg_meta));
-                                            }
-                                            ReadConfig::Stream => {
-
-                                            }
-                                        }
-                                    }
-                                    None => {
-                                        println!("2");
-
-                                        let current = get_msg_meta(&self.acc)?;
-
-                                        println!("{:?}",current);
-
-                                        self.reset(current.content_len() as usize);
-
-                                        msg_meta = Some(current);
-                                    }
-                                }
-
-                                println!("bytes_read > len");                                    
+                                data_res = DataReadResult::ExtraDataRead(offset);                                  
                             } else 
 
                             if self.bytes_read < self.len {                                    
                                 self.acc.extend_from_slice(&self.data_buf[..n]);
 
                                 println!("bytes_read < len");
-                            }                                                         
+
+                                data_res = DataReadResult::Continue;
+                            }
+
+                            match data_res {
+                                DataReadResult::Equality => {
+                                    let msg_meta = get_msg_meta(&self.acc)?;
+
+                                    println!("{:?}", msg_meta);
+                                    println!("content len {}", msg_meta.content_len());
+                                }
+                                DataReadResult::ExtraDataRead(offset) => {
+                                    let msg_meta = get_msg_meta(&self.acc)?;
+
+                                    println!("{:?}", msg_meta);
+                                    println!("content len {}", msg_meta.content_len());
+                                }
+                                DataReadResult::Continue => {}
+                            }                                               
                         }
                     }
                 }

@@ -610,3 +610,24 @@ pub fn get_payload<T>(msg_meta: &MsgMeta, data: &[u8]) -> Result<T, Error> where
 
     Ok(payload)
 }
+
+pub fn get_payload_with_attachments<T>(msg_meta: &MsgMeta, data: &[u8]) -> Result<(T, Vec<(String, Vec<u8>)>), Error> where T: Debug, T: serde::Serialize, for<'de> T: serde::Deserialize<'de> {
+    let mut buf = std::io::Cursor::new(data);    
+    let len = buf.get_u32_be();
+    let msg_meta_offset = (len + 4) as usize;
+
+    let payload_offset = msg_meta_offset + msg_meta.payload_size as usize;
+
+    let payload = serde_json::from_slice::<T>(&data[msg_meta_offset..payload_offset])?;
+
+    let mut attachments = vec![];
+    let mut attachment_offset = payload_offset;
+
+    for attachment in &msg_meta.attachments {
+        let attachment_start = attachment_offset;
+        attachment_offset = attachment_offset + attachment.size as usize;
+        attachments.push((attachment.name.clone(), (&data[attachment_start..attachment_offset]).to_owned()))
+    }
+
+    Ok((payload, attachments))
+}

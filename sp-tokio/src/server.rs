@@ -59,27 +59,43 @@ struct State {
     pub len_buf: [u8; LEN_BUF_SIZE],
     pub data_buf: [u8; DATA_BUF_SIZE], 
     pub acc: Vec<u8>,
+    pub next: Vec<u8>,
     pub tx: Sender<[u8; DATA_BUF_SIZE]>,
     pub rx: Receiver<[u8; DATA_BUF_SIZE]>
 }
 
 #[derive(Debug)]
-enum StateError {
+enum ProcessError {
     StreamClosed,
     NotEnoughBytesForLen,
+    IncorrectReadResult,
     Io(std::io::Error),
-    SerdeJson(serde_json::Error)
+    SerdeJson(serde_json::Error),
+    CrossbeamChannelRecv(crossbeam::channel::RecvError),
+    CrossbeamChannelSend(crossbeam::channel::SendError<ServerMsg>)
 }
 
-impl From<std::io::Error> for StateError {
-	fn from(err: std::io::Error) -> StateError {
-		StateError::Io(err)
+impl From<std::io::Error> for ProcessError {
+	fn from(err: std::io::Error) -> ProcessError {
+		ProcessError::Io(err)
 	}
 }
 
-impl From<serde_json::Error> for StateError {
-	fn from(err: serde_json::Error) -> StateError {
-		StateError::SerdeJson(err)
+impl From<serde_json::Error> for ProcessError {
+	fn from(err: serde_json::Error) -> ProcessError {
+		ProcessError::SerdeJson(err)
+	}
+}
+
+impl From<crossbeam::channel::RecvError> for ProcessError {
+	fn from(err: crossbeam::channel::RecvError) -> ProcessError {
+		ProcessError::CrossbeamChannelRecv(err)
+	}
+}
+
+impl From<crossbeam::channel::SendError<ServerMsg>> for ProcessError {
+	fn from(err: crossbeam::channel::SendError<ServerMsg>) -> ProcessError {
+		ProcessError::CrossbeamChannelSend(err)
 	}
 }
 
@@ -128,6 +144,7 @@ impl State {
             len_buf: [0; LEN_BUF_SIZE],
             data_buf: [0; DATA_BUF_SIZE],
             acc: vec![],
+            next: vec![],
             tx,
             rx
         }  
@@ -142,56 +159,89 @@ impl State {
         self.len = len;
         self.bytes_read = 0;
     }
+    fn reset(&mut self, len: usize) {
+        self.len = len;
+        self.bytes_read = 0;
+    }
     fn increment(&mut self, delta: usize) {
         self.bytes_read = self.bytes_read + delta;
     }
-    async fn read_msg(&mut self, config: ReadConfig, socket_read: &mut ReadHalf<'_>) -> Result<ReadResult, StateError> {
+    async fn read_msg(&mut self, config: ReadConfig, socket_read: &mut ReadHalf<'_>) -> Result<ReadResult, ProcessError> {
         loop {
             match self.operation {
                 Operation::Len => {
                     println!("len");
 
+                    if self.acc.len() > 0 {
+                        self.acc.clear();
+                    }
+
+                    if self.next.len() > 0 {
+                        self.acc.extend_from_slice(&self.next);
+                        self.next.clear();
+                    }
+
                     let n = socket_read.read_exact(&mut self.len_buf).await?;
 
-                    println!("server n is {}", n);
+                    println!("Operation::Len, server n is {}", n);
 
                     match n {
-                        0 => return Err(StateError::StreamClosed),
-                        LEN_BUF_SIZE => {
-                            //acc.extend_from_slice(&len_buf);
+                        0 => return Err(ProcessError::StreamClosed),
+                        LEN_BUF_SIZE => { 
+                            self.acc.extend_from_slice(&self.len_buf);
 
                             let mut cursor = std::io::Cursor::new(self.len_buf);
                             let len = cursor.get_u32_be();
 
                             self.switch_to_data(len as usize);
                         }
-                        _ => return Err(StateError::NotEnoughBytesForLen)
+                        _ => return Err(ProcessError::NotEnoughBytesForLen)
                     }               
                 }
                 Operation::Data => {
                     let n = socket_read.read(&mut self.data_buf).await?;
 
-                    println!("server n is {}", n);
+                    let mut msg_meta = None;
+
+                    println!("Operation::Data, server n is {}", n);
 
                     match n {
-                        0 => return Err(StateError::StreamClosed),
+                        0 => return Err(ProcessError::StreamClosed),
                         _ => {
                             self.increment(n);
 
-                            println!("bytes_read {}", self.bytes_read);
+                            println!("bytes_read {}, len {}", self.bytes_read, self.len);
 
                             if self.bytes_read == self.len {
                                 self.switch_to_len();
 
-                                self.acc.extend_from_slice(&mut self.data_buf[..n]);
+                                self.acc.extend_from_slice(&self.data_buf[..n]);
 
                                 println!("bytes_read == len");
                                 println!("acc len {}", self.acc.len());
 
-                                //process(&mut acc, &mut socket_write, &config).await;
-                                
-                                if config == ReadConfig::ReadOne {
-                                    return Ok(ReadResult::Msg(get_msg_meta(&self.acc)?));
+                                match msg_meta {
+                                    Some(msg_meta) => {
+                                        match config {
+                                            ReadConfig::ReadOne => {
+                                                return Ok(ReadResult::Msg(msg_meta));
+                                            }
+                                            ReadConfig::Stream => {
+                                                
+                                            }
+                                        }
+                                    }
+                                    None => {
+                                        println!("1");
+
+                                        let current = get_msg_meta(&self.acc)?;
+
+                                        println!("{:?}",current);
+
+                                        self.reset(current.content_len() as usize);
+
+                                        msg_meta = Some(current);
+                                    }
                                 }
                             } else
 
@@ -199,20 +249,39 @@ impl State {
                                 let offset = self.bytes_read - self.len;
                                 self.switch_to_len();
 
-                                self.acc.extend_from_slice(&mut self.data_buf[..offset]);
-
-                                //process(&mut acc, &mut socket_write, &config).await;
+                                self.acc.extend_from_slice(&self.data_buf[..offset]);
                                 
-                                if config == ReadConfig::ReadOne {
-                                    return Ok(ReadResult::Msg(get_msg_meta(&self.acc)?));
+                                match msg_meta {
+                                    Some(msg_meta) => {
+                                        self.next.extend_from_slice(&self.data_buf[offset..n]);
+
+                                        match config {
+                                            ReadConfig::ReadOne => {
+                                                return Ok(ReadResult::Msg(msg_meta));
+                                            }
+                                            ReadConfig::Stream => {
+
+                                            }
+                                        }
+                                    }
+                                    None => {
+                                        println!("2");
+
+                                        let current = get_msg_meta(&self.acc)?;
+
+                                        println!("{:?}",current);
+
+                                        self.reset(current.content_len() as usize);
+
+                                        msg_meta = Some(current);
+                                    }
                                 }
 
-                                self.acc.extend_from_slice(&mut self.data_buf[..n]);
                                 println!("bytes_read > len");                                    
                             } else 
 
                             if self.bytes_read < self.len {                                    
-                                self.acc.extend_from_slice(&mut self.data_buf[..n]);
+                                self.acc.extend_from_slice(&self.data_buf[..n]);
 
                                 println!("bytes_read < len");
                             }                                                         
@@ -300,56 +369,68 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
         println!("connected");
 
         tokio::spawn(async move {
-            let (mut socket_read, mut socket_write) = stream.split();
-            let (client_tx, client_rx) = crossbeam::channel::unbounded();
+            let res = process(stream, client_net_addr, server_tx).await;
 
-            server_tx.send(ServerMsg::AddClient("".to_owned(), client_net_addr, client_tx));          
-            
-            let mut state = State::new();
-
-            let route = select! {
-                recv(state.rx) -> msg => BufRoute::Broker(msg.unwrap()),
-                recv(client_rx) -> msg => BufRoute::Socket(msg.unwrap())
-            };
-
-            match route {
-                BufRoute::Broker(buf) => {
-                    server_tx.send(ServerMsg::SendBuf("".to_owned(), buf));
-                }
-                BufRoute::Socket(buf) => {
-                    socket_write.write_all(&buf).await;
-                }
-            }
-            
-            /*
-            match state.read_msg(&mut socket_read).await {
-                Ok(_) => {
-                    loop {
-                        if state.read_msg(&mut socket_read).await.is_err() {
-                            break;
-                        }
-
-                        // remove client because we have stopped reading from socket
-                        //server_tx.send(ServerMsg::RemoveClient(client_addr));
-                    }
-                }
-                Err(err) => {
-
-                }
-            }
-            */    
+            println!("{:?}", res);
         });
         
     }
 }
 
-/*
-//let (tx, rx) = crossbeam::channel::unbounded();
+async fn process(mut stream: TcpStream, client_net_addr: SocketAddr, server_tx: Sender<ServerMsg>) -> Result<(), ProcessError> {
+    let (mut socket_read, mut socket_write) = stream.split();
+    let (client_tx, client_rx) = unbounded();
 
-//loop {
-//    let q: Result<i32, _> = rx.recv();
-//}
-*/
+    let mut state = State::new();
+
+    let msg_meta = match state.read_msg(ReadConfig::ReadOne, &mut socket_read).await? {
+        ReadResult::Msg(msg_meta) => msg_meta,
+        _ => return Err(ProcessError::IncorrectReadResult)
+    };
+
+    let payload: Value = get_payload(&msg_meta, &state.acc)?;
+
+    println!("{:?}", msg_meta);
+    println!("{:?}", payload);
+
+    server_tx.send(ServerMsg::AddClient(msg_meta.tx.clone(), client_net_addr, client_tx))?;             
+
+    loop {
+        let route = select! {
+            recv(state.rx) -> msg => BufRoute::Broker(msg?),
+            recv(client_rx) -> msg => BufRoute::Socket(msg?)
+        };
+
+        match route {
+            BufRoute::Broker(buf) => {
+                server_tx.send(ServerMsg::SendBuf(msg_meta.tx.clone(), buf))?;
+            }
+            BufRoute::Socket(buf) => {
+                socket_write.write_all(&buf).await?;
+            }
+        }
+    }
+    
+    /*
+    match state.read_msg(&mut socket_read).await {
+        Ok(_) => {
+            loop {
+                if state.read_msg(&mut socket_read).await.is_err() {
+                    break;
+                }
+
+                // remove client because we have stopped reading from socket
+                //server_tx.send(ServerMsg::RemoveClient(client_addr));
+            }
+        }
+        Err(err) => {
+
+        }
+    }
+    */ 
+
+    Ok(())
+}
 
 /*
 async fn process(acc: &mut Vec<u8>, socket_write: &mut WriteHalf<'_>, config: &Config) -> Result<(), Box<dyn Error>> {

@@ -27,19 +27,6 @@ pub async fn connect_future() {
     let rpc_dto = rpc_dto("asd".to_owned(), "qwe".to_owned(), "key".to_owned(), json!({
     }), route).unwrap();
 
-    let mut buf = vec![];
-
-    let len = rpc_dto.len();
-
-    println!("len {}", len);
-
-    buf.put_u32_be(len as u32);
-
-    if let Err(err) = socket_write.write_all(&buf).await {
-        println!("failed to write to socket {:?}", err);
-        return;
-    }
-
     if let Err(err) = socket_write.write_all(&rpc_dto).await {
         println!("failed to write to socket {:?}", err);
         return;

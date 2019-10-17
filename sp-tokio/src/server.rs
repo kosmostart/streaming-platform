@@ -91,7 +91,7 @@ enum Operation {
 enum DataReadResult {
     Continue,
     Equality,
-    ExtraDataRead(usize)
+    ExtraDataRead(usize, usize)
 }
 
 /// Data structure used for reading from socket
@@ -132,8 +132,7 @@ impl State {
         self.len = len;
         self.bytes_read = 0;
     }
-    fn switch_to_content(&mut self, content_len: usize, bytes_read: usize) {
-        self.acc.clear();
+    fn switch_to_content(&mut self, content_len: usize, bytes_read: usize) {        
         self.operation = Operation::Content;
         self.content_len = content_len;
         self.bytes_read = bytes_read;
@@ -200,7 +199,7 @@ impl State {
                                 
                                 println!("bytes_read > len");
 
-                                self.data_res = DataReadResult::ExtraDataRead(offset);                                  
+                                self.data_res = DataReadResult::ExtraDataRead(offset, n);
                             } else 
 
                             if self.bytes_read < self.len {                                    
@@ -222,15 +221,13 @@ impl State {
 
                                     return Ok(ReadResult::MsgMeta(msg_meta));
                                 }
-                                DataReadResult::ExtraDataRead(offset) => {
+                                DataReadResult::ExtraDataRead(offset, _) => {
                                     let msg_meta = get_msg_meta(&self.acc)?;
 
                                     println!("{:?}", msg_meta);
                                     println!("content len {}", msg_meta.content_len());
 
                                     self.switch_to_content(msg_meta.content_len() as usize, offset);                                    
-
-                                    self.acc.extend_from_slice(&self.data_buf[n - offset..]);
 
                                     return Ok(ReadResult::MsgMeta(msg_meta));
                                 }
@@ -240,22 +237,44 @@ impl State {
                     }
                 }
                 Operation::Content => {
-                    if self.acc.len() > 0 {
-                        self.acc.clear();
-                    } else {
-                        let n = socket_read.read(&mut self.data_buf).await?;
+                    match self.data_res {
+                        DataReadResult::ExtraDataRead(offset, n) => {
 
-                        println!("Operation::Content, server n is {}", n);
+                        }
+                        _ => {
+                            let n = socket_read.read(&mut self.data_buf).await?;
 
-                        match n {
-                            0 => return Err(ProcessError::StreamClosed),
-                            _ => {
-                                self.increment(n);                                
+                            println!("Operation::Content, server n is {}", n);
 
-                                println!("bytes_read {}, content_len {}", self.bytes_read, self.content_len);
+                            match n {
+                                0 => return Err(ProcessError::StreamClosed),
+                                _ => {
+                                    self.increment(n);                                
+
+                                    println!("bytes_read {}, content_len {}", self.bytes_read, self.content_len);
+                                }
                             }
                         }
                     }                    
+
+                    /*
+                    if self.bytes_read > self.content_len {
+                        let offset = self.bytes_read - self.content_len;
+
+                        println!("content offset {}", offset);
+
+                        self.acc.extend_from_slice(&self.data_buf[n - offset..]);
+
+                        //self.switch_to_len();
+
+                        //self.next.extend_from_slice(&self.data_buf[offset..n]);
+                        
+                        println!("bytes_read > len");
+
+                        self.data_res = DataReadResult::ExtraDataRead(offset);
+
+                    }   
+                    */
                 }
             }
         }

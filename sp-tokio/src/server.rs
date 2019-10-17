@@ -97,7 +97,7 @@ enum DataReadResult {
 /// Data structure used for reading from socket
 struct State {
     pub operation: Operation,
-    pub data_res: DataReadResult;
+    pub data_res: DataReadResult,
     pub msg_meta: Option<MsgMeta>,
     pub len: usize,
     pub content_len: usize,
@@ -132,10 +132,11 @@ impl State {
         self.len = len;
         self.bytes_read = 0;
     }
-    fn switch_to_content(&mut self, content_len: usize) {
+    fn switch_to_content(&mut self, content_len: usize, bytes_read: usize) {
+        self.acc.clear();
         self.operation = Operation::Content;
         self.content_len = content_len;
-        self.bytes_read = 0;
+        self.bytes_read = bytes_read;
     }
     fn increment(&mut self, delta: usize) {
         self.bytes_read = self.bytes_read + delta;
@@ -217,9 +218,7 @@ impl State {
                                     println!("{:?}", msg_meta);
                                     println!("content len {}", msg_meta.content_len());                                    
 
-                                    self.switch_to_content(msg_meta.content_len() as usize);
-
-                                    self.acc.clear();
+                                    self.switch_to_content(msg_meta.content_len() as usize, 0);                                    
 
                                     return Ok(ReadResult::MsgMeta(msg_meta));
                                 }
@@ -229,9 +228,9 @@ impl State {
                                     println!("{:?}", msg_meta);
                                     println!("content len {}", msg_meta.content_len());
 
-                                    self.switch_to_content(msg_meta.content_len() as usize);
+                                    self.switch_to_content(msg_meta.content_len() as usize, offset);                                    
 
-                                    self.acc.clear();
+                                    self.acc.extend_from_slice(&self.data_buf[n - offset..]);
 
                                     return Ok(ReadResult::MsgMeta(msg_meta));
                                 }
@@ -241,25 +240,22 @@ impl State {
                     }
                 }
                 Operation::Content => {
-                    let n = socket_read.read(&mut self.data_buf).await?;
+                    if self.acc.len() > 0 {
+                        self.acc.clear();
+                    } else {
+                        let n = socket_read.read(&mut self.data_buf).await?;
 
-                    println!("Operation::Content, server n is {}", n);
+                        println!("Operation::Content, server n is {}", n);
 
-                    match n {
-                        0 => return Err(ProcessError::StreamClosed),
-                        _ => {
-                            self.increment(n);
+                        match n {
+                            0 => return Err(ProcessError::StreamClosed),
+                            _ => {
+                                self.increment(n);                                
 
-                            match self.data_res {
-                                DataReadResult::ExtraDataRead(offset) => {
-
-                                }
-                                _ => {}
+                                println!("bytes_read {}, content_len {}", self.bytes_read, self.content_len);
                             }
-
-                            println!("bytes_read {}, content_len {}", self.bytes_read, self.len);
                         }
-                    }
+                    }                    
                 }
             }
         }

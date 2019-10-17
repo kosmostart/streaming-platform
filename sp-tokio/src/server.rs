@@ -97,6 +97,7 @@ enum DataReadResult {
 /// Data structure used for reading from socket
 struct State {
     pub operation: Operation,
+    pub data_res: DataReadResult;
     pub msg_meta: Option<MsgMeta>,
     pub len: usize,
     pub content_len: usize,
@@ -110,6 +111,7 @@ impl State {
     fn new() -> State {
         State {
             operation: Operation::Len,
+            data_res: DataReadResult::Continue,
             msg_meta: None,
             len: 0,
             content_len: 0,
@@ -140,8 +142,6 @@ impl State {
     }
     async fn read(&mut self, socket_read: &mut ReadHalf<'_>) -> Result<ReadResult, ProcessError> {
         loop {
-            let mut data_res = DataReadResult::Continue;
-
             match self.operation {
                 Operation::Len => {
                     println!("len");
@@ -183,7 +183,7 @@ impl State {
                                 println!("bytes_read == len");
                                 println!("acc len {}", self.acc.len());
 
-                                data_res = DataReadResult::Equality;
+                                self.data_res = DataReadResult::Equality;
                             } else
 
                             if self.bytes_read > self.len {
@@ -199,7 +199,7 @@ impl State {
                                 
                                 println!("bytes_read > len");
 
-                                data_res = DataReadResult::ExtraDataRead(offset);                                  
+                                self.data_res = DataReadResult::ExtraDataRead(offset);                                  
                             } else 
 
                             if self.bytes_read < self.len {                                    
@@ -207,10 +207,10 @@ impl State {
 
                                 println!("bytes_read < len");
 
-                                data_res = DataReadResult::Continue;
+                                self.data_res = DataReadResult::Continue;
                             }
 
-                            match data_res {
+                            match self.data_res {
                                 DataReadResult::Equality => {
                                     let msg_meta = get_msg_meta(&self.acc)?;
 
@@ -218,6 +218,8 @@ impl State {
                                     println!("content len {}", msg_meta.content_len());                                    
 
                                     self.switch_to_content(msg_meta.content_len() as usize);
+
+                                    self.acc.clear();
 
                                     return Ok(ReadResult::MsgMeta(msg_meta));
                                 }
@@ -229,6 +231,8 @@ impl State {
 
                                     self.switch_to_content(msg_meta.content_len() as usize);
 
+                                    self.acc.clear();
+
                                     return Ok(ReadResult::MsgMeta(msg_meta));
                                 }
                                 DataReadResult::Continue => {}
@@ -237,7 +241,25 @@ impl State {
                     }
                 }
                 Operation::Content => {
+                    let n = socket_read.read(&mut self.data_buf).await?;
 
+                    println!("Operation::Content, server n is {}", n);
+
+                    match n {
+                        0 => return Err(ProcessError::StreamClosed),
+                        _ => {
+                            self.increment(n);
+
+                            match self.data_res {
+                                DataReadResult::ExtraDataRead(offset) => {
+
+                                }
+                                _ => {}
+                            }
+
+                            println!("bytes_read {}, content_len {}", self.bytes_read, self.len);
+                        }
+                    }
                 }
             }
         }

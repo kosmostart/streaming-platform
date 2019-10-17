@@ -9,7 +9,7 @@ use std::net::SocketAddr;
 use bytes::Buf;
 use futures::future::{Fuse, FusedFuture, FutureExt};
 use futures::stream::StreamExt;
-use futures::select;
+use futures::{select, pin_mut};
 use tokio::runtime::Runtime;
 use tokio::net::{TcpListener, TcpStream, tcp::split::ReadHalf};
 use tokio::sync::mpsc::{self, Sender, Receiver};
@@ -310,7 +310,7 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
     }
 }
 
-async fn process(mut stream: TcpStream, client_net_addr: SocketAddr, server_tx: Sender<ServerMsg>) -> Result<(), ProcessError> {
+async fn process(mut stream: TcpStream, client_net_addr: SocketAddr, mut server_tx: Sender<ServerMsg>) -> Result<(), ProcessError> {
     let (mut socket_read, mut socket_write) = stream.split();
     let mut state = State::new();
 
@@ -324,9 +324,12 @@ async fn process(mut stream: TcpStream, client_net_addr: SocketAddr, server_tx: 
     let (mut client_tx, mut client_rx) = mpsc::channel(MPSC_CLIENT_BUF_SIZE);
 
     server_tx.send(ServerMsg::AddClient(msg_meta.tx.clone(), client_net_addr, client_tx)).await.unwrap();
-
+    
     let f1 = state.read(&mut socket_read).fuse();
     let f2 = client_rx.recv().fuse();
+
+    pin_mut!(f1);
+    pin_mut!(f2);
 
     loop {
         let res = select! {

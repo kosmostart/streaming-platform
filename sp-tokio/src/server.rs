@@ -7,6 +7,9 @@ use std::fs::{self, DirEntry};
 use std::path::Path;
 use std::net::SocketAddr;
 use bytes::Buf;
+use futures::future::{Fuse, FusedFuture, FutureExt};
+use futures::stream::StreamExt;
+use futures::select;
 use tokio::runtime::Runtime;
 use tokio::net::{TcpListener, TcpStream, tcp::split::ReadHalf};
 use tokio::sync::mpsc::{self, Sender, Receiver};
@@ -28,7 +31,8 @@ struct Dir {
     path: String
 }
 
-const MPSC_BUF_SIZE: usize = 1000;
+const MPSC_SERVER_BUF_SIZE: usize = 1000;
+const MPSC_CLIENT_BUF_SIZE: usize = 100;
 const LEN_BUF_SIZE: usize = 4;
 const DATA_BUF_SIZE: usize = 1024;
 
@@ -263,7 +267,7 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
 
     let mut listener = TcpListener::bind(&config.host).await?;
 
-    let (mut server_tx, mut server_rx) = mpsc::channel(MPSC_BUF_SIZE);
+    let (mut server_tx, mut server_rx) = mpsc::channel(MPSC_SERVER_BUF_SIZE);
 
     tokio::spawn(async move {        
         let mut clients = HashMap::new();
@@ -288,9 +292,7 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
                 }
             }     
         }
-    });
-
-    
+    });    
 
     println!("ok");
 
@@ -304,8 +306,7 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
             let res = process(stream, client_net_addr, server_tx).await;
 
             println!("{:?}", res);
-        });
-        
+        });        
     }
 }
 
@@ -313,16 +314,32 @@ async fn process(mut stream: TcpStream, client_net_addr: SocketAddr, server_tx: 
     let (mut socket_read, mut socket_write) = stream.split();
     let mut state = State::new();
 
-    /*
-
-    let msg_meta = match state.read_msg(ReadConfig::ReadOne, &mut socket_read).await? {
-        ReadResult::Msg(msg_meta) => msg_meta,
+    let msg_meta = match state.read(&mut socket_read).await? {
+        ReadResult::MsgMeta(msg_meta) => msg_meta,
         _ => return Err(ProcessError::IncorrectReadResult)
     };
 
-    let payload: Value = get_payload(&msg_meta, &state.acc)?;
+    //let payload: Value = get_payload(&msg_meta, &state.acc)?;
 
-    println!("{:?}", msg_meta);
+    let (mut client_tx, mut client_rx) = mpsc::channel(MPSC_CLIENT_BUF_SIZE);
+
+    server_tx.send(ServerMsg::AddClient(msg_meta.tx.clone(), client_net_addr, client_tx)).await.unwrap();
+
+    let f1 = state.read(&mut socket_read).fuse();
+    let f2 = client_rx.recv().fuse();
+
+    loop {
+        let res = select! {
+            res1 = f1 => {
+
+            }
+            res2 = f2 => {
+
+            }
+        };
+    }
+
+    /*
     println!("{:?}", payload);
 
     server_tx.send(ServerMsg::AddClient(msg_meta.tx.clone(), client_net_addr, client_tx))?;             

@@ -97,18 +97,20 @@ enum DataReadResult {
 /// Data structure used for reading from socket
 struct State {
     pub operation: Operation,
+    pub msg_meta: Option<MsgMeta>,
     pub len: usize,
     pub content_len: usize,
     pub bytes_read: usize,
     pub len_buf: [u8; LEN_BUF_SIZE],
     pub data_buf: [u8; DATA_BUF_SIZE], 
-    pub acc: Vec<u8>    
+    pub acc: Vec<u8>
 }
 
 impl State {
     fn new() -> State {
         State {
             operation: Operation::Len,
+            msg_meta: None,
             len: 0,
             content_len: 0,
             bytes_read: 0,
@@ -333,10 +335,17 @@ async fn process(mut stream: TcpStream, client_net_addr: SocketAddr, mut server_
 
     loop {
         let res = select! {
-            res1 = f1 => {
+            res = f1 => {
+                match res? {
+                    ReadResult::MsgMeta(msg_meta) => {
+                        println!("{:?}", msg_meta);
+                    }
+                    ReadResult::Data(buf) => {
 
+                    }
+                };                            
             }
-            res2 = f2 => {
+            res = f2 => {
 
             }
         };

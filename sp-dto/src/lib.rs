@@ -1,3 +1,4 @@
+use std::io::Cursor;
 use std::fmt::Debug;
 use bytes::{Buf, BufMut};
 use serde_derive::{Serialize, Deserialize};
@@ -570,14 +571,14 @@ pub fn rpc_dto_with_correlation_id_2(tx: String, rx: String, key: String, mut pa
 }
 
 pub fn get_msg_meta(data: &[u8]) -> Result<MsgMeta, Error> {
-    let mut buf = std::io::Cursor::new(data);
+    let mut buf = Cursor::new(data);
     let len = buf.get_u32_be() as usize;
 
     serde_json::from_slice::<MsgMeta>(&data[4..len + 4])
 }
 
 pub fn get_msg<T>(data: &[u8]) -> Result<(MsgMeta, T, Vec<(String, Vec<u8>)>), Error> where T: Debug, T: serde::Serialize, for<'de> T: serde::Deserialize<'de> {
-    let mut buf = std::io::Cursor::new(data);    
+    let mut buf = Cursor::new(data);    
     let len = buf.get_u32_be();
     let msg_meta_offset = (len + 4) as usize;
 
@@ -600,7 +601,7 @@ pub fn get_msg<T>(data: &[u8]) -> Result<(MsgMeta, T, Vec<(String, Vec<u8>)>), E
 }
 
 pub fn get_payload<T>(msg_meta: &MsgMeta, data: &[u8]) -> Result<T, Error> where T: Debug, T: serde::Serialize, for<'de> T: serde::Deserialize<'de> {
-    let mut buf = std::io::Cursor::new(data);    
+    let mut buf = Cursor::new(data);    
     let len = buf.get_u32_be();
     let msg_meta_offset = (len + 4) as usize;    
 
@@ -612,7 +613,7 @@ pub fn get_payload<T>(msg_meta: &MsgMeta, data: &[u8]) -> Result<T, Error> where
 }
 
 pub fn get_payload_with_attachments<T>(msg_meta: &MsgMeta, data: &[u8]) -> Result<(T, Vec<(String, Vec<u8>)>), Error> where T: Debug, T: serde::Serialize, for<'de> T: serde::Deserialize<'de> {
-    let mut buf = std::io::Cursor::new(data);    
+    let mut buf = Cursor::new(data);    
     let len = buf.get_u32_be();
     let msg_meta_offset = (len + 4) as usize;
 

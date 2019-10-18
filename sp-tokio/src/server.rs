@@ -2,7 +2,7 @@ use std::fmt;
 use std::error::Error;
 use std::collections::HashMap;
 use std::io::prelude::*;
-use std::io::BufReader;
+use std::io::{Cursor, BufReader};
 use std::fs::{self, DirEntry};
 use std::path::Path;
 use std::net::SocketAddr;
@@ -15,7 +15,7 @@ use tokio::net::{TcpListener, TcpStream, tcp::split::ReadHalf};
 use tokio::sync::mpsc::{self, Sender, Receiver};
 use tokio::prelude::*;
 use tokio::fs::File;
-use serde_json::Value;
+use serde_json::{Value, from_slice};
 use serde_derive::Deserialize;
 use sp_dto::*;
 
@@ -78,31 +78,11 @@ enum ReadResult {
     /// Message data stream is prepended with MsgMeta struct
     MsgMeta(MsgMeta),
     /// Message data stream itself
-    Data([u8; LEN_BUF_SIZE])
-}
-
-// This is used internally for reading
-enum Operation {
-    Len,
-    MsgMeta,
-    Content
-}
-
-#[derive(Debug)]
-enum DataReadResult {
-    Continue,
-    Equality,
-    ExtraDataRead(usize)
+    Data([u8; DATA_BUF_SIZE])
 }
 
 /// Data structure used for reading from socket
-struct State {
-    pub operation: Operation,
-    pub data_res: DataReadResult,
-    pub msg_meta: Option<MsgMeta>,
-    pub len: usize,
-    pub content_len: usize,
-    pub bytes_read: usize,
+struct State {        
     pub len_buf: [u8; LEN_BUF_SIZE],
     pub data_buf: [u8; DATA_BUF_SIZE], 
     pub acc: Vec<u8>
@@ -110,200 +90,36 @@ struct State {
 
 impl State {
     fn new() -> State {
-        State {
-            operation: Operation::Len,
-            data_res: DataReadResult::Continue,
-            msg_meta: None,
-            len: 0,
-            content_len: 0,
-            bytes_read: 0,
+        State {            
             len_buf: [0; LEN_BUF_SIZE],
             data_buf: [0; DATA_BUF_SIZE],
             acc: vec![]            
         }  
-    }
-    fn switch_to_len(&mut self, bytes_read: usize) {
-        self.operation = Operation::Len;
-        self.len = 0;
-        self.content_len = 0;
-        self.bytes_read = bytes_read;
-    }
-    fn switch_to_msg_meta(&mut self, len: usize, bytes_read: usize) {
-        self.operation = Operation::MsgMeta;
-        self.len = len;
-        self.bytes_read = bytes_read;
-    }
-    fn switch_to_content(&mut self, content_len: usize, bytes_read: usize) {
-        self.operation = Operation::Content;
-        self.content_len = content_len;
-        self.bytes_read = bytes_read;
-    }
-    fn increment(&mut self, delta: usize) {
-        self.bytes_read = self.bytes_read + delta;
-    }
+    }    
     async fn read(&mut self, socket_read: &mut ReadHalf<'_>) -> Result<ReadResult, ProcessError> {
+        socket_read.read_exact(&mut self.len_buf).await?;            
+
+        let mut buf = Cursor::new(&self.len_buf);
+        let len = buf.get_u32_be() as usize;
+        let mut adapter = socket_read.take(len as u64);
+
+        self.acc.clear();
+        let n = adapter.read_to_end(&mut self.acc).await?;
+
+        println!("len {}, n {}, acc len {}", len, n, self.acc.len());
+
+        let msg_meta: MsgMeta = from_slice(&self.acc)?;        
+        let mut adapter = socket_read.take(msg_meta.content_len() as u64);            
+
         loop {
-            match self.operation {
-                Operation::Len => {
-                    println!("Operation::Len");                    
+            let n = adapter.read(&mut self.data_buf).await?;
 
-                    match self.data_res {
-                        DataReadResult::ExtraDataRead(offset) => {
-                            let mut cursor = std::io::Cursor::new(&mut self.acc);
-                            let len = cursor.get_u32_be();
+            println!("loop n {}", n);
 
-                            println!("len {}", len);
+            break;
+        }        
 
-                            self.switch_to_msg_meta(len as usize, offset);                        
-                        }
-                        _ => {
-                            let n = socket_read.read_exact(&mut self.len_buf).await?;
-
-                            println!("Operation::Len, server n is {}", n);
-
-                            match n {
-                                0 => return Err(ProcessError::StreamClosed),
-                                LEN_BUF_SIZE => { 
-                                    self.acc.extend_from_slice(&self.len_buf);
-
-                                    let mut cursor = std::io::Cursor::new(self.len_buf);
-                                    let len = cursor.get_u32_be();
-
-                                    println!("len {}", len);
-
-                                    self.switch_to_msg_meta(len as usize, LEN_BUF_SIZE);
-                                }
-                                _ => return Err(ProcessError::NotEnoughBytesForLen)
-                            }                        
-                        }
-                    }
-                }
-                Operation::MsgMeta => {
-                    println!("Operation::MsgMeta");
-                    println!("acc len {}", self.acc.len());
-
-                    let n = match self.data_res {
-                        DataReadResult::ExtraDataRead(offset) => offset,
-                        _ => {
-                            let n = socket_read.read(&mut self.data_buf).await?;
-
-                            println!("Operation::MsgMeta, server n is {}", n);
-
-                            self.increment(n);
-
-                            n
-                        }
-                    };            
-
-                    match n {
-                        0 => return Err(ProcessError::StreamClosed),
-                        _ => {                            
-                            println!("bytes_read {}, len {}", self.bytes_read, self.len);
-
-                            if self.bytes_read == self.len {                                
-                                self.acc.extend_from_slice(&self.data_buf[..n]);
-
-                                println!("bytes_read == len");
-                                println!("acc len {}", self.acc.len());
-
-                                self.data_res = DataReadResult::Equality;
-                            } else
-
-                            if self.bytes_read > self.len {
-                                let offset = self.bytes_read - self.len;
-
-                                println!("offset {}", offset);
-
-                                self.acc.extend_from_slice(&self.data_buf[..self.len]);                                
-
-                                //self.switch_to_len();
-
-                                //self.next.extend_from_slice(&self.data_buf[offset..n]);
-                                
-                                println!("bytes_read > len");
-                                println!("acc len {}", self.acc.len());
-
-                                self.data_res = DataReadResult::ExtraDataRead(offset);
-                            } else 
-
-                            if self.bytes_read < self.len {                                    
-                                self.acc.extend_from_slice(&self.data_buf[..n]);
-
-                                println!("bytes_read < len");
-
-                                self.data_res = DataReadResult::Continue;
-                            }
-
-                            println!("{:?}", self.data_res);
-
-                            match self.data_res {
-                                DataReadResult::Equality => {
-                                    let msg_meta = get_msg_meta(&self.acc)?;
-
-                                    println!("{:?}", msg_meta);
-                                    println!("content len {}", msg_meta.content_len());                                    
-
-                                    self.switch_to_content(msg_meta.content_len() as usize, 0);                                    
-
-                                    return Ok(ReadResult::MsgMeta(msg_meta));
-                                }
-                                DataReadResult::ExtraDataRead(offset) => {
-                                    let msg_meta = get_msg_meta(&self.acc)?;
-
-                                    println!("{:?}", msg_meta);
-                                    println!("content len {}", msg_meta.content_len());
-
-                                    self.switch_to_content(msg_meta.content_len() as usize, offset);                                    
-
-                                    return Ok(ReadResult::MsgMeta(msg_meta));
-                                }
-                                DataReadResult::Continue => {}
-                            }
-                        }
-                    }
-                }
-                Operation::Content => {
-                    println!("Operation::Content");
-                    println!("{:?}", self.data_res);
-
-                    let n = match self.data_res {
-                        DataReadResult::ExtraDataRead(offset) => offset,
-                        _ => {
-                            let n = socket_read.read(&mut self.data_buf).await?;
-
-                            println!("Operation::Content, server n is {}", n);
-
-                            match n {
-                                0 => return Err(ProcessError::StreamClosed),
-                                _ => {
-                                    self.increment(n);                                    
-                                }
-                            }
-
-                            n
-                        }
-                    };
-
-                    println!("bytes_read {}, content_len {}, n {}, acc len {}", self.bytes_read, self.content_len, n, self.acc.len());
-
-                    if self.bytes_read > self.content_len {
-                        let offset = self.bytes_read - self.content_len;
-
-                        println!("content offset {}", offset);
-
-                        self.acc.clear();
-
-                        self.acc.extend_from_slice(&self.data_buf[n - offset..n]);
-
-                        self.switch_to_len(offset);                        
-
-                        self.data_res = DataReadResult::ExtraDataRead(offset);
-                    } else {
-                        
-                    }
-                }
-            }
-        }
+        Ok(ReadResult::MsgMeta(msg_meta))
     }
 }
 
@@ -384,6 +200,8 @@ async fn process(mut stream: TcpStream, client_net_addr: SocketAddr, mut server_
         _ => return Err(ProcessError::IncorrectReadResult)
     };
 
+    println!("auth {:?}", msg_meta);    
+
     //let payload: Value = get_payload(&msg_meta, &state.acc)?;
 
     let (mut client_tx, mut client_rx) = mpsc::channel(MPSC_CLIENT_BUF_SIZE);
@@ -401,7 +219,7 @@ async fn process(mut stream: TcpStream, client_net_addr: SocketAddr, mut server_
             res = f1 => {
                 match res? {
                     ReadResult::MsgMeta(msg_meta) => {
-                        println!("{:?}", msg_meta);
+                        println!("loop {:?}", msg_meta);
                     }
                     ReadResult::Data(buf) => {
 

@@ -257,24 +257,19 @@ impl State {
                         }
                     }                    
 
-                    /*
                     if self.bytes_read > self.content_len {
                         let offset = self.bytes_read - self.content_len;
 
                         println!("content offset {}", offset);
 
-                        self.acc.extend_from_slice(&self.data_buf[n - offset..]);
+                        self.acc.extend_from_slice(&self.data_buf[n - offset..n]);
 
-                        //self.switch_to_len();
+                        self.switch_to_len(offset);                        
 
-                        //self.next.extend_from_slice(&self.data_buf[offset..n]);
+                        self.data_res = DataReadResult::ExtraDataRead(offset, n);
+                    } else {
                         
-                        println!("bytes_read > len");
-
-                        self.data_res = DataReadResult::ExtraDataRead(offset);
-
-                    }   
-                    */
+                    }
                 }
             }
         }

@@ -95,7 +95,32 @@ impl State {
             data_buf: [0; DATA_BUF_SIZE],
             acc: vec![]            
         }  
-    }    
+    }
+    async fn read_full(&mut self, socket_read: &mut ReadHalf<'_>) -> Result<(MsgMeta, Vec<u8>, Vec<u8>), ProcessError> {
+        socket_read.read_exact(&mut self.len_buf).await?;            
+
+        let mut buf = Cursor::new(&self.len_buf);
+        let len = buf.get_u32_be() as usize;
+        let mut adapter = socket_read.take(len as u64);
+
+        self.acc.clear();
+        let n = adapter.read_to_end(&mut self.acc).await?;
+
+        println!("len {}, n {}, acc len {}", len, n, self.acc.len());
+
+        let msg_meta: MsgMeta = from_slice(&self.acc)?;        
+        let mut adapter = socket_read.take(msg_meta.payload_size as u64);
+
+        let mut payload = vec![];
+        let n = adapter.read_to_end(&mut payload).await?;
+
+        let mut adapter = socket_read.take(msg_meta.attachments_len() as u64);
+
+        let mut attachments = vec![];
+        let n = adapter.read_to_end(&mut attachments).await?;
+        
+        Ok((msg_meta, payload, attachments))
+    }
     async fn read(&mut self, socket_read: &mut ReadHalf<'_>) -> Result<ReadResult, ProcessError> {
         socket_read.read_exact(&mut self.len_buf).await?;            
 
@@ -123,7 +148,7 @@ impl State {
         }        
 
         Ok(ReadResult::MsgMeta(msg_meta))
-    }
+    }    
 }
 
 pub fn start() {
@@ -198,14 +223,12 @@ async fn process(mut stream: TcpStream, client_net_addr: SocketAddr, mut server_
     let (mut socket_read, mut socket_write) = stream.split();
     let mut state = State::new();
 
-    let msg_meta = match state.read(&mut socket_read).await? {
-        ReadResult::MsgMeta(msg_meta) => msg_meta,
-        _ => return Err(ProcessError::IncorrectReadResult)
-    };
+    let (msg_meta, payload, attachments) = state.read_full(&mut socket_read).await?;    
+    let payload: Value = from_slice(&payload)?;
 
-    println!("auth {:?}", msg_meta);    
-
-    //let payload: Value = get_payload(&msg_meta, &state.acc)?;
+    println!("auth {:?}", msg_meta);
+    println!("auth {:?}", payload);    
+    
 
     let (mut client_tx, mut client_rx) = mpsc::channel(MPSC_CLIENT_BUF_SIZE);
 

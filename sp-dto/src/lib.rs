@@ -103,9 +103,19 @@ pub struct Attachment {
 }
 
 impl MsgMeta {
-    /// Zero based index for key part, . is used as a separator.
+    /// Payload plus attachments len.
     pub fn content_len(&self) -> u32 {
         let mut len = self.payload_size;
+
+        for attachment in &self.attachments {
+            len = len + attachment.size;
+        }
+
+        len
+    }
+    /// Attachments len.
+    pub fn attachments_len(&self) -> u32 {
+        let mut len = 0;
 
         for attachment in &self.attachments {
             len = len + attachment.size;

@@ -34,7 +34,7 @@ struct Dir {
 const MPSC_SERVER_BUF_SIZE: usize = 1000;
 const MPSC_CLIENT_BUF_SIZE: usize = 100;
 const LEN_BUF_SIZE: usize = 4;
-const DATA_BUF_SIZE: usize = 1024;
+const DATA_BUF_SIZE: usize = 102;
 
 struct Client {
     net_addr: SocketAddr,

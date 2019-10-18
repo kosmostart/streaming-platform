@@ -114,9 +114,12 @@ impl State {
         loop {
             let n = adapter.read(&mut self.data_buf).await?;
 
-            println!("loop n {}", n);
-
-            break;
+            match n {
+                0 => break,
+                _ => {
+                    println!("loop n {}", n);
+                }
+            }
         }        
 
         Ok(ReadResult::MsgMeta(msg_meta))

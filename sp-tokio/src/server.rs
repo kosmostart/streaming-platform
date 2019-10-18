@@ -88,10 +88,11 @@ enum Operation {
     Content
 }
 
+#[derive(Debug)]
 enum DataReadResult {
     Continue,
     Equality,
-    ExtraDataRead(usize, usize)
+    ExtraDataRead(usize)
 }
 
 /// Data structure used for reading from socket
@@ -121,18 +122,18 @@ impl State {
             acc: vec![]            
         }  
     }
-    fn switch_to_len(&mut self) {
+    fn switch_to_len(&mut self, bytes_read: usize) {
         self.operation = Operation::Len;
         self.len = 0;
         self.content_len = 0;
-        self.bytes_read = 0;
+        self.bytes_read = bytes_read;
     }
-    fn switch_to_msg_meta(&mut self, len: usize) {
+    fn switch_to_msg_meta(&mut self, len: usize, bytes_read: usize) {
         self.operation = Operation::MsgMeta;
         self.len = len;
-        self.bytes_read = 0;
+        self.bytes_read = bytes_read;
     }
-    fn switch_to_content(&mut self, content_len: usize, bytes_read: usize) {        
+    fn switch_to_content(&mut self, content_len: usize, bytes_read: usize) {
         self.operation = Operation::Content;
         self.content_len = content_len;
         self.bytes_read = bytes_read;
@@ -144,37 +145,59 @@ impl State {
         loop {
             match self.operation {
                 Operation::Len => {
-                    println!("len");
+                    println!("Operation::Len");                    
 
-                    let n = socket_read.read_exact(&mut self.len_buf).await?;
-
-                    println!("Operation::Len, server n is {}", n);
-
-                    match n {
-                        0 => return Err(ProcessError::StreamClosed),
-                        LEN_BUF_SIZE => { 
-                            self.acc.extend_from_slice(&self.len_buf);
-
-                            let mut cursor = std::io::Cursor::new(self.len_buf);
+                    match self.data_res {
+                        DataReadResult::ExtraDataRead(offset) => {
+                            let mut cursor = std::io::Cursor::new(&mut self.acc);
                             let len = cursor.get_u32_be();
 
                             println!("len {}", len);
 
-                            self.switch_to_msg_meta(len as usize);
+                            self.switch_to_msg_meta(len as usize, offset);                        
                         }
-                        _ => return Err(ProcessError::NotEnoughBytesForLen)
-                    }               
+                        _ => {
+                            let n = socket_read.read_exact(&mut self.len_buf).await?;
+
+                            println!("Operation::Len, server n is {}", n);
+
+                            match n {
+                                0 => return Err(ProcessError::StreamClosed),
+                                LEN_BUF_SIZE => { 
+                                    self.acc.extend_from_slice(&self.len_buf);
+
+                                    let mut cursor = std::io::Cursor::new(self.len_buf);
+                                    let len = cursor.get_u32_be();
+
+                                    println!("len {}", len);
+
+                                    self.switch_to_msg_meta(len as usize, LEN_BUF_SIZE);
+                                }
+                                _ => return Err(ProcessError::NotEnoughBytesForLen)
+                            }                        
+                        }
+                    }
                 }
                 Operation::MsgMeta => {
-                    let n = socket_read.read(&mut self.data_buf).await?;
+                    println!("Operation::MsgMeta");
+                    println!("acc len {}", self.acc.len());
 
-                    println!("Operation::MsgMeta, server n is {}", n);
+                    let n = match self.data_res {
+                        DataReadResult::ExtraDataRead(offset) => offset,
+                        _ => {
+                            let n = socket_read.read(&mut self.data_buf).await?;
+
+                            println!("Operation::MsgMeta, server n is {}", n);
+
+                            self.increment(n);
+
+                            n
+                        }
+                    };            
 
                     match n {
                         0 => return Err(ProcessError::StreamClosed),
-                        _ => {
-                            self.increment(n);
-
+                        _ => {                            
                             println!("bytes_read {}, len {}", self.bytes_read, self.len);
 
                             if self.bytes_read == self.len {                                
@@ -191,15 +214,16 @@ impl State {
 
                                 println!("offset {}", offset);
 
-                                self.acc.extend_from_slice(&self.data_buf[..n - offset]);
+                                self.acc.extend_from_slice(&self.data_buf[..self.len]);                                
 
                                 //self.switch_to_len();
 
                                 //self.next.extend_from_slice(&self.data_buf[offset..n]);
                                 
                                 println!("bytes_read > len");
+                                println!("acc len {}", self.acc.len());
 
-                                self.data_res = DataReadResult::ExtraDataRead(offset, n);
+                                self.data_res = DataReadResult::ExtraDataRead(offset);
                             } else 
 
                             if self.bytes_read < self.len {                                    
@@ -209,6 +233,8 @@ impl State {
 
                                 self.data_res = DataReadResult::Continue;
                             }
+
+                            println!("{:?}", self.data_res);
 
                             match self.data_res {
                                 DataReadResult::Equality => {
@@ -221,7 +247,7 @@ impl State {
 
                                     return Ok(ReadResult::MsgMeta(msg_meta));
                                 }
-                                DataReadResult::ExtraDataRead(offset, _) => {
+                                DataReadResult::ExtraDataRead(offset) => {
                                     let msg_meta = get_msg_meta(&self.acc)?;
 
                                     println!("{:?}", msg_meta);
@@ -237,10 +263,11 @@ impl State {
                     }
                 }
                 Operation::Content => {
-                    match self.data_res {
-                        DataReadResult::ExtraDataRead(offset, n) => {
+                    println!("Operation::Content");
+                    println!("{:?}", self.data_res);
 
-                        }
+                    let n = match self.data_res {
+                        DataReadResult::ExtraDataRead(offset) => offset,
                         _ => {
                             let n = socket_read.read(&mut self.data_buf).await?;
 
@@ -249,24 +276,28 @@ impl State {
                             match n {
                                 0 => return Err(ProcessError::StreamClosed),
                                 _ => {
-                                    self.increment(n);                                
-
-                                    println!("bytes_read {}, content_len {}", self.bytes_read, self.content_len);
+                                    self.increment(n);                                    
                                 }
                             }
+
+                            n
                         }
-                    }                    
+                    };
+
+                    println!("bytes_read {}, content_len {}, n {}, acc len {}", self.bytes_read, self.content_len, n, self.acc.len());
 
                     if self.bytes_read > self.content_len {
                         let offset = self.bytes_read - self.content_len;
 
                         println!("content offset {}", offset);
 
+                        self.acc.clear();
+
                         self.acc.extend_from_slice(&self.data_buf[n - offset..n]);
 
                         self.switch_to_len(offset);                        
 
-                        self.data_res = DataReadResult::ExtraDataRead(offset, n);
+                        self.data_res = DataReadResult::ExtraDataRead(offset);
                     } else {
                         
                     }

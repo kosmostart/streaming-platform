@@ -229,7 +229,6 @@ async fn process(mut stream: TcpStream, client_net_addr: SocketAddr, mut server_
     println!("auth {:?}", msg_meta);
     println!("auth {:?}", payload);    
     
-
     let (mut client_tx, mut client_rx) = mpsc::channel(MPSC_CLIENT_BUF_SIZE);
 
     server_tx.send(ServerMsg::AddClient(msg_meta.tx.clone(), client_net_addr, client_tx)).await.unwrap();
@@ -237,8 +236,7 @@ async fn process(mut stream: TcpStream, client_net_addr: SocketAddr, mut server_
     let f1 = state.read(&mut socket_read).fuse();
     let f2 = client_rx.recv().fuse();
 
-    pin_mut!(f1);
-    pin_mut!(f2);
+    pin_mut!(f1, f2);    
 
     loop {
         let res = select! {

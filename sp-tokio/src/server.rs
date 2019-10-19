@@ -11,6 +11,7 @@ use futures::future::{Fuse, FusedFuture, FutureExt};
 use futures::stream::StreamExt;
 use futures::{select, pin_mut};
 use tokio::runtime::Runtime;
+use tokio::io::Take;
 use tokio::net::{TcpListener, TcpStream, tcp::split::ReadHalf};
 use tokio::sync::mpsc::{self, Sender, Receiver};
 use tokio::prelude::*;
@@ -75,28 +76,38 @@ impl From<serde_json::Error> for ProcessError {
 
 /// The result of reading function
 enum ReadResult {
+    Ok,
     /// Message data stream is prepended with MsgMeta struct
     MsgMeta(MsgMeta),
     /// Message data stream itself
     Data([u8; DATA_BUF_SIZE])
 }
 
-/// Data structure used for reading from socket
-struct State {        
-    pub len_buf: [u8; LEN_BUF_SIZE],
-    pub data_buf: [u8; DATA_BUF_SIZE], 
-    pub acc: Vec<u8>
+enum Step<'a> {
+    Len,
+    MsgMeta(u32),
+    Payload(MsgMeta, Take<&'a mut ReadHalf<'a>>),
+    Attachments(MsgMeta, Take<&'a mut ReadHalf<'a>>)
 }
 
-impl State {
-    fn new() -> State {
+/// Data structure used for reading from socket
+struct State<'a> {
+    pub len_buf: [u8; LEN_BUF_SIZE],
+    pub data_buf: [u8; DATA_BUF_SIZE],
+    pub acc: Vec<u8>,
+    pub step: Step<'a>
+}
+
+impl<'a> State<'a> {
+    fn new() -> State<'a> {
         State {            
             len_buf: [0; LEN_BUF_SIZE],
             data_buf: [0; DATA_BUF_SIZE],
-            acc: vec![]            
+            acc: vec![],
+            step: Step::Len
         }  
     }
-    async fn read_full(&mut self, socket_read: &mut ReadHalf<'_>) -> Result<(MsgMeta, Vec<u8>, Vec<u8>), ProcessError> {
+    async fn read_full(&mut self, socket_read: &'a mut ReadHalf<'a>) -> Result<(MsgMeta, Vec<u8>, Vec<u8>), ProcessError> {
         socket_read.read_exact(&mut self.len_buf).await?;            
 
         let mut buf = Cursor::new(&self.len_buf);
@@ -121,34 +132,54 @@ impl State {
         
         Ok((msg_meta, payload, attachments))
     }
-    async fn read(&mut self, socket_read: &mut ReadHalf<'_>) -> Result<ReadResult, ProcessError> {
-        socket_read.read_exact(&mut self.len_buf).await?;            
+    async fn read(&mut self, socket_read: &'a mut ReadHalf<'a>) -> Result<ReadResult, ProcessError> {
+        match &self.step {
+            Step::Len => {
+                socket_read.read_exact(&mut self.len_buf).await?;            
 
-        let mut buf = Cursor::new(&self.len_buf);
-        let len = buf.get_u32_be() as usize;
-        let mut adapter = socket_read.take(len as u64);
+                let mut buf = Cursor::new(&self.len_buf);
+                let len = buf.get_u32_be();
 
-        self.acc.clear();
-        let n = adapter.read_to_end(&mut self.acc).await?;
+                self.step = Step::MsgMeta(len);
 
-        println!("len {}, n {}, acc len {}", len, n, self.acc.len());
-
-        let msg_meta: MsgMeta = from_slice(&self.acc)?;        
-        let mut adapter = socket_read.take(msg_meta.content_len() as u64);            
-
-        loop {
-            let n = adapter.read(&mut self.data_buf).await?;
-
-            match n {
-                0 => break,
-                _ => {
-                    println!("loop n {}", n);
-                }
+                Ok(ReadResult::Ok)
             }
-        }        
+            Step::MsgMeta(len) => {
+                let mut adapter = socket_read.take(*len as u64);
+                self.acc.clear();
+                let n = adapter.read_to_end(&mut self.acc).await?;
 
-        Ok(ReadResult::MsgMeta(msg_meta))
-    }    
+                println!("len {}, n {}, acc len {}", len, n, self.acc.len());
+
+                let msg_meta: MsgMeta = from_slice(&self.acc)?;
+                let mut adapter = socket_read.take(msg_meta.payload_size as u64);                
+
+                self.step = Step::Payload(msg_meta.clone(), adapter);
+
+                Ok(ReadResult::MsgMeta(msg_meta))
+            }
+            Step::Payload(msg_meta, adapter) => {
+                /*
+                let n = adapter.read(&mut self.data_buf).await?;
+
+                match n {
+                    0 => {
+
+                    }
+                    _ => {
+                        println!("loop n {}", n);
+                    }
+                }
+
+                Ok(ReadResult::MsgMeta(msg_meta))
+                */
+                Ok(ReadResult::Ok)
+            }
+            Step::Attachments(msg_meta, adapter) => {
+                Ok(ReadResult::Ok)
+            }
+        }
+    }
 }
 
 pub fn start() {
@@ -209,7 +240,7 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
         let (mut stream, client_net_addr) = listener.accept().await?;
         let server_tx = server_tx.clone();
 
-        println!("connected");
+        println!("connected");  
 
         tokio::spawn(async move {
             let res = process(stream, client_net_addr, server_tx).await;
@@ -223,7 +254,7 @@ async fn process(mut stream: TcpStream, client_net_addr: SocketAddr, mut server_
     let (mut socket_read, mut socket_write) = stream.split();
     let mut state = State::new();
 
-    let (msg_meta, payload, attachments) = state.read_full(&mut socket_read).await?;    
+    let (msg_meta, payload, attachments) = state.read_full(&mut socket_read).await?;
     let payload: Value = from_slice(&payload)?;
 
     println!("auth {:?}", msg_meta);
@@ -231,19 +262,22 @@ async fn process(mut stream: TcpStream, client_net_addr: SocketAddr, mut server_
     
     let (mut client_tx, mut client_rx) = mpsc::channel(MPSC_CLIENT_BUF_SIZE);
 
-    server_tx.send(ServerMsg::AddClient(msg_meta.tx.clone(), client_net_addr, client_tx)).await.unwrap();
+    server_tx.send(ServerMsg::AddClient(msg_meta.tx.clone(), client_net_addr, client_tx)).await.unwrap();    
     
     let f1 = state.read(&mut socket_read).fuse();
     let f2 = client_rx.recv().fuse();
 
-    pin_mut!(f1, f2);    
+    pin_mut!(f1, f2);
 
     loop {
         let res = select! {
             res = f1 => {
                 match res? {
+                    ReadResult::Ok => {
+
+                    }
                     ReadResult::MsgMeta(msg_meta) => {
-                        println!("loop {:?}", msg_meta);
+                        println!("loop {:?}", msg_meta);                        
                     }
                     ReadResult::Data(buf) => {
 

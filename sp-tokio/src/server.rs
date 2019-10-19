@@ -140,9 +140,11 @@ impl<'a> State<'a> {
         }  
     }    
     async fn read(mut self, socket_read: &'a mut ReadHalf<'a>) -> Result<ReadResult, ProcessError> {
+        println!("read called");
+
         match self.step {
-            Step::Len => {
-                socket_read.read_exact(&mut self.len_buf).await?;            
+            Step::Len => {                
+                socket_read.read_exact(&mut self.len_buf).await?;                
 
                 let mut buf = Cursor::new(&self.len_buf);
                 let len = buf.get_u32_be();
@@ -152,6 +154,8 @@ impl<'a> State<'a> {
                 Ok(ReadResult::LenFinished)
             }
             Step::MsgMeta(len) => {
+                println!("hi3 {}", len);
+
                 let mut adapter = socket_read.take(len as u64);
                 self.acc.clear();
                 let n = adapter.read_to_end(&mut self.acc).await?;
@@ -280,8 +284,7 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
 }
 
 async fn process(mut stream: TcpStream, client_net_addr: SocketAddr, mut server_tx: Sender<ServerMsg>) -> Result<(), ProcessError> {
-    let (mut socket_read, mut socket_write) = stream.split();
-    let mut state = State::new();
+    let (mut socket_read, mut socket_write) = stream.split();    
 
     let (msg_meta, payload, attachments) = read_full(&mut socket_read).await?;
     let payload: Value = from_slice(&payload)?;
@@ -292,18 +295,22 @@ async fn process(mut stream: TcpStream, client_net_addr: SocketAddr, mut server_
     let (mut client_tx, mut client_rx) = mpsc::channel(MPSC_CLIENT_BUF_SIZE);
 
     server_tx.send(ServerMsg::AddClient(msg_meta.tx.clone(), client_net_addr, client_tx)).await.unwrap();    
-    
+
+    let mut state = State::new();
+
     let f1 = state.read(&mut socket_read).fuse();
     let f2 = client_rx.recv().fuse();
 
     pin_mut!(f1, f2);
 
     loop {
+        println!("loop");        
+
         let res = select! {
             res = f1 => {
                 match res? {
                     ReadResult::LenFinished => {
-
+                        println!("len ok");
                     }
                     ReadResult::MsgMeta(msg_meta) => {
                         println!("{:?}", msg_meta);
@@ -312,7 +319,7 @@ async fn process(mut stream: TcpStream, client_net_addr: SocketAddr, mut server_
                         println!("some data");
                     }
                     ReadResult::PayloadFinished => {
-                        println!("ok");
+                        println!("payload ok");
                     }
                     ReadResult::AttachmentData(index, buf) => {
 

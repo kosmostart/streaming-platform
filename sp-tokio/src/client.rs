@@ -32,12 +32,10 @@ pub async fn connect_future(addr: &str) {
         return;
     }
 
-
     if let Err(err) = socket_write.write_all(&rpc_dto).await {
         println!("failed to write to socket {:?}", err);
         return;
     }
-
 
     println!("write ok");
 

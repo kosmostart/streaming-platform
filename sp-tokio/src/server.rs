@@ -103,13 +103,17 @@ async fn read_full(socket_read: &mut ReadHalf<'_>) -> Result<(MsgMeta, Vec<u8>, 
 
 /// The result of reading function
 enum ReadResult {
-    Ok,
+    /// This one indicates MsgMeta struct len was read successfully
+    LenFinished,
     /// Message data stream is prepended with MsgMeta struct
     MsgMeta(MsgMeta),
-    /// Message data stream itself
+    /// Payload data stream message
     PayloadData([u8; DATA_BUF_SIZE]),
+    /// This one indicates payload data stream finished
     PayloadFinished,
+    /// Attachment whith index data stream message
     AttachmentData(usize, [u8; DATA_BUF_SIZE]),
+    /// This one indicates attachment data stream by index finished
     AttachmentFinished(usize)    
 }
 
@@ -145,7 +149,7 @@ impl<'a> State<'a> {
 
                 self.step = Step::MsgMeta(len);
 
-                Ok(ReadResult::Ok)
+                Ok(ReadResult::LenFinished)
             }
             Step::MsgMeta(len) => {
                 let mut adapter = socket_read.take(len as u64);
@@ -298,17 +302,17 @@ async fn process(mut stream: TcpStream, client_net_addr: SocketAddr, mut server_
         let res = select! {
             res = f1 => {
                 match res? {
-                    ReadResult::Ok => {
+                    ReadResult::LenFinished => {
 
                     }
                     ReadResult::MsgMeta(msg_meta) => {
-                        println!("loop {:?}", msg_meta);                        
+                        println!("{:?}", msg_meta);
                     }
                     ReadResult::PayloadData(buf) => {
-
+                        println!("some data");
                     }
                     ReadResult::PayloadFinished => {
-
+                        println!("ok");
                     }
                     ReadResult::AttachmentData(index, buf) => {
 

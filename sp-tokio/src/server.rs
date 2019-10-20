@@ -129,7 +129,8 @@ enum Step {
 struct State {
     pub len_buf: [u8; LEN_BUF_SIZE],    
     pub acc: Vec<u8>,
-    pub msg_meta: Option<MsgMeta>
+    pub msg_meta: Option<MsgMeta>,
+    pub step: Step
 }
 
 impl State {
@@ -137,15 +138,16 @@ impl State {
         State {            
             len_buf: [0; LEN_BUF_SIZE],            
             acc: vec![],
-            msg_meta: None  
+            msg_meta: None,
+            step: Step::Len
         }  
     }    
 }
 
-async fn read(state: &mut State, step: Step, adapter: &mut Take<ReadHalf<'_>>) -> Result<(ReadResult, Option<Step>), ProcessError> {
+async fn read(state: &mut State, adapter: &mut Take<ReadHalf<'_>>) -> Result<(ReadResult, Option<Step>), ProcessError> {
     println!("read called");
 
-    match step {
+    match state.step {
         Step::Len => {                
             adapter.read_exact(&mut state.len_buf).await?;                
 
@@ -301,7 +303,7 @@ async fn process(mut stream: TcpStream, client_net_addr: SocketAddr, mut server_
     loop {
         println!("loop");
 
-        let f1 = read(&mut state, step, &mut adapter).fuse();
+        let f1 = read(&mut state, &mut adapter).fuse();
         let f2 = client_rx.recv().fuse();
 
         pin_mut!(f1, f2);

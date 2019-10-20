@@ -124,7 +124,7 @@ enum Step {
     Attachment(MsgMeta, usize)
 }
 
-/// Data structure used for streaming data from source
+/// Data structure used for convenience when streaming data from source
 struct State {
     pub len_buf: [u8; LEN_BUF_SIZE],    
     pub acc: Vec<u8>    
@@ -139,7 +139,7 @@ impl State {
     }    
 }
 
-async fn read(state: &mut State, step: Step, adapter: &mut Take<ReadHalf<'_>>) -> Result<(ReadResult, Step), ProcessError> {
+async fn read(state: &mut State, step: &mut Step, adapter: &mut Take<ReadHalf<'_>>) -> Result<(ReadResult, Option<Step>), ProcessError> {
     println!("read called");
 
     match step {
@@ -149,7 +149,7 @@ async fn read(state: &mut State, step: Step, adapter: &mut Take<ReadHalf<'_>>) -
             let mut buf = Cursor::new(&state.len_buf);
             let len = buf.get_u32_be();            
 
-            Ok((ReadResult::LenFinished, Step::MsgMeta(len)))
+            Ok((ReadResult::LenFinished, Some(Step::MsgMeta(len))))
         }
         Step::MsgMeta(len) => {
             adapter.set_limit(len as u64);
@@ -159,7 +159,7 @@ async fn read(state: &mut State, step: Step, adapter: &mut Take<ReadHalf<'_>>) -
             let msg_meta: MsgMeta = from_slice(&state.acc)?;
             adapter.set_limit(msg_meta.payload_size as u64);            
 
-            Ok((ReadResult::MsgMeta(msg_meta), Step::Payload(msg_meta.clone())))
+            Ok((ReadResult::MsgMeta(msg_meta.clone()), Some(Step::Payload(msg_meta))))
         }
         Step::Payload(msg_meta) => {
             let mut data_buf = [0; DATA_BUF_SIZE];           
@@ -176,9 +176,9 @@ async fn read(state: &mut State, step: Step, adapter: &mut Take<ReadHalf<'_>>) -
                         }                            
                     };
 
-                    Ok((ReadResult::PayloadFinished, new_step))
+                    Ok((ReadResult::PayloadFinished, Some(new_step)))
                 }
-                _ => Ok((ReadResult::PayloadData(data_buf), step))
+                _ => Ok((ReadResult::PayloadData(data_buf), None))
             }                                
         }
         Step::Attachment(msg_meta, index) => {
@@ -197,9 +197,9 @@ async fn read(state: &mut State, step: Step, adapter: &mut Take<ReadHalf<'_>>) -
                         false => Step::Len
                     };
 
-                    Ok((ReadResult::AttachmentFinished(index), new_step))
+                    Ok((ReadResult::AttachmentFinished(index), Some(new_step)))
                 }
-                _ => Ok((ReadResult::AttachmentData(index, data_buf), step))
+                _ => Ok((ReadResult::AttachmentData(index, data_buf), None))
             }
         }
     }
@@ -293,7 +293,7 @@ async fn process(mut stream: TcpStream, client_net_addr: SocketAddr, mut server_
     loop {
         println!("loop");
 
-        let f1 = read(&mut state, &mut step, &mut adapter).fuse();
+        let f1 = read(&mut state, step, &mut adapter).fuse();
         let f2 = client_rx.recv().fuse();
 
         pin_mut!(f1, f2);
@@ -301,7 +301,11 @@ async fn process(mut stream: TcpStream, client_net_addr: SocketAddr, mut server_
         let res = select! {
             res = f1 => {
                 let (res, new_step) = res?;
-                step = new_step;
+
+                match new_step {
+                    Some(new_step) => step = new_step,
+                    None => {}
+                }
 
                 match res {
                     ReadResult::LenFinished => {

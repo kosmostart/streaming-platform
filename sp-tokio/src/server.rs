@@ -145,8 +145,6 @@ impl State {
 }
 
 async fn read(state: &mut State, adapter: &mut Take<ReadHalf<'_>>) -> Result<ReadResult, ProcessError> {
-    println!("read called");
-
     match state.step {
         Step::Len => {                
             adapter.read_exact(&mut state.len_buf).await?;                
@@ -180,10 +178,12 @@ async fn read(state: &mut State, adapter: &mut Take<ReadHalf<'_>>) -> Result<Rea
                     let msg_meta = state.msg_meta.as_ref().ok_or(ProcessError::MsgMetaIsEmpty)?;
 
                     match msg_meta.attachments.len() {
-                        0 => state.step = Step::Len,
+                        0 => {
+                            adapter.set_limit(LEN_BUF_SIZE as u64);
+                            state.step = Step::Len;
+                        }
                         _ => {                      
                             adapter.set_limit(msg_meta.attachments[0].size as u64);
-
                             state.step = Step::Attachment(0);
                         }                            
                     };
@@ -205,10 +205,12 @@ async fn read(state: &mut State, adapter: &mut Take<ReadHalf<'_>>) -> Result<Rea
                         true => {
                             let new_index = index + 1;
                             adapter.set_limit(msg_meta.attachments[new_index].size as u64);
-
                             state.step = Step::Attachment(new_index);
                         }
-                        false => state.step = Step::Len
+                        false => {
+                            adapter.set_limit(LEN_BUF_SIZE as u64);
+                            state.step = Step::Len;
+                        }
                     };
 
                     Ok(ReadResult::AttachmentFinished(index))
@@ -304,8 +306,6 @@ async fn process(mut stream: TcpStream, client_net_addr: SocketAddr, mut server_
     let mut state = State::new();    
 
     loop {
-        println!("loop");        
-
         let f1 = read(&mut state, &mut adapter).fuse();
         let f2 = client_rx.recv().fuse();
 

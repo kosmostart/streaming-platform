@@ -117,99 +117,89 @@ enum ReadResult {
     AttachmentFinished(usize)    
 }
 
-enum Step<'a> {
+enum Step {
     Len,
     MsgMeta(u32),
-    Payload(MsgMeta, Take<&'a mut ReadHalf<'a>>),
-    Attachment(MsgMeta, usize, Take<&'a mut ReadHalf<'a>>)
+    Payload(MsgMeta),
+    Attachment(MsgMeta, usize)
 }
 
 /// Data structure used for streaming data from source
-struct State<'a> {
+struct State {
     pub len_buf: [u8; LEN_BUF_SIZE],    
-    pub acc: Vec<u8>,
-    pub step: Step<'a>
+    pub acc: Vec<u8>    
 }
 
-impl<'a> State<'a> {
-    fn new() -> State<'a> {
+impl State {
+    fn new() -> State {
         State {            
             len_buf: [0; LEN_BUF_SIZE],            
-            acc: vec![],
-            step: Step::Len
+            acc: vec![]            
         }  
     }    
-    async fn read(mut self, socket_read: &'a mut ReadHalf<'a>) -> Result<ReadResult, ProcessError> {
-        println!("read called");
+}
 
-        match self.step {
-            Step::Len => {                
-                socket_read.read_exact(&mut self.len_buf).await?;                
+async fn read(state: &mut State, step: Step, adapter: &mut Take<ReadHalf<'_>>) -> Result<(ReadResult, Step), ProcessError> {
+    println!("read called");
 
-                let mut buf = Cursor::new(&self.len_buf);
-                let len = buf.get_u32_be();
+    match step {
+        Step::Len => {                
+            adapter.read_exact(&mut state.len_buf).await?;                
 
-                self.step = Step::MsgMeta(len);
+            let mut buf = Cursor::new(&state.len_buf);
+            let len = buf.get_u32_be();            
 
-                Ok(ReadResult::LenFinished)
-            }
-            Step::MsgMeta(len) => {
-                println!("hi3 {}", len);
+            Ok((ReadResult::LenFinished, Step::MsgMeta(len)))
+        }
+        Step::MsgMeta(len) => {
+            adapter.set_limit(len as u64);
+            state.acc.clear();
+            let n = adapter.read_to_end(&mut state.acc).await?;            
 
-                let mut adapter = socket_read.take(len as u64);
-                self.acc.clear();
-                let n = adapter.read_to_end(&mut self.acc).await?;
+            let msg_meta: MsgMeta = from_slice(&state.acc)?;
+            adapter.set_limit(msg_meta.payload_size as u64);            
 
-                println!("len {}, n {}, acc len {}", len, n, self.acc.len());
+            Ok((ReadResult::MsgMeta(msg_meta), Step::Payload(msg_meta.clone())))
+        }
+        Step::Payload(msg_meta) => {
+            let mut data_buf = [0; DATA_BUF_SIZE];           
+            let n = adapter.read(&mut data_buf).await?;
 
-                let msg_meta: MsgMeta = from_slice(&self.acc)?;
-                let adapter = socket_read.take(msg_meta.payload_size as u64);
+            match n {
+                0 => {
+                    let new_step = match msg_meta.attachments.len() {
+                        0 => Step::Len,
+                        _ => {                                                        
+                            adapter.set_limit(msg_meta.attachments[0].size as u64);
 
-                self.step = Step::Payload(msg_meta.clone(), adapter);
+                            Step::Attachment(msg_meta, 0)
+                        }                            
+                    };
 
-                Ok(ReadResult::MsgMeta(msg_meta))
-            }
-            Step::Payload(msg_meta, mut adapter) => {
-                let mut data_buf = [0; DATA_BUF_SIZE];           
-                let n = adapter.read(&mut data_buf).await?;
+                    Ok((ReadResult::PayloadFinished, new_step))
+                }
+                _ => Ok((ReadResult::PayloadData(data_buf), step))
+            }                                
+        }
+        Step::Attachment(msg_meta, index) => {
+            let mut data_buf = [0; DATA_BUF_SIZE];           
+            let n = adapter.read(&mut data_buf).await?;
 
-                match n {
-                    0 => {
-                        match msg_meta.attachments.len() {
-                            0 => self.step = Step::Len,
-                            _ => {                                
-                                
-                                let adapter = socket_read.take(msg_meta.attachments[0].size as u64);
-                                self.step = Step::Attachment(msg_meta, 0, adapter);
-                            }                            
+            match n {
+                0 => {
+                    let new_step = match index < msg_meta.attachments.len() - 1 {
+                        true => {
+                            let new_index = index + 1;
+                            adapter.set_limit(msg_meta.attachments[new_index].size as u64);
+
+                            Step::Attachment(msg_meta, new_index)
                         }
+                        false => Step::Len
+                    };
 
-                        Ok(ReadResult::PayloadFinished)
-                    }
-                    _ => Ok(ReadResult::PayloadData(data_buf))
-                }                                
-            }
-            Step::Attachment(msg_meta, index, mut adapter) => {
-                let mut data_buf = [0; DATA_BUF_SIZE];           
-                let n = adapter.read(&mut data_buf).await?;
-
-                match n {
-                    0 => {
-                        match index < msg_meta.attachments.len() - 1 {
-                            true => {
-                                let new_index = index + 1;
-                                let adapter = socket_read.take(msg_meta.attachments[new_index].size as u64);
-                                self.step = Step::Attachment(msg_meta, new_index, adapter);                                
-                            }
-                            false => {
-                                self.step = Step::Len;
-                            }
-                        }
-
-                        Ok(ReadResult::AttachmentFinished(index))
-                    }
-                    _ => Ok(ReadResult::AttachmentData(index, data_buf))
-                }                
+                    Ok((ReadResult::AttachmentFinished(index), new_step))
+                }
+                _ => Ok((ReadResult::AttachmentData(index, data_buf), step))
             }
         }
     }
@@ -296,19 +286,24 @@ async fn process(mut stream: TcpStream, client_net_addr: SocketAddr, mut server_
 
     server_tx.send(ServerMsg::AddClient(msg_meta.tx.clone(), client_net_addr, client_tx)).await.unwrap();    
 
+    let mut adapter = socket_read.take(LEN_BUF_SIZE as u64);
     let mut state = State::new();
-
-    let f1 = state.read(&mut socket_read).fuse();
-    let f2 = client_rx.recv().fuse();
-
-    pin_mut!(f1, f2);
+    let mut step = Step::Len;
 
     loop {
-        println!("loop");        
+        println!("loop");
+
+        let f1 = read(&mut state, &mut step, &mut adapter).fuse();
+        let f2 = client_rx.recv().fuse();
+
+        pin_mut!(f1, f2);
 
         let res = select! {
             res = f1 => {
-                match res? {
+                let (res, new_step) = res?;
+                step = new_step;
+
+                match res {
                     ReadResult::LenFinished => {
                         println!("len ok");
                     }

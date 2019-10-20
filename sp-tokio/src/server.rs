@@ -118,6 +118,7 @@ enum ReadResult {
     AttachmentFinished(usize)    
 }
 
+#[derive(Debug)]
 enum Step {
     Len,
     MsgMeta(u32),
@@ -323,16 +324,16 @@ async fn process(mut stream: TcpStream, client_net_addr: SocketAddr, mut server_
                         println!("{:?}", msg_meta);
                     }
                     ReadResult::PayloadData(buf) => {
-                        println!("some data");
+                        println!("payload data");
                     }
                     ReadResult::PayloadFinished => {
                         println!("payload ok");
                     }
                     ReadResult::AttachmentData(index, buf) => {
-
+                        println!("attachment data");
                     }
                     ReadResult::AttachmentFinished(index) => {
-
+                        println!("attachment ok");
                     }
                 };                            
             }

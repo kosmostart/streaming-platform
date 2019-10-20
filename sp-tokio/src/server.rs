@@ -58,7 +58,7 @@ enum ProcessError {
     StreamClosed,
     NotEnoughBytesForLen,
     IncorrectReadResult,
-    MsgMetaIsEmpty,
+    AttachmentFieldIsEmpty,
     Io(std::io::Error),
     SerdeJson(serde_json::Error)    
 }
@@ -130,7 +130,7 @@ enum Step {
 struct State {
     pub len_buf: [u8; LEN_BUF_SIZE],    
     pub acc: Vec<u8>,
-    pub msg_meta: Option<MsgMeta>,
+    pub attachments: Option<Vec<u32>>,
     pub step: Step
 }
 
@@ -139,7 +139,7 @@ impl State {
         State {            
             len_buf: [0; LEN_BUF_SIZE],            
             acc: vec![],
-            msg_meta: None,
+            attachments: None,
             step: Step::Len
         }  
     }    
@@ -164,7 +164,8 @@ async fn read(state: &mut State, adapter: &mut Take<ReadHalf<'_>>) -> Result<Rea
 
             let msg_meta: MsgMeta = from_slice(&state.acc)?;
             adapter.set_limit(msg_meta.payload_size as u64);
-            state.msg_meta = Some(msg_meta.clone());
+
+            state.attachments = Some(msg_meta.attachments.iter().map(|x| x.size).collect());
 
             state.step = Step::Payload;
 
@@ -176,15 +177,15 @@ async fn read(state: &mut State, adapter: &mut Take<ReadHalf<'_>>) -> Result<Rea
 
             match n {
                 0 => {
-                    let msg_meta = state.msg_meta.as_ref().ok_or(ProcessError::MsgMetaIsEmpty)?;
+                    let attachments = state.attachments.as_ref().ok_or(ProcessError::AttachmentFieldIsEmpty)?;
 
-                    match msg_meta.attachments.len() {
+                    match attachments.len() {
                         0 => {
                             adapter.set_limit(LEN_BUF_SIZE as u64);
                             state.step = Step::Len;
                         }
                         _ => {                      
-                            adapter.set_limit(msg_meta.attachments[0].size as u64);
+                            adapter.set_limit(attachments[0] as u64);
                             state.step = Step::Attachment(0);
                         }                            
                     };
@@ -200,12 +201,12 @@ async fn read(state: &mut State, adapter: &mut Take<ReadHalf<'_>>) -> Result<Rea
 
             match n {
                 0 => {
-                    let msg_meta = state.msg_meta.as_ref().ok_or(ProcessError::MsgMetaIsEmpty)?;
+                    let attachments = state.attachments.as_ref().ok_or(ProcessError::AttachmentFieldIsEmpty)?;
 
-                    match index < msg_meta.attachments.len() - 1 {
+                    match index < attachments.len() - 1 {
                         true => {
                             let new_index = index + 1;
-                            adapter.set_limit(msg_meta.attachments[new_index].size as u64);
+                            adapter.set_limit(attachments[new_index] as u64);
                             state.step = Step::Attachment(new_index);
                         }
                         false => {

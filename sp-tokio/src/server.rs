@@ -144,7 +144,7 @@ impl State {
     }    
 }
 
-async fn read(state: &mut State, adapter: &mut Take<ReadHalf<'_>>) -> Result<(ReadResult, Option<Step>), ProcessError> {
+async fn read(state: &mut State, adapter: &mut Take<ReadHalf<'_>>) -> Result<ReadResult, ProcessError> {
     println!("read called");
 
     match state.step {
@@ -152,9 +152,11 @@ async fn read(state: &mut State, adapter: &mut Take<ReadHalf<'_>>) -> Result<(Re
             adapter.read_exact(&mut state.len_buf).await?;                
 
             let mut buf = Cursor::new(&state.len_buf);
-            let len = buf.get_u32_be();            
+            let len = buf.get_u32_be();
 
-            Ok((ReadResult::LenFinished, Some(Step::MsgMeta(len))))
+            state.step = Step::MsgMeta(len);
+
+            Ok(ReadResult::LenFinished)
         }
         Step::MsgMeta(len) => {
             adapter.set_limit(len as u64);
@@ -165,7 +167,9 @@ async fn read(state: &mut State, adapter: &mut Take<ReadHalf<'_>>) -> Result<(Re
             adapter.set_limit(msg_meta.payload_size as u64);
             state.msg_meta = Some(msg_meta.clone());
 
-            Ok((ReadResult::MsgMeta(msg_meta), Some(Step::Payload)))
+            state.step = Step::Payload;
+
+            Ok(ReadResult::MsgMeta(msg_meta))
         }
         Step::Payload => {
             let mut data_buf = [0; DATA_BUF_SIZE];           
@@ -175,18 +179,18 @@ async fn read(state: &mut State, adapter: &mut Take<ReadHalf<'_>>) -> Result<(Re
                 0 => {
                     let msg_meta = state.msg_meta.as_ref().ok_or(ProcessError::MsgMetaIsEmpty)?;
 
-                    let new_step = match msg_meta.attachments.len() {
-                        0 => Step::Len,
+                    match msg_meta.attachments.len() {
+                        0 => state.step = Step::Len,
                         _ => {                      
                             adapter.set_limit(msg_meta.attachments[0].size as u64);
 
-                            Step::Attachment(0)
+                            state.step = Step::Attachment(0);
                         }                            
                     };
 
-                    Ok((ReadResult::PayloadFinished, Some(new_step)))
+                    Ok(ReadResult::PayloadFinished)
                 }
-                _ => Ok((ReadResult::PayloadData(data_buf), None))
+                _ => Ok(ReadResult::PayloadData(data_buf))
             }                                
         }
         Step::Attachment(index) => {
@@ -197,19 +201,19 @@ async fn read(state: &mut State, adapter: &mut Take<ReadHalf<'_>>) -> Result<(Re
                 0 => {
                     let msg_meta = state.msg_meta.as_ref().ok_or(ProcessError::MsgMetaIsEmpty)?;
 
-                    let new_step = match index < msg_meta.attachments.len() - 1 {
+                    match index < msg_meta.attachments.len() - 1 {
                         true => {
                             let new_index = index + 1;
                             adapter.set_limit(msg_meta.attachments[new_index].size as u64);
 
-                            Step::Attachment(new_index)
+                            state.step = Step::Attachment(new_index);
                         }
-                        false => Step::Len
+                        false => state.step = Step::Len
                     };
 
-                    Ok((ReadResult::AttachmentFinished(index), Some(new_step)))
+                    Ok(ReadResult::AttachmentFinished(index))
                 }
-                _ => Ok((ReadResult::AttachmentData(index, data_buf), None))
+                _ => Ok(ReadResult::AttachmentData(index, data_buf))
             }
         }
     }
@@ -297,11 +301,10 @@ async fn process(mut stream: TcpStream, client_net_addr: SocketAddr, mut server_
     server_tx.send(ServerMsg::AddClient(msg_meta.tx.clone(), client_net_addr, client_tx)).await.unwrap();    
 
     let mut adapter = socket_read.take(LEN_BUF_SIZE as u64);
-    let mut state = State::new();
-    let mut step = Step::Len;
+    let mut state = State::new();    
 
     loop {
-        println!("loop");
+        println!("loop");        
 
         let f1 = read(&mut state, &mut adapter).fuse();
         let f2 = client_rx.recv().fuse();
@@ -309,13 +312,8 @@ async fn process(mut stream: TcpStream, client_net_addr: SocketAddr, mut server_
         pin_mut!(f1, f2);
 
         let res = select! {
-            res = f1 => {
-                let (res, new_step) = res?;
-
-                match new_step {
-                    Some(new_step) => step = new_step,
-                    None => {}
-                }
+            res = f1 => {                
+                let res = res?;                
 
                 match res {
                     ReadResult::LenFinished => {

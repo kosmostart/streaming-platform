@@ -12,7 +12,7 @@ use futures::stream::StreamExt;
 use futures::{select, pin_mut};
 use tokio::runtime::Runtime;
 use tokio::io::Take;
-use tokio::net::{TcpListener, TcpStream, tcp::split::ReadHalf};
+use tokio::net::{TcpListener, TcpStream, tcp::split::{ReadHalf, WriteHalf}};
 use tokio::sync::mpsc::{self, Sender, Receiver};
 use tokio::prelude::*;
 use tokio::fs::File;
@@ -60,7 +60,16 @@ enum ProcessError {
     IncorrectReadResult,
     AttachmentFieldIsEmpty,
     Io(std::io::Error),
-    SerdeJson(serde_json::Error)    
+    SerdeJson(serde_json::Error),
+    GetFile(GetFileError)
+}
+
+#[derive(Debug)]
+enum GetFileError {
+    ConfigDirsIsEmpty,
+    NoAccessKeyInPayload,
+    TargetDirNotFound,
+    NoFilesInTargetDir
 }
 
 impl From<std::io::Error> for ProcessError {
@@ -238,15 +247,15 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
 
     let mut buf_reader = BufReader::new(file);
 
-    let mut config = String::new();
+    let mut config_string = String::new();
 
-    buf_reader.read_to_string(&mut config)
+    buf_reader.read_to_string(&mut config_string)
         .expect("failed to read config");
 
-    let config: Config = toml::from_str(&config)
+    let config: Config = toml::from_str(&config_string)
         .expect("failed to deserialize config");	
 
-    let mut listener = TcpListener::bind(&config.host).await?;
+    let mut listener = TcpListener::bind(config.host.clone()).await?;
 
     let (mut server_tx, mut server_rx) = mpsc::channel(MPSC_SERVER_BUF_SIZE);
 
@@ -277,35 +286,40 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
 
     println!("ok");
 
-    loop {
+    loop {        
         let (mut stream, client_net_addr) = listener.accept().await?;
+        let config = config.clone();
         let server_tx = server_tx.clone();
 
         println!("connected");  
 
         tokio::spawn(async move {
-            let res = process(stream, client_net_addr, server_tx).await;
+            let res = process(stream, client_net_addr, server_tx, &config).await;
 
             println!("{:?}", res);
         });        
     }
 }
 
-async fn process(mut stream: TcpStream, client_net_addr: SocketAddr, mut server_tx: Sender<ServerMsg>) -> Result<(), ProcessError> {
-    let (mut socket_read, mut socket_write) = stream.split();    
+async fn process(mut stream: TcpStream, client_net_addr: SocketAddr, mut server_tx: Sender<ServerMsg>, config: &Config) -> Result<(), ProcessError> {
+    let (mut socket_read, mut socket_write) = stream.split();
 
     let (msg_meta, payload, attachments) = read_full(&mut socket_read).await?;
     let payload: Value = from_slice(&payload)?;
+    
+    process_msg(&msg_meta, payload, &mut socket_write, config).await?;
 
-    println!("auth {:?}", msg_meta);
-    println!("auth {:?}", payload);    
+    //println!("auth {:?}", msg_meta);
+    //println!("auth {:?}", payload);    
     
     let (mut client_tx, mut client_rx) = mpsc::channel(MPSC_CLIENT_BUF_SIZE);
 
     server_tx.send(ServerMsg::AddClient(msg_meta.tx.clone(), client_net_addr, client_tx)).await.unwrap();    
 
     let mut adapter = socket_read.take(LEN_BUF_SIZE as u64);
-    let mut state = State::new();    
+    let mut state = State::new();
+
+    let mut msg_meta = None;
 
     loop {
         let f1 = read(&mut state, &mut adapter).fuse();
@@ -321,8 +335,9 @@ async fn process(mut stream: TcpStream, client_net_addr: SocketAddr, mut server_
                     ReadResult::LenFinished => {
                         println!("len ok");
                     }
-                    ReadResult::MsgMeta(msg_meta) => {
-                        println!("{:?}", msg_meta);
+                    ReadResult::MsgMeta(new_msg_meta) => {
+                        println!("{:?}", new_msg_meta);
+                        msg_meta = Some(new_msg_meta);
                     }
                     ReadResult::PayloadData(buf) => {
                         println!("payload data");
@@ -387,45 +402,28 @@ async fn process(mut stream: TcpStream, client_net_addr: SocketAddr, mut server_
     Ok(())
 }
 
-/*
-async fn process(acc: &mut Vec<u8>, socket_write: &mut WriteHalf<'_>, config: &Config) -> Result<(), Box<dyn Error>> {
-    let msg_meta = get_msg_meta(&acc)?;
-
-    println!("{:?}", msg_meta);
-
+async fn process_msg(msg_meta: &MsgMeta, payload: Value, socket_write: &mut WriteHalf<'_>, config: &Config) -> Result<(), ProcessError> {
     match msg_meta.key.as_ref() {
-        "Hub.GetFile" => {
-            let dirs = config.dirs.as_ref().ok_or("file requested, but config dirs are empty")?;
-
-            let payload: Value = get_payload(&msg_meta, acc)?;
-
-            let access_key = payload["access_key"].as_str().ok_or("no access_key in payload")?;
-
-            let target_dir = dirs.iter().find(|x| x.access_key == access_key).ok_or("no target directory found for access key")?;
-
-            let path = fs::read_dir(&target_dir.path)?.nth(0).ok_or("no files in target dir")??.path();            
+        "Hub.GetFile" => {    
+            let dirs = config.dirs.as_ref().ok_or(ProcessError::GetFile(GetFileError::ConfigDirsIsEmpty))?;            
+            let access_key = payload["access_key"].as_str().ok_or(ProcessError::GetFile(GetFileError::NoAccessKeyInPayload))?;
+            let target_dir = dirs.iter().find(|x| x.access_key == access_key).ok_or(ProcessError::GetFile(GetFileError::TargetDirNotFound))?;
+            let path = fs::read_dir(&target_dir.path)?.nth(0).ok_or(ProcessError::GetFile(GetFileError::NoFilesInTargetDir))??.path();            
 
             if path.is_file() {                                        
                 let mut file_buf = [0; 1024];
-
                 let mut file = File::open(&path).await?;
 
-                loop {
-                    let n = file.read(&mut file_buf).await?;
-
-                    println!("file read n {}", n);
-
-                    socket_write.write_all(&file_buf).await?;
+                loop {                    
+                    match file.read(&mut file_buf).await? {
+                        0 => break,
+                        _ => socket_write.write_all(&file_buf).await?
+                    }
                 }                
             }
         }
-        _ => {
-
-        }
-    }
-
-    acc.clear();    
+        _ => {}
+    }    
 
     Ok(())
 }
-*/

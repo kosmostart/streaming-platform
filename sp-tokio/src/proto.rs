@@ -113,7 +113,8 @@ pub enum Step {
     Len,
     MsgMeta(u32),
     Payload,
-    Attachment(usize)
+    Attachment(usize),
+    Finish
 }
 
 /// Data structure used for convenience when streaming data from source

@@ -84,7 +84,7 @@ pub struct MsgMeta {
     /// Logical message route, receiver are responsible for moving message on.
     pub route: Route,
     /// Size of payload, used for deserialization. Also useful for monitoring.
-    pub payload_size: u32,
+    pub payload_size: u64,
     /// Attachments to message
 	pub attachments: Vec<Attachment>
 }
@@ -99,12 +99,12 @@ pub enum MsgKind {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Attachment {
 	pub name: String,
-    pub size: u32
+    pub size: u64
 }
 
 impl MsgMeta {
     /// Payload plus attachments len.
-    pub fn content_len(&self) -> u32 {
+    pub fn content_len(&self) -> u64 {
         let mut len = self.payload_size;
 
         for attachment in &self.attachments {
@@ -114,7 +114,7 @@ impl MsgMeta {
         len
     }
     /// Attachments len.
-    pub fn attachments_len(&self) -> u32 {
+    pub fn attachments_len(&self) -> u64 {
         let mut len = 0;
 
         for attachment in &self.attachments {
@@ -193,7 +193,7 @@ pub fn event_dto<T>(tx: String, rx: String, key: String, payload: T, route: Rout
         kind: MsgKind::Event,
         correlation_id,
         route,
-        payload_size: payload.len() as u32,
+        payload_size: payload.len() as u64,
 		attachments: vec![]
     };
 
@@ -219,7 +219,7 @@ pub fn reply_to_rpc_dto<T>(tx: String, rx: String, key: String, correlation_id: 
         kind: MsgKind::RpcResponse,
         correlation_id,
         route,
-        payload_size: payload.len() as u32,
+        payload_size: payload.len() as u64,
 		attachments: vec![]
     };        
 
@@ -263,7 +263,7 @@ pub fn rpc_dto<T>(tx: String, rx: String, key: String, payload: T, route: Route)
         kind: MsgKind::RpcRequest,
         correlation_id,
         route,
-        payload_size: payload.len() as u32,
+        payload_size: payload.len() as u64,
 		attachments: vec![]
     };
     
@@ -290,7 +290,7 @@ pub fn rpc_dto_with_correlation_id<T>(tx: String, rx: String, key: String, mut p
         kind: MsgKind::RpcRequest,
         correlation_id,
         route,
-        payload_size: payload.len() as u32,
+        payload_size: payload.len() as u64,
 		attachments: vec![]
     };
 
@@ -315,7 +315,7 @@ pub fn rpc_dto_with_attachments<T>(tx: String, rx: String, key: String, payload:
     for (attachment_name, mut attachment_payload) in attachments {
         attachments_meta.push(Attachment {
             name: attachment_name,
-            size: attachment_payload.len() as u32
+            size: attachment_payload.len() as u64
         });        
         attachments_payload.append(&mut attachment_payload);
     }
@@ -327,7 +327,7 @@ pub fn rpc_dto_with_attachments<T>(tx: String, rx: String, key: String, payload:
         kind: MsgKind::RpcRequest,
         correlation_id,
         route,
-        payload_size: payload.len() as u32,
+        payload_size: payload.len() as u64,
 		attachments: attachments_meta
     };
 
@@ -344,7 +344,7 @@ pub fn rpc_dto_with_attachments<T>(tx: String, rx: String, key: String, payload:
     Ok(buf)
 }
 
-pub fn rpc_dto_with_later_attachments<T>(tx: String, rx: String, key: String, payload: T, attachments: Vec<(String, u32)>, route: Route) -> Result<Vec<u8>, Error> where T: Debug, T: serde::Serialize, for<'de> T: serde::Deserialize<'de> {
+pub fn rpc_dto_with_later_attachments<T>(tx: String, rx: String, key: String, payload: T, attachments: Vec<(String, u64)>, route: Route) -> Result<Vec<u8>, Error> where T: Debug, T: serde::Serialize, for<'de> T: serde::Deserialize<'de> {
     let mut payload = serde_json::to_vec(&payload)?;
     let correlation_id = Uuid::new_v4();
     let mut attachments_meta = vec![];    
@@ -363,7 +363,7 @@ pub fn rpc_dto_with_later_attachments<T>(tx: String, rx: String, key: String, pa
         kind: MsgKind::RpcRequest,
         correlation_id,
         route,
-        payload_size: payload.len() as u32,
+        payload_size: payload.len() as u64,
 		attachments: attachments_meta
     };
 
@@ -402,7 +402,7 @@ pub fn event_dto2(tx: String, rx: String, key: String, mut payload: Vec<u8>, rou
         kind: MsgKind::Event,
         correlation_id,
         route,
-        payload_size: payload.len() as u32,
+        payload_size: payload.len() as u64,
 		attachments: vec![]
     };
 
@@ -426,8 +426,41 @@ pub fn reply_to_rpc_dto2(tx: String, rx: String, key: String, correlation_id: Uu
         kind: MsgKind::RpcResponse,
         correlation_id,
         route,
-        payload_size: payload.len() as u32,
+        payload_size: payload.len() as u64,
 		attachments: vec![]
+    };
+
+    let mut msg_meta = serde_json::to_vec(&msg_meta)?;        
+
+    let mut buf = vec![];
+
+    buf.put_u32_be(msg_meta.len() as u32);
+
+    buf.append(&mut msg_meta);
+    buf.append(&mut payload);
+    
+    Ok(buf)
+}
+
+pub fn reply_to_rpc_dto_with_later_attachments2(tx: String, rx: String, key: String, correlation_id: Uuid, mut payload: Vec<u8>, attachments: Vec<(String, u64)>, route: Route) -> Result<Vec<u8>, Error> {
+    let mut attachments_meta = vec![];
+
+    for (attachment_name,attachment_size) in attachments {
+        attachments_meta.push(Attachment {
+            name: attachment_name,
+            size: attachment_size
+        });                
+    }
+
+    let msg_meta = MsgMeta {
+        tx,
+        rx,
+        key,
+        kind: MsgKind::RpcResponse,
+        correlation_id,
+        route,
+        payload_size: payload.len() as u64,
+		attachments: attachments_meta
     };
 
     let mut msg_meta = serde_json::to_vec(&msg_meta)?;        
@@ -467,7 +500,7 @@ pub fn rpc_dto2(tx: String, rx: String, key: String, mut payload: Vec<u8>, route
         kind: MsgKind::RpcRequest,
         correlation_id,
         route,
-        payload_size: payload.len() as u32,
+        payload_size: payload.len() as u64,
 		attachments: vec![]
     };
 
@@ -491,7 +524,7 @@ pub fn rpc_dto_with_attachments2(tx: String, rx: String, key: String, mut payloa
     for (attachment_name, mut attachment_payload) in attachments {
         attachments_meta.push(Attachment {
             name: attachment_name,
-            size: attachment_payload.len() as u32
+            size: attachment_payload.len() as u64
         });        
         attachments_payload.append(&mut attachment_payload);
     }
@@ -503,7 +536,7 @@ pub fn rpc_dto_with_attachments2(tx: String, rx: String, key: String, mut payloa
         kind: MsgKind::RpcRequest,
         correlation_id,
         route,
-        payload_size: payload.len() as u32,
+        payload_size: payload.len() as u64,
 		attachments: attachments_meta
     };
 
@@ -520,9 +553,9 @@ pub fn rpc_dto_with_attachments2(tx: String, rx: String, key: String, mut payloa
     Ok(buf)
 }
 
-pub fn rpc_dto_with_later_attachments2(tx: String, rx: String, key: String, mut payload: Vec<u8>, attachments: Vec<(String, u32)>, route: Route) -> Result<Vec<u8>, Error> {
+pub fn rpc_dto_with_later_attachments2(tx: String, rx: String, key: String, mut payload: Vec<u8>, attachments: Vec<(String, u64)>, route: Route) -> Result<Vec<u8>, Error> {
     let correlation_id = Uuid::new_v4();
-    let mut attachments_meta = vec![];    
+    let mut attachments_meta = vec![];
 
     for (attachment_name,attachment_size) in attachments {
         attachments_meta.push(Attachment {
@@ -538,7 +571,7 @@ pub fn rpc_dto_with_later_attachments2(tx: String, rx: String, key: String, mut 
         kind: MsgKind::RpcRequest,
         correlation_id,
         route,
-        payload_size: payload.len() as u32,
+        payload_size: payload.len() as u64,
 		attachments: attachments_meta
     };
 
@@ -564,7 +597,7 @@ pub fn rpc_dto_with_correlation_id_2(tx: String, rx: String, key: String, mut pa
         kind: MsgKind::RpcRequest,
         correlation_id,
         route,
-        payload_size: payload.len() as u32,
+        payload_size: payload.len() as u64,
 		attachments: vec![]
     };
 

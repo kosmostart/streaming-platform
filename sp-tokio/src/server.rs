@@ -69,7 +69,8 @@ enum GetFileError {
     ConfigDirsIsEmpty,
     NoAccessKeyInPayload,
     TargetDirNotFound,
-    NoFilesInTargetDir
+    NoFilesInTargetDir,
+    FileNameIsEmpty
 }
 
 impl From<std::io::Error> for ProcessError {
@@ -139,7 +140,7 @@ enum Step {
 struct State {
     pub len_buf: [u8; LEN_BUF_SIZE],    
     pub acc: Vec<u8>,
-    pub attachments: Option<Vec<u32>>,
+    pub attachments: Option<Vec<u64>>,
     pub step: Step
 }
 
@@ -304,17 +305,16 @@ async fn start_future() -> Result<(), Box<dyn Error>> {
 async fn process(mut stream: TcpStream, client_net_addr: SocketAddr, mut server_tx: Sender<ServerMsg>, config: &Config) -> Result<(), ProcessError> {
     let (mut socket_read, mut socket_write) = stream.split();
 
-    let (msg_meta, payload, attachments) = read_full(&mut socket_read).await?;
-    let payload: Value = from_slice(&payload)?;
-    
-    process_msg(&msg_meta, payload, &mut socket_write, config).await?;
+    let (auth_msg_meta, auth_payload, auth_attachments) = read_full(&mut socket_read).await?;
+    let auth_payload: Value = from_slice(&auth_payload)?;
+    let access_key = auth_payload["access_key"].as_str().ok_or(ProcessError::GetFile(GetFileError::NoAccessKeyInPayload))?;    
 
     //println!("auth {:?}", msg_meta);
     //println!("auth {:?}", payload);    
     
     let (mut client_tx, mut client_rx) = mpsc::channel(MPSC_CLIENT_BUF_SIZE);
 
-    server_tx.send(ServerMsg::AddClient(msg_meta.tx.clone(), client_net_addr, client_tx)).await.unwrap();    
+    server_tx.send(ServerMsg::AddClient(auth_msg_meta.tx.clone(), client_net_addr, client_tx)).await.unwrap();    
 
     let mut adapter = socket_read.take(LEN_BUF_SIZE as u64);
     let mut state = State::new();
@@ -337,6 +337,7 @@ async fn process(mut stream: TcpStream, client_net_addr: SocketAddr, mut server_
                     }
                     ReadResult::MsgMeta(new_msg_meta) => {
                         println!("{:?}", new_msg_meta);
+                        process_msg(&new_msg_meta, access_key, &mut socket_write, config).await?;                        
                         msg_meta = Some(new_msg_meta);
                     }
                     ReadResult::PayloadData(buf) => {
@@ -402,17 +403,29 @@ async fn process(mut stream: TcpStream, client_net_addr: SocketAddr, mut server_
     Ok(())
 }
 
-async fn process_msg(msg_meta: &MsgMeta, payload: Value, socket_write: &mut WriteHalf<'_>, config: &Config) -> Result<(), ProcessError> {
+async fn process_msg(msg_meta: &MsgMeta, access_key:&str, socket_write: &mut WriteHalf<'_>, config: &Config) -> Result<(), ProcessError> {
     match msg_meta.key.as_ref() {
         "Hub.GetFile" => {    
-            let dirs = config.dirs.as_ref().ok_or(ProcessError::GetFile(GetFileError::ConfigDirsIsEmpty))?;            
-            let access_key = payload["access_key"].as_str().ok_or(ProcessError::GetFile(GetFileError::NoAccessKeyInPayload))?;
+            let dirs = config.dirs.as_ref().ok_or(ProcessError::GetFile(GetFileError::ConfigDirsIsEmpty))?;
             let target_dir = dirs.iter().find(|x| x.access_key == access_key).ok_or(ProcessError::GetFile(GetFileError::TargetDirNotFound))?;
-            let path = fs::read_dir(&target_dir.path)?.nth(0).ok_or(ProcessError::GetFile(GetFileError::NoFilesInTargetDir))??.path();            
+            let path = fs::read_dir(&target_dir.path)?.nth(0).ok_or(ProcessError::GetFile(GetFileError::NoFilesInTargetDir))??.path();
 
             if path.is_file() {                                        
                 let mut file_buf = [0; 1024];
                 let mut file = File::open(&path).await?;
+                let size = file.metadata().await?.len();
+
+                let reply_dto = reply_to_rpc_dto_with_later_attachments2("SvcHub".to_owned(), msg_meta.tx.clone(), msg_meta.key.clone(), msg_meta.correlation_id, vec![],
+                vec![
+                    (path.file_name()
+                        .ok_or(ProcessError::GetFile(GetFileError::FileNameIsEmpty))?
+                        .to_str()
+                        .ok_or(ProcessError::GetFile(GetFileError::FileNameIsEmpty))?
+                        .to_owned()
+                    , size)
+                ], msg_meta.route.clone())?;
+
+                socket_write.write_all(&reply_dto).await?;
 
                 loop {                    
                     match file.read(&mut file_buf).await? {

@@ -89,6 +89,9 @@ async fn process(mut stream: TcpStream, mut read_tx: Sender<String>, mut write_r
                     ReadResult::AttachmentFinished(index) => {
                         println!("attachment ok");
                     }
+                    ReadResult::MessageFinished => {
+                        println!("message ok");
+                    }
                 };                            
             }
             res = f2 => {

@@ -163,6 +163,9 @@ async fn process(mut stream: TcpStream, client_net_addr: SocketAddr, mut server_
                     ReadResult::AttachmentFinished(index) => {
                         println!("attachment ok");
                     }
+                    ReadResult::MessageFinished => {
+                        println!("message ok");
+                    }
                 };                            
             }
             res = f2 => {

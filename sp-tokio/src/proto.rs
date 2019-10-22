@@ -104,7 +104,8 @@ pub enum ReadResult {
     /// Attachment whith index data stream message
     AttachmentData(usize, [u8; DATA_BUF_SIZE]),
     /// This one indicates attachment data stream by index finished
-    AttachmentFinished(usize)    
+    AttachmentFinished(usize),
+    MessageFinished
 }
 
 #[derive(Debug)]
@@ -171,7 +172,7 @@ pub async fn read(state: &mut State, adapter: &mut Take<ReadHalf<'_>>) -> Result
                     match attachments.len() {
                         0 => {
                             adapter.set_limit(LEN_BUF_SIZE as u64);
-                            state.step = Step::Len;
+                            state.step = Step::Finish;
                         }
                         _ => {                      
                             adapter.set_limit(attachments[0] as u64);
@@ -200,7 +201,7 @@ pub async fn read(state: &mut State, adapter: &mut Take<ReadHalf<'_>>) -> Result
                         }
                         false => {
                             adapter.set_limit(LEN_BUF_SIZE as u64);
-                            state.step = Step::Len;
+                            state.step = Step::Finish;
                         }
                     };
 
@@ -208,6 +209,10 @@ pub async fn read(state: &mut State, adapter: &mut Take<ReadHalf<'_>>) -> Result
                 }
                 _ => Ok(ReadResult::AttachmentData(index, data_buf))
             }
+        }
+        Step::Finish => {
+            state.step = Step::Len;
+            Ok(ReadResult::MessageFinished)
         }
     }
 }

@@ -35,12 +35,12 @@ struct Dir {
 
 struct Client {
     net_addr: SocketAddr,
-    tx: Sender<[u8; DATA_BUF_SIZE]>
+    tx: Sender<(usize, [u8; DATA_BUF_SIZE])>
 }
 
 enum ServerMsg {
-    AddClient(String, SocketAddr, Sender<[u8; DATA_BUF_SIZE]>),
-    SendBuf(String, [u8; DATA_BUF_SIZE]),
+    AddClient(String, SocketAddr, Sender<(usize, [u8; DATA_BUF_SIZE])>),
+    SendBuf(String, (usize, [u8; DATA_BUF_SIZE])),
     RemoveClient(String)
 }
 
@@ -117,11 +117,10 @@ async fn process(mut stream: TcpStream, client_net_addr: SocketAddr, mut server_
     let (mut socket_read, mut socket_write) = stream.split();
 
     let (auth_msg_meta, auth_payload, auth_attachments) = read_full(&mut socket_read).await?;
-    let auth_payload: Value = from_slice(&auth_payload)?;
-    let access_key = auth_payload["access_key"].as_str().ok_or(ProcessError::GetFile(GetFileError::NoAccessKeyInPayload))?;    
+    let auth_payload: Value = from_slice(&auth_payload)?;    
 
-    //println!("auth {:?}", msg_meta);
-    //println!("auth {:?}", payload);    
+    println!("auth {:?}", auth_msg_meta);
+    println!("auth {:?}", auth_payload);
     
     let (mut client_tx, mut client_rx) = mpsc::channel(MPSC_CLIENT_BUF_SIZE);
 
@@ -148,16 +147,17 @@ async fn process(mut stream: TcpStream, client_net_addr: SocketAddr, mut server_
                     }
                     ReadResult::MsgMeta(new_msg_meta) => {
                         println!("{:?}", new_msg_meta);
-                        process_msg(&new_msg_meta, access_key, &mut socket_write, config).await?;                        
+                        let res = process_msg(&new_msg_meta, &auth_payload, &mut socket_write, config).await?;
+                        println!("process {:?}", res);
                         msg_meta = Some(new_msg_meta);
                     }
-                    ReadResult::PayloadData(buf) => {
+                    ReadResult::PayloadData(n, buf) => {
                         println!("payload data");
                     }
                     ReadResult::PayloadFinished => {
                         println!("payload ok");
                     }
-                    ReadResult::AttachmentData(index, buf) => {
+                    ReadResult::AttachmentData(index, n, buf) => {
                         println!("attachment data");
                     }
                     ReadResult::AttachmentFinished(index) => {
@@ -169,7 +169,8 @@ async fn process(mut stream: TcpStream, client_net_addr: SocketAddr, mut server_
                 };                            
             }
             res = f2 => {
-
+                let (n, buf) = res?;
+                socket_write.write_all(&buf[..n]).await?;
             }
         };
     }
@@ -217,14 +218,15 @@ async fn process(mut stream: TcpStream, client_net_addr: SocketAddr, mut server_
     Ok(())
 }
 
-async fn process_msg(msg_meta: &MsgMeta, access_key:&str, socket_write: &mut WriteHalf<'_>, config: &Config) -> Result<(), ProcessError> {
+async fn process_msg(msg_meta: &MsgMeta, payload: &Value, socket_write: &mut WriteHalf<'_>, config: &Config) -> Result<(), ProcessError> {
     match msg_meta.key.as_ref() {
-        "Hub.GetFile" => {    
+        "Hub.GetFile" => {
+            let access_key = payload["access_key"].as_str().ok_or(ProcessError::GetFile(GetFileError::NoAccessKeyInPayload))?;
             let dirs = config.dirs.as_ref().ok_or(ProcessError::GetFile(GetFileError::ConfigDirsIsEmpty))?;
             let target_dir = dirs.iter().find(|x| x.access_key == access_key).ok_or(ProcessError::GetFile(GetFileError::TargetDirNotFound))?;
-            let path = fs::read_dir(&target_dir.path)?.nth(0).ok_or(ProcessError::GetFile(GetFileError::NoFilesInTargetDir))??.path();
+            let path = fs::read_dir(&target_dir.path)?.nth(0).ok_or(ProcessError::GetFile(GetFileError::NoFilesInTargetDir))??.path();        
 
-            if path.is_file() {                                        
+            if path.is_file() {                
                 let mut file_buf = [0; 1024];
                 let mut file = File::open(&path).await?;
                 let size = file.metadata().await?.len();
@@ -239,14 +241,19 @@ async fn process_msg(msg_meta: &MsgMeta, access_key:&str, socket_write: &mut Wri
                     , size)
                 ], msg_meta.route.clone())?;
 
-                socket_write.write_all(&reply_dto).await?;
+                socket_write.write_all(&reply_dto).await?;                
 
-                loop {                    
+                loop {
                     match file.read(&mut file_buf).await? {
                         0 => break,
-                        _ => socket_write.write_all(&file_buf).await?
+                        n => {
+                            println!("{}", n);
+                            socket_write.write_all(&file_buf[..n]).await?;                            
+                        }
                     }
                 }                
+            } else {
+                println!("not a file my friends");
             }
         }
         _ => {}

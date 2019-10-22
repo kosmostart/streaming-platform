@@ -8,4 +8,5 @@ edition = "2018"
 
 [dependencies]
 
+sp-tokio = { path = "../sp-tokio" }
 sp-pack-core = { path = "../sp-pack-core" }

@@ -1,3 +1,4 @@
+use std::option;
 use std::fmt;
 use std::error::Error;
 use std::collections::HashMap;
@@ -40,7 +41,8 @@ pub enum ProcessError {
     AttachmentFieldIsEmpty,
     Io(std::io::Error),
     SerdeJson(serde_json::Error),
-    GetFile(GetFileError)
+    GetFile(GetFileError),
+    NoneError
 }
 
 #[derive(Debug)]
@@ -49,7 +51,8 @@ pub enum GetFileError {
     NoAccessKeyInPayload,
     TargetDirNotFound,
     NoFilesInTargetDir,
-    FileNameIsEmpty
+    FileNameIsEmpty,
+    AttachmentsAreEmpty
 }
 
 impl From<std::io::Error> for ProcessError {
@@ -64,6 +67,12 @@ impl From<serde_json::Error> for ProcessError {
 	}
 }
 
+impl From<option::NoneError> for ProcessError {
+	fn from(err: option::NoneError) -> ProcessError {
+		ProcessError::NoneError
+	}
+}
+
 /// Read full message from source in to memory. Should be used carefully with large message content.
 pub async fn read_full(socket_read: &mut ReadHalf<'_>) -> Result<(MsgMeta, Vec<u8>, Vec<u8>), ProcessError> {
     let mut len_buf = [0; LEN_BUF_SIZE];
@@ -71,11 +80,13 @@ pub async fn read_full(socket_read: &mut ReadHalf<'_>) -> Result<(MsgMeta, Vec<u
 
     let mut buf = Cursor::new(len_buf);        
     let len = buf.get_u32_be() as usize;
+    println!("len {}", len);
     let mut adapter = socket_read.take(len as u64);
 
     let mut msg_meta = vec![];
 
-    let n = adapter.read_to_end(&mut msg_meta).await?;        
+    let n = adapter.read_to_end(&mut msg_meta).await?;
+    println!("n {}", n);
 
     let msg_meta: MsgMeta = from_slice(&msg_meta)?;        
     let mut adapter = socket_read.take(msg_meta.payload_size as u64);
@@ -98,11 +109,11 @@ pub enum ReadResult {
     /// Message data stream is prepended with MsgMeta struct
     MsgMeta(MsgMeta),
     /// Payload data stream message
-    PayloadData([u8; DATA_BUF_SIZE]),
+    PayloadData(usize, [u8; DATA_BUF_SIZE]),
     /// This one indicates payload data stream finished
     PayloadFinished,
     /// Attachment whith index data stream message
-    AttachmentData(usize, [u8; DATA_BUF_SIZE]),
+    AttachmentData(usize, usize, [u8; DATA_BUF_SIZE]),
     /// This one indicates attachment data stream by index finished
     AttachmentFinished(usize),
     MessageFinished
@@ -128,7 +139,7 @@ pub struct State {
 impl State {
     pub fn new() -> State {
         State {            
-            len_buf: [0; LEN_BUF_SIZE],            
+            len_buf: [0; LEN_BUF_SIZE],
             acc: vec![],
             attachments: None,
             step: Step::Len
@@ -163,10 +174,9 @@ pub async fn read(state: &mut State, adapter: &mut Take<ReadHalf<'_>>) -> Result
             Ok(ReadResult::MsgMeta(msg_meta))
         }
         Step::Payload => {
-            let mut data_buf = [0; DATA_BUF_SIZE];           
-            let n = adapter.read(&mut data_buf).await?;
+            let mut data_buf = [0; DATA_BUF_SIZE];                       
 
-            match n {
+            match adapter.read(&mut data_buf).await? {
                 0 => {
                     let attachments = state.attachments.as_ref().ok_or(ProcessError::AttachmentFieldIsEmpty)?;
 
@@ -183,14 +193,13 @@ pub async fn read(state: &mut State, adapter: &mut Take<ReadHalf<'_>>) -> Result
 
                     Ok(ReadResult::PayloadFinished)
                 }
-                _ => Ok(ReadResult::PayloadData(data_buf))
+                n => Ok(ReadResult::PayloadData(n, data_buf))
             }                                
         }
         Step::Attachment(index) => {
-            let mut data_buf = [0; DATA_BUF_SIZE];           
-            let n = adapter.read(&mut data_buf).await?;
+            let mut data_buf = [0; DATA_BUF_SIZE];                       
 
-            match n {
+            match adapter.read(&mut data_buf).await? {
                 0 => {
                     let attachments = state.attachments.as_ref().ok_or(ProcessError::AttachmentFieldIsEmpty)?;
 
@@ -208,7 +217,7 @@ pub async fn read(state: &mut State, adapter: &mut Take<ReadHalf<'_>>) -> Result
 
                     Ok(ReadResult::AttachmentFinished(index))
                 }
-                _ => Ok(ReadResult::AttachmentData(index, data_buf))
+                n => Ok(ReadResult::AttachmentData(index, n, data_buf))
             }
         }
         Step::Finish => {

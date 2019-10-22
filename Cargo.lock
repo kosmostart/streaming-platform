@@ -1538,6 +1538,7 @@ name = "spup"
 version = "0.1.0"
 dependencies = [
  "sp-pack-core 0.1.0",
+ "sp-tokio 0.1.0",
 ]
 
 [[package]]

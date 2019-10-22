@@ -12,37 +12,15 @@ use serde_json::{Value, from_slice, json};
 use sp_dto::*;
 use crate::proto::*;
 
-pub fn connect(addr: &str) {
+pub fn connect(host: &str, addr: &str, access_key: &str) {
     let rt = Runtime::new().expect("failed to create runtime"); 
     
-    rt.block_on(connect_future(addr));
+    rt.spawn(connect_future(host, addr, access_key));
 }
 
-pub async fn connect_future(addr: &str) {
-    let mut stream = TcpStream::connect(addr).await.unwrap();
-    
-    /*    
-    let route = Route {
-        source: Participator::Service(addr.to_owned()),
-        spec: RouteSpec::Simple,
-        points: vec![Participator::Service(addr.to_owned())]
-    };  
+pub async fn connect_future(host: &str, addr: &str, access_key: &str) {
+    let mut stream = TcpStream::connect(host).await.unwrap();
 
-    let rpc_dto = rpc_dto(addr.to_owned(), addr.to_owned(), "key".to_owned(), json!({
-    }), route).unwrap();
-
-    if let Err(err) = socket_write.write_all(&rpc_dto).await {
-        println!("failed to write to socket {:?}", err);
-        return;
-    }
-
-    if let Err(err) = socket_write.write_all(&rpc_dto).await {
-        println!("failed to write to socket {:?}", err);
-        return;
-    }
-
-    println!("write ok");
-    */
     let (mut read_tx, mut read_rx) = mpsc::channel(MPSC_CLIENT_BUF_SIZE);
     let (mut write_tx, mut write_rx) = mpsc::channel(MPSC_CLIENT_BUF_SIZE);
 
@@ -53,27 +31,10 @@ pub async fn connect_future(addr: &str) {
     };  
 
     let dto = rpc_dto(addr.to_owned(), addr.to_owned(), "Auth".to_owned(), json!({
-        "access_key": "12345"
+        "access_key": access_key
     }), route).unwrap();
 
-    println!("dto len {}", dto.len());
-
-    let mut dto2 = &dto[..];
-
-    loop {
-        let mut data_buf = [0; DATA_BUF_SIZE];
-        let n = dto2.read(&mut data_buf).await.unwrap();
-
-        println!("n {}, data_buf len {}", n, dto.len());
-
-        match n {
-            0 => break,
-            _ => {
-                write_tx.send((n, data_buf)).await.unwrap();
-                println!("write ok");
-            }
-        }
-    }
+    write(dto, &mut write_tx).await.unwrap();
 
     let route = Route {
         source: Participator::Service(addr.to_owned()),
@@ -84,28 +45,32 @@ pub async fn connect_future(addr: &str) {
     let dto = rpc_dto(addr.to_owned(), addr.to_owned(), "Hub.GetFile".to_owned(), json!({        
     }), route).unwrap();
 
-    println!("dto len {}", dto.len());
+    write(dto, &mut write_tx).await;
+        
+    let res = process(stream, read_tx, write_rx).await;
 
-    let mut dto2 = &dto[..];
+    println!("{:?}", res);
+}
+
+async fn write(data: Vec<u8>, write_tx: &mut Sender<(usize, [u8; DATA_BUF_SIZE])>) -> Result<(), ProcessError> {
+    let mut source = &data[..];
 
     loop {
         let mut data_buf = [0; DATA_BUF_SIZE];
-        let n = dto2.read(&mut data_buf).await.unwrap();
+        let n = source.read(&mut data_buf).await.unwrap();
 
-        println!("n {}, data_buf len {}", n, dto.len());
+        //println!("n {}, data_buf len {}", n, dto.len());
 
         match n {
             0 => break,
             _ => {
                 write_tx.send((n, data_buf)).await.unwrap();
-                println!("write ok");
+                //println!("write ok");
             }
         }
     }
-    
-    let res = process(stream, read_tx, write_rx).await;
 
-    println!("{:?}", res);
+    Ok(())
 }
 
 async fn process(mut stream: TcpStream, mut read_tx: Sender<[u8; DATA_BUF_SIZE]>, mut write_rx: Receiver<(usize, [u8; DATA_BUF_SIZE])>) -> Result<(), ProcessError> {

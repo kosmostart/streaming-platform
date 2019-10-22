@@ -116,6 +116,7 @@ pub enum ReadResult {
     AttachmentData(usize, usize, [u8; DATA_BUF_SIZE]),
     /// This one indicates attachment data stream by index finished
     AttachmentFinished(usize),
+    /// Message stream finished, simple as that
     MessageFinished
 }
 

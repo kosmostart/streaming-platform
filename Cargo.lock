@@ -1537,8 +1537,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 name = "spup"
 version = "0.1.0"
 dependencies = [
+ "serde 1.0.101 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serde_derive 1.0.101 (registry+https://github.com/rust-lang/crates.io-index)",
  "sp-pack-core 0.1.0",
  "sp-tokio 0.1.0",
+ "toml 0.5.3 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]

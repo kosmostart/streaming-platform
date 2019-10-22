@@ -8,5 +8,8 @@ edition = "2018"
 
 [dependencies]
 
+serde = "*"
+serde_derive = "*"
+toml = "*"
 sp-tokio = { path = "../sp-tokio" }
 sp-pack-core = { path = "../sp-pack-core" }

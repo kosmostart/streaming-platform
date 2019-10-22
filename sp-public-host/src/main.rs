@@ -3,13 +3,14 @@ use std::io::prelude::*;
 use std::io::BufReader;
 use std::net::SocketAddr;
 use serde_derive::Deserialize;
-use warp::Filter;
+use warp::{Filter, fs};
 
 #[derive(Debug, Deserialize)]
 struct Config {
     host: String,
     cert_path: String,
-    key_path: String
+    key_path: String,
+    dir: String
 }
 
 pub fn main() {    
@@ -31,8 +32,7 @@ pub fn main() {
 
 	let host = config.host.parse::<SocketAddr>().unwrap();
 
-    let routes = warp::path("tmp")
-    .and(warp::fs::dir("/tmp2"));
+    let routes = fs::dir(config.dir);
 
     warp::serve(routes)
         .tls(config.cert_path, config.key_path)

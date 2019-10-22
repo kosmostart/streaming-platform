@@ -1,4 +1,5 @@
 use std::error::Error;
+use std::thread;
 use bytes::BufMut;
 use futures::future::{Fuse, FusedFuture, FutureExt};
 use futures::stream::StreamExt;
@@ -12,47 +13,22 @@ use serde_json::{Value, from_slice, json};
 use sp_dto::*;
 use crate::proto::*;
 
-pub fn connect(host: &str, addr: &str, access_key: &str) {
-    let rt = Runtime::new().expect("failed to create runtime"); 
-    
-    rt.spawn(connect_future(host, addr, access_key));
+pub enum ClientMsg {
+    FileReceiveComplete(String)
 }
 
-pub async fn connect_future(host: &str, addr: &str, access_key: &str) {
-    let mut stream = TcpStream::connect(host).await.unwrap();
+pub fn connect(host: &str, addr: &str, access_key: &str, mut read_tx: Sender<ClientMsg>, mut write_rx: Receiver<(usize, [u8; DATA_BUF_SIZE])>) {
+    let rt = Runtime::new().expect("failed to create runtime");
 
-    let (mut read_tx, mut read_rx) = mpsc::channel(MPSC_CLIENT_BUF_SIZE);
-    let (mut write_tx, mut write_rx) = mpsc::channel(MPSC_CLIENT_BUF_SIZE);
+    let addr = addr.to_owned();
+    let access_key = access_key.to_owned();        
 
-    let route = Route {
-        source: Participator::Service(addr.to_owned()),
-        spec: RouteSpec::Simple,
-        points: vec![Participator::Service(addr.to_owned())]
-    };  
+    tokio::spawn(connect_future(host.to_owned(), read_tx, write_rx));    
 
-    let dto = rpc_dto(addr.to_owned(), addr.to_owned(), "Auth".to_owned(), json!({
-        "access_key": access_key
-    }), route).unwrap();
-
-    write(dto, &mut write_tx).await.unwrap();
-
-    let route = Route {
-        source: Participator::Service(addr.to_owned()),
-        spec: RouteSpec::Simple,
-        points: vec![Participator::Service(addr.to_owned())]
-    };  
-
-    let dto = rpc_dto(addr.to_owned(), addr.to_owned(), "Hub.GetFile".to_owned(), json!({        
-    }), route).unwrap();
-
-    write(dto, &mut write_tx).await;
-        
-    let res = process(stream, read_tx, write_rx).await;
-
-    println!("{:?}", res);
+    thread::park();
 }
 
-async fn write(data: Vec<u8>, write_tx: &mut Sender<(usize, [u8; DATA_BUF_SIZE])>) -> Result<(), ProcessError> {
+pub async fn write(data: Vec<u8>, write_tx: &mut Sender<(usize, [u8; DATA_BUF_SIZE])>) -> Result<(), ProcessError> {
     let mut source = &data[..];
 
     loop {
@@ -73,7 +49,15 @@ async fn write(data: Vec<u8>, write_tx: &mut Sender<(usize, [u8; DATA_BUF_SIZE])
     Ok(())
 }
 
-async fn process(mut stream: TcpStream, mut read_tx: Sender<[u8; DATA_BUF_SIZE]>, mut write_rx: Receiver<(usize, [u8; DATA_BUF_SIZE])>) -> Result<(), ProcessError> {
+pub async fn connect_future(host: String, mut read_tx: Sender<ClientMsg>, mut write_rx: Receiver<(usize, [u8; DATA_BUF_SIZE])>) {
+    let mut stream = TcpStream::connect(host).await.unwrap();    
+
+    let res = process(stream, read_tx, write_rx).await;
+
+    println!("{:?}", res);
+}
+
+async fn process(mut stream: TcpStream, mut read_tx: Sender<ClientMsg>, mut write_rx: Receiver<(usize, [u8; DATA_BUF_SIZE])>) -> Result<(), ProcessError> {
     let (mut socket_read, mut socket_write) = stream.split();
 
     //let (auth_msg_meta, auth_payload, auth_attachments) = read_full(&mut socket_read).await?;
@@ -108,7 +92,7 @@ async fn process(mut stream: TcpStream, mut read_tx: Sender<[u8; DATA_BUF_SIZE]>
                         match new_msg_meta.key.as_ref() {
                             "Hub.GetFile" => {
                                 let attachment = new_msg_meta.attachments.iter().nth(0).ok_or(ProcessError::GetFile(GetFileError::AttachmentsAreEmpty))?;
-                                file = Some(File::create(&attachment.name).await?);
+                                file = Some((attachment.name.clone(), File::create(&attachment.name).await?));
                             }
                             _ => file = None
                         }
@@ -123,7 +107,7 @@ async fn process(mut stream: TcpStream, mut read_tx: Sender<[u8; DATA_BUF_SIZE]>
                     }
                     ReadResult::AttachmentData(index, n, buf) => {
                         match file {
-                            Some(ref mut file) => {
+                            Some((_, ref mut file)) => {
                                 file.write_all(&buf[..n]).await?;
                             }
                             None => {
@@ -132,7 +116,15 @@ async fn process(mut stream: TcpStream, mut read_tx: Sender<[u8; DATA_BUF_SIZE]>
                         }                                                                    
                     }
                     ReadResult::AttachmentFinished(index) => {
-                        println!("attachment ok");
+                        match file {
+                            Some((name, _)) => {
+                                read_tx.send(ClientMsg::FileReceiveComplete(name));
+                                file = None;
+                            }
+                            None => {
+
+                            }
+                        }                        
                     }
                     ReadResult::MessageFinished => {
                         println!("message ok");

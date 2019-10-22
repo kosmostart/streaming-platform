@@ -10,6 +10,7 @@ edition = "2018"
 
 serde = "*"
 serde_derive = "*"
+serde_json = "*"
 toml = "*"
 sp-tokio = { path = "../sp-tokio" }
 sp-pack-core = { path = "../sp-pack-core" }

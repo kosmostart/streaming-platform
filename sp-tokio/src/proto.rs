@@ -14,7 +14,7 @@ use futures::{select, pin_mut};
 use tokio::runtime::Runtime;
 use tokio::io::Take;
 use tokio::net::{TcpListener, TcpStream, tcp::split::{ReadHalf, WriteHalf}};
-use tokio::sync::mpsc::{self, Sender, Receiver};
+use tokio::sync::mpsc::{self, Sender, Receiver, error::SendError};
 use tokio::prelude::*;
 use tokio::fs::File;
 use serde_json::{Value, from_slice};
@@ -42,6 +42,7 @@ pub enum ProcessError {
     Io(std::io::Error),
     SerdeJson(serde_json::Error),
     GetFile(GetFileError),
+    SendError(SendError),
     NoneError
 }
 
@@ -70,6 +71,12 @@ impl From<serde_json::Error> for ProcessError {
 impl From<option::NoneError> for ProcessError {
 	fn from(err: option::NoneError) -> ProcessError {
 		ProcessError::NoneError
+	}
+}
+
+impl From<SendError> for ProcessError {
+	fn from(err: SendError) -> ProcessError {
+		ProcessError::SendError(err)
 	}
 }
 

@@ -103,10 +103,10 @@ async fn process(mut stream: TcpStream, mut read_tx: Sender<ClientMsg>, mut writ
                             None => {}
                         }                        
                     }
-                    ReadResult::AttachmentFinished(index) => {
+                    ReadResult::AttachmentFinished(index) => {                        
                         match file {
                             Some((name, _)) => {
-                                read_tx.send(ClientMsg::FileReceiveComplete(name));
+                                read_tx.send(ClientMsg::FileReceiveComplete(name)).await?;
                                 file = None;
                             }
                             None => {}

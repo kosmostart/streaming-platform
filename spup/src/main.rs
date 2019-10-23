@@ -75,16 +75,14 @@ fn main() {
     let path = config.path.clone();
 
     rt.spawn(async move {
-        match read_rx.recv().await {
-            Some(msg) => {
-                match msg {
-                    ClientMsg::FileReceiveComplete(name) => unpack(&(path + "/" + &name))
+        loop {
+            let msg = read_rx.recv().await.expect("connection issues acquired");
+            match msg {
+                ClientMsg::FileReceiveComplete(name) => {
+                    unpack(&(path.clone() + "/" + &name));
                 }
             }
-            None => {
-
-            }
-        }
+        }    
     });
 
     rt.block_on(connect(&config.host, &config.addr, &config.access_key, read_tx, write_rx));    

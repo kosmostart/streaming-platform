@@ -1,5 +1,4 @@
 use std::error::Error;
-use std::thread;
 use bytes::BufMut;
 use futures::future::{Fuse, FusedFuture, FutureExt};
 use futures::stream::StreamExt;
@@ -15,17 +14,6 @@ use crate::proto::*;
 
 pub enum ClientMsg {
     FileReceiveComplete(String)
-}
-
-pub fn connect(host: &str, addr: &str, access_key: &str, mut read_tx: Sender<ClientMsg>, mut write_rx: Receiver<(usize, [u8; DATA_BUF_SIZE])>) {
-    let rt = Runtime::new().expect("failed to create runtime");
-
-    let addr = addr.to_owned();
-    let access_key = access_key.to_owned();        
-
-    tokio::spawn(connect_future(host.to_owned(), read_tx, write_rx));    
-
-    thread::park();
 }
 
 pub async fn write(data: Vec<u8>, write_tx: &mut Sender<(usize, [u8; DATA_BUF_SIZE])>) -> Result<(), ProcessError> {
@@ -49,7 +37,11 @@ pub async fn write(data: Vec<u8>, write_tx: &mut Sender<(usize, [u8; DATA_BUF_SI
     Ok(())
 }
 
-pub async fn connect_future(host: String, mut read_tx: Sender<ClientMsg>, mut write_rx: Receiver<(usize, [u8; DATA_BUF_SIZE])>) {
+pub async fn connect(host: &str, addr: &str, access_key: &str, mut read_tx: Sender<ClientMsg>, mut write_rx: Receiver<(usize, [u8; DATA_BUF_SIZE])>) {    
+    let addr = addr.to_owned();
+    let access_key = access_key.to_owned();            
+
+//pub async fn connect_future(host: String, mut read_tx: Sender<ClientMsg>, mut write_rx: Receiver<(usize, [u8; DATA_BUF_SIZE])>) {
     let mut stream = TcpStream::connect(host).await.unwrap();    
 
     let res = process(stream, read_tx, write_rx).await;
@@ -90,9 +82,9 @@ async fn process(mut stream: TcpStream, mut read_tx: Sender<ClientMsg>, mut writ
                         println!("{:?}", new_msg_meta);
 
                         match new_msg_meta.key.as_ref() {
-                            "Hub.GetFile" => {
+                            "Hub.GetFile" => {                                
                                 let attachment = new_msg_meta.attachments.iter().nth(0).ok_or(ProcessError::GetFile(GetFileError::AttachmentsAreEmpty))?;
-                                file = Some((attachment.name.clone(), File::create(&attachment.name).await?));
+                                file = Some((attachment.name.clone(), File::create(&attachment.name).await?));                                
                             }
                             _ => file = None
                         }
@@ -105,15 +97,11 @@ async fn process(mut stream: TcpStream, mut read_tx: Sender<ClientMsg>, mut writ
                     ReadResult::PayloadFinished => {
                         println!("payload ok");
                     }
-                    ReadResult::AttachmentData(index, n, buf) => {
+                    ReadResult::AttachmentData(index, n, buf) => {                        
                         match file {
-                            Some((_, ref mut file)) => {
-                                file.write_all(&buf[..n]).await?;
-                            }
-                            None => {
-
-                            }
-                        }                                                                    
+                            Some((_, ref mut file)) => file.write_all(&buf[..n]).await?,
+                            None => {}
+                        }                        
                     }
                     ReadResult::AttachmentFinished(index) => {
                         match file {
@@ -121,9 +109,7 @@ async fn process(mut stream: TcpStream, mut read_tx: Sender<ClientMsg>, mut writ
                                 read_tx.send(ClientMsg::FileReceiveComplete(name));
                                 file = None;
                             }
-                            None => {
-
-                            }
+                            None => {}
                         }                        
                     }
                     ReadResult::MessageFinished => {

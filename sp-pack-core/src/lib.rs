@@ -107,6 +107,8 @@ pub fn unpack(from: &str) {
 
     remove_file(&to)
         .expect("failed to remove temporary file");
+
+    println!("unpack {} ok", from);
 }
 
 fn compress(from: &str, to: &str) -> Result<()> {    

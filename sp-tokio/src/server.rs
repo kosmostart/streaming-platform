@@ -246,10 +246,7 @@ async fn process_msg(msg_meta: &MsgMeta, payload: &Value, socket_write: &mut Wri
                 loop {
                     match file.read(&mut file_buf).await? {
                         0 => break,
-                        n => {
-                            println!("{}", n);
-                            socket_write.write_all(&file_buf[..n]).await?;                            
-                        }
+                        n => socket_write.write_all(&file_buf[..n]).await?
                     }
                 }                
             } else {

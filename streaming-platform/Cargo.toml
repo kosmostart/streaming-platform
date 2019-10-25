@@ -4,15 +4,21 @@ version = "0.1.0"
 authors = ["Maximb <sprayrules@gmail.com>"]
 edition = "2018"
 
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
 [dependencies]
 
 log = "*"
-crossbeam = "*"
+bytes = "*"
+futures-preview = { version = "=0.3.0-alpha.19", features = ["async-await"] }
+tokio = { git = "https://github.com/tokio-rs/tokio" }
 serde = "*"
 serde_derive = "*"
 serde_json = "*"
-url = "2.0"
-openssl = "*"
-cookie = "*"
-ws = { version = "*", features = ["ssl"] }
+toml = "*"
 sp-dto = { path = "../sp-dto" }
+
+[features]
+
+default = []
+file-server = []

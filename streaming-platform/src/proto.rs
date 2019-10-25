@@ -1,11 +1,30 @@
-use std::{marker::PhantomData, fmt::Debug};
-use log::*;
-use sp_dto::bytes::{Buf, BufMut};
-use serde_derive::{Serialize, Deserialize};
-use ws::{Message, Sender};
-use sp_dto::uuid::Uuid;
+use std::option;
+use std::fmt;
+use std::error::Error;
+use std::collections::HashMap;
+use std::io::prelude::*;
+use std::io::{Cursor, BufReader};
+use std::fs::{self, DirEntry};
+use std::path::Path;
+use std::net::SocketAddr;
+use bytes::Buf;
+use futures::future::{Fuse, FusedFuture, FutureExt};
+use futures::stream::StreamExt;
+use futures::{select, pin_mut};
+use tokio::runtime::Runtime;
+use tokio::io::Take;
+use tokio::net::{TcpListener, TcpStream, tcp::split::{ReadHalf, WriteHalf}};
+use tokio::sync::mpsc::{self, Sender, Receiver, error::SendError};
+use tokio::prelude::*;
+use tokio::fs::File;
+use serde_json::{Value, from_slice};
+use serde_derive::Deserialize;
 use sp_dto::*;
-use crate::error::Error;
+
+pub const LEN_BUF_SIZE: usize = 4;
+pub const DATA_BUF_SIZE: usize = 1024;
+pub const MPSC_SERVER_BUF_SIZE: usize = 1000;
+pub const MPSC_CLIENT_BUF_SIZE: usize = 100;
 
 #[derive(Debug, Clone)]
 pub enum ClientKind {
@@ -13,350 +32,205 @@ pub enum ClientKind {
     Service,
     Hub
 }
-pub enum ServerMsg {
-    AddClient(String, Sender),
-    RemoveClient(String),
-    SendMsg(String, Vec<u8>)
+
+#[derive(Debug)]
+pub enum ProcessError {
+    StreamClosed,
+    NotEnoughBytesForLen,
+    IncorrectReadResult,
+    AttachmentFieldIsEmpty,
+    Io(std::io::Error),
+    SerdeJson(serde_json::Error),
+    GetFile(GetFileError),
+    SendError(SendError),
+    NoneError
 }
 
 #[derive(Debug)]
-pub enum ClientMsg {
-    AddRpc(Uuid, crossbeam::channel::Sender<(MsgMeta, usize, Vec<u8>)>),
-    RemoveRpc(Uuid),
-    RpcDataRequest(Uuid),
-    RpcDataResponse(Uuid, crossbeam::channel::Sender<(MsgMeta, usize, Vec<u8>)>)
+pub enum GetFileError {
+    ConfigDirsIsEmpty,
+    NoAccessKeyInPayload,
+    TargetDirNotFound,
+    NoFilesInTargetDir,
+    FileNameIsEmpty,
+    AttachmentsAreEmpty
 }
 
-#[derive(Clone)]
-pub struct MagicBall<T, R> where T: serde::Serialize, for<'de> T: serde::Deserialize<'de>, R: serde::Serialize, for<'de> R: serde::Deserialize<'de> {
-    phantom_data_for_T: PhantomData<T>,
-    phantom_data_for_R: PhantomData<R>,
-    addr: String,
-    sender: Sender,
-    rx: crossbeam::channel::Receiver<(MsgMeta, usize, Vec<u8>)>,
-    rpc_request_rx: crossbeam::channel::Receiver<(MsgMeta, usize, Vec<u8>)>,
-    rpc_tx: crossbeam::channel::Sender<ClientMsg>
-}
-
-#[derive(Clone)]
-pub struct MagicBall2 {
-    addr: String,
-    sender: Sender,
-    rx: crossbeam::channel::Receiver<(MsgMeta, usize, Vec<u8>)>,
-    rpc_request_rx: crossbeam::channel::Receiver<(MsgMeta, usize, Vec<u8>)>,
-    rpc_tx: crossbeam::channel::Sender<ClientMsg>
-}
-
-impl<T, R> MagicBall<T, R> where T: Debug, T: serde::Serialize, for<'de> T: serde::Deserialize<'de>, R: Debug, R: serde::Serialize, for<'de> R: serde::Deserialize<'de> {
-    pub fn new(addr: String, sender: Sender, rx: crossbeam::channel::Receiver<(MsgMeta, usize, Vec<u8>)>, rpc_request_rx: crossbeam::channel::Receiver<(MsgMeta, usize, Vec<u8>)>, rpc_tx: crossbeam::channel::Sender<ClientMsg>) -> MagicBall<T, R> {
-        MagicBall {
-            phantom_data_for_T: PhantomData,
-            phantom_data_for_R: PhantomData,
-            addr,
-            sender,
-            rx,
-            rpc_request_rx,
-            rpc_tx
-        }
-    }
-	pub fn get_addr(&self) -> String {
-		self.addr.clone()
+impl From<std::io::Error> for ProcessError {
+	fn from(err: std::io::Error) -> ProcessError {
+		ProcessError::Io(err)
 	}
-    pub fn send_event(&self, addr: &str, key: &str, payload: T) -> Result<(), Error> {
-        let route = Route {
-            source: Participator::Service(self.addr.clone()),
-            spec: RouteSpec::Simple,
-            points: vec![Participator::Service(self.addr.to_owned())]
-        };
-
-        let dto = event_dto(self.addr.clone(), addr.to_owned(), key.to_owned(), payload, route)?;
-
-        self.sender.send(Message::Binary(dto));
-        
-        Ok(())
-    }
-    pub fn send_event_with_route(&self, addr: &str, key: &str, payload: T, mut route: Route) -> Result<(), Error> {
-        info!("send_event, route {:?}, target addr {}, key {}, payload {:?}, ", route, addr, key, payload);
-
-        route.points.push(Participator::Service(self.addr.to_owned()));
-
-        let dto = event_dto(self.addr.clone(), addr.to_owned(), key.to_owned(), payload, route)?;
-
-        self.sender.send(Message::Binary(dto));
-        
-        Ok(())
-    }
-    pub fn reply_to_rpc(&self, addr: String, key: String, correlation_id: Uuid, payload: R, mut route: Route) -> Result<(), Error> {
-        route.points.push(Participator::Service(self.addr.to_owned()));
-
-        let dto = reply_to_rpc_dto(self.addr.clone(), addr, key, correlation_id, payload, route)?;
-
-        self.sender.send(Message::Binary(dto));
-        
-        Ok(())
-    }
-    pub fn recv_event(&self) -> Result<(MsgMeta, R), Error> {
-        let (msg_meta, len, data) = self.rx.recv()?;            
-
-        let payload = serde_json::from_slice::<R>(&data[len + 4..])?;        
-
-        Ok((msg_meta, payload))
-    }
-    pub fn recv_rpc_request(&self) -> Result<(MsgMeta, T), Error> {
-        let (msg_meta, len, data) = self.rpc_request_rx.recv()?;            
-
-        let payload = serde_json::from_slice::<T>(&data[len + 4..])?;        
-
-        Ok((msg_meta, payload))
-    }
-    pub fn send_rpc(&self, addr: &str, key: &str, payload: T) -> Result<(MsgMeta, R), Error> {
-        let route = Route {
-            source: Participator::Service(self.addr.clone()),
-            spec: RouteSpec::Simple,
-            points: vec![Participator::Service(self.addr.to_owned())]
-        };
-
-		info!("send_rpc, route {:?}, target addr {}, key {}, payload {:?}, ", route, addr, key, payload);
-		
-        let (correlation_id, dto) = rpc_dto_with_correlation_id(self.addr.clone(), addr.to_owned(), key.to_owned(), payload, route)?;
-        let (rpc_tx, rpc_rx) = crossbeam::channel::unbounded();
-        
-        self.rpc_tx.send(ClientMsg::AddRpc(correlation_id, rpc_tx));        
-        self.sender.send(Message::Binary(dto));
-
-        let res = match rpc_rx.recv_timeout(std::time::Duration::from_secs(30)) {
-            Ok((msg_meta, len, data)) => {
-                let payload = &data[len + 4..];
-                let payload = serde_json::from_slice::<R>(&data[len + 4..])?;
-                Ok((msg_meta, payload))
-            }
-            Err(err) => Err(err)?
-        };
-
-        self.rpc_tx.send(ClientMsg::RemoveRpc(correlation_id));
-
-        res
-    }
-    pub fn rpc_with_route(&self, addr: &str, key: &str, payload: T, mut route: Route) -> Result<(MsgMeta, R), Error> {
-		info!("rpc call, route {:?}, target addr {}, key {}, payload {:?}, ", route, addr, key, payload);
-
-        route.points.push(Participator::Service(self.addr.to_owned()));
-		
-        let (correlation_id, dto) = rpc_dto_with_correlation_id(self.addr.clone(), addr.to_owned(), key.to_owned(), payload, route)?;
-        let (rpc_tx, rpc_rx) = crossbeam::channel::unbounded();
-        
-        self.rpc_tx.send(ClientMsg::AddRpc(correlation_id, rpc_tx));        
-        self.sender.send(Message::Binary(dto));
-
-        let res = match rpc_rx.recv_timeout(std::time::Duration::from_secs(30)) {
-            Ok((msg_meta, len, data)) => {
-                let payload = &data[len + 4..];
-                let payload = serde_json::from_slice::<R>(&data[len + 4..])?;
-                Ok((msg_meta, payload))
-            }
-            Err(err) => Err(err)?
-        };
-
-        self.rpc_tx.send(ClientMsg::RemoveRpc(correlation_id));
-
-        res
-    }
 }
 
-impl MagicBall2 {
-    pub fn new(addr: String, sender: Sender, rx: crossbeam::channel::Receiver<(MsgMeta, usize, Vec<u8>)>, rpc_request_rx: crossbeam::channel::Receiver<(MsgMeta, usize, Vec<u8>)>, rpc_tx: crossbeam::channel::Sender<ClientMsg>) -> MagicBall2 {
-        MagicBall2 {
-            addr,
-            sender,
-            rx,
-            rpc_request_rx,
-            rpc_tx
+impl From<serde_json::Error> for ProcessError {
+	fn from(err: serde_json::Error) -> ProcessError {
+		ProcessError::SerdeJson(err)
+	}
+}
+
+impl From<option::NoneError> for ProcessError {
+	fn from(err: option::NoneError) -> ProcessError {
+		ProcessError::NoneError
+	}
+}
+
+impl From<SendError> for ProcessError {
+	fn from(err: SendError) -> ProcessError {
+		ProcessError::SendError(err)
+	}
+}
+
+/// Read full message from source in to memory. Should be used carefully with large message content.
+pub async fn read_full(socket_read: &mut ReadHalf<'_>) -> Result<(MsgMeta, Vec<u8>, Vec<u8>), ProcessError> {
+    let mut len_buf = [0; LEN_BUF_SIZE];
+    socket_read.read_exact(&mut len_buf).await?;
+
+    let mut buf = Cursor::new(len_buf);        
+    let len = buf.get_u32_be() as usize;
+    println!("len {}", len);
+    let mut adapter = socket_read.take(len as u64);
+
+    let mut msg_meta = vec![];
+
+    let n = adapter.read_to_end(&mut msg_meta).await?;
+    println!("n {}", n);
+
+    let msg_meta: MsgMeta = from_slice(&msg_meta)?;        
+    let mut adapter = socket_read.take(msg_meta.payload_size as u64);
+
+    let mut payload = vec![];
+    let n = adapter.read_to_end(&mut payload).await?;
+
+    let mut adapter = socket_read.take(msg_meta.attachments_len() as u64);
+
+    let mut attachments = vec![];
+    let n = adapter.read_to_end(&mut attachments).await?;
+    
+    Ok((msg_meta, payload, attachments))
+}
+
+/// The result of reading function
+pub enum ReadResult {
+    /// This one indicates MsgMeta struct len was read successfully
+    LenFinished,
+    /// Message data stream is prepended with MsgMeta struct
+    MsgMeta(MsgMeta),
+    /// Payload data stream message
+    PayloadData(usize, [u8; DATA_BUF_SIZE]),
+    /// This one indicates payload data stream finished
+    PayloadFinished,
+    /// Attachment whith index data stream message
+    AttachmentData(usize, usize, [u8; DATA_BUF_SIZE]),
+    /// This one indicates attachment data stream by index finished
+    AttachmentFinished(usize),
+    /// Message stream finished, simple as that
+    MessageFinished
+}
+
+#[derive(Debug)]
+pub enum Step {
+    Len,
+    MsgMeta(u32),
+    Payload,
+    Attachment(usize),
+    Finish
+}
+
+/// Data structure used for convenience when streaming data from source
+pub struct State {
+    pub len_buf: [u8; LEN_BUF_SIZE],    
+    pub acc: Vec<u8>,
+    pub attachments: Option<Vec<u64>>,
+    pub step: Step
+}
+
+impl State {
+    pub fn new() -> State {
+        State {            
+            len_buf: [0; LEN_BUF_SIZE],
+            acc: vec![],
+            attachments: None,
+            step: Step::Len
+        }  
+    }    
+}
+
+pub async fn read(state: &mut State, adapter: &mut Take<ReadHalf<'_>>) -> Result<ReadResult, ProcessError> {
+    match state.step {
+        Step::Len => {                
+            adapter.read_exact(&mut state.len_buf).await?;                
+
+            let mut buf = Cursor::new(&state.len_buf);
+            let len = buf.get_u32_be();
+
+            state.step = Step::MsgMeta(len);
+
+            Ok(ReadResult::LenFinished)
         }
-    }
-	pub fn get_addr(&self) -> String {
-		self.addr.clone()
-	}    
-    pub fn send_event(&self, addr: &str, key: &str, mut payload: Vec<u8>) -> Result<(), Error> {
-        let route = Route {
-            source: Participator::Service(self.addr.clone()),
-            spec: RouteSpec::Simple,
-            points: vec![Participator::Service(self.addr.to_owned())]
-        };
+        Step::MsgMeta(len) => {
+            adapter.set_limit(len as u64);
+            state.acc.clear();
+            let n = adapter.read_to_end(&mut state.acc).await?;            
 
-        let dto = event_dto2(self.addr.clone(), addr.to_owned(), key.to_owned(), payload, route)?;
+            let msg_meta: MsgMeta = from_slice(&state.acc)?;
+            adapter.set_limit(msg_meta.payload_size as u64);
 
-        self.sender.send(Message::Binary(dto));
-        
-        Ok(())
-    }
-    pub fn send_event_with_route(&self, addr: &str, key: &str, mut payload: Vec<u8>, mut route: Route) -> Result<(), Error> {
-        route.points.push(Participator::Service(self.addr.to_owned()));
+            state.attachments = Some(msg_meta.attachments.iter().map(|x| x.size).collect());
 
-        let dto = event_dto2(self.addr.clone(), addr.to_owned(), key.to_owned(), payload, route)?;
+            state.step = Step::Payload;
 
-        self.sender.send(Message::Binary(dto));
-        
-        Ok(())
-    }
-    pub fn send_data(&self, data: Vec<u8>) -> Result<(), Error> {
-        self.sender.send(Message::Binary(data));
-        
-        Ok(())
-    }
-    pub fn reply_to_rpc(&self, addr: &str, key: &str, correlation_id: Uuid, mut payload: Vec<u8>, mut route: Route) -> Result<(), Error> {
-        route.points.push(Participator::Service(self.addr.to_owned()));
+            Ok(ReadResult::MsgMeta(msg_meta))
+        }
+        Step::Payload => {
+            let mut data_buf = [0; DATA_BUF_SIZE];                       
 
-        let dto = reply_to_rpc_dto2(self.addr.clone(), addr.to_owned(), key.to_owned(), correlation_id, payload, route)?;        
+            match adapter.read(&mut data_buf).await? {
+                0 => {
+                    let attachments = state.attachments.as_ref().ok_or(ProcessError::AttachmentFieldIsEmpty)?;
 
-        self.sender.send(Message::Binary(dto));
-        
-        Ok(())
-    }
-    pub fn recv_event(&self) -> Result<(MsgMeta, Vec<u8>), Error> {
-        let (msg_meta, len, data) = self.rx.recv()?;            
-        let payload = &data[len + 4..];        
+                    match attachments.len() {
+                        0 => {
+                            adapter.set_limit(LEN_BUF_SIZE as u64);
+                            state.step = Step::Finish;
+                        }
+                        _ => {                      
+                            adapter.set_limit(attachments[0] as u64);
+                            state.step = Step::Attachment(0);
+                        }                            
+                    };
 
-        Ok((msg_meta, payload.to_vec()))
-    }
-    pub fn recv_rpc_request(&self) -> Result<(MsgMeta, Vec<u8>), Error> {
-        let (msg_meta, len, data) = self.rpc_request_rx.recv()?;                
-        let payload = &data[len + 4..];        
-
-        Ok((msg_meta, payload.to_vec()))
-    }
-    pub fn rpc(&self, addr: &str, key: &str, mut payload: Vec<u8>) -> Result<(MsgMeta, Vec<u8>), Error> {
-        let route = Route {
-            source: Participator::Service(self.addr.clone()),
-            spec: RouteSpec::Simple,
-            points: vec![Participator::Service(self.addr.to_owned())]
-        };
-
-        let (correlation_id, dto) = rpc_dto_with_correlation_id_2(self.addr.clone(), addr.to_owned(), key.to_owned(), payload, route)?;
-
-        let (rpc_tx, rpc_rx) = crossbeam::channel::unbounded();
-        
-        self.rpc_tx.send(ClientMsg::AddRpc(correlation_id, rpc_tx));
-        
-        self.sender.send(Message::Binary(dto));
-
-        let res = match rpc_rx.recv_timeout(std::time::Duration::from_secs(30)) {
-            Ok((msg_meta, len, data)) => {
-                let payload = &data[len + 4..];        
-                Ok((msg_meta, payload.to_vec()))
-            }
-            Err(err) => Err(err)?
-        };
-
-        self.rpc_tx.send(ClientMsg::RemoveRpc(correlation_id));
-
-        res
-    }
-    pub fn rpc_with_route(&self, addr: &str, key: &str, mut payload: Vec<u8>, mut route: Route) -> Result<(MsgMeta, Vec<u8>), Error> {
-        route.points.push(Participator::Service(self.addr.to_owned()));
-
-        let (correlation_id, dto) = rpc_dto_with_correlation_id_2(self.addr.clone(), addr.to_owned(), key.to_owned(), payload, route)?;
-
-        let (rpc_tx, rpc_rx) = crossbeam::channel::unbounded();
-        
-        self.rpc_tx.send(ClientMsg::AddRpc(correlation_id, rpc_tx));
-        
-        self.sender.send(Message::Binary(dto));
-
-        let res = match rpc_rx.recv_timeout(std::time::Duration::from_secs(30)) {
-            Ok((msg_meta, len, data)) => {
-                let payload = &data[len + 4..];        
-                Ok((msg_meta, payload.to_vec()))
-            }
-            Err(err) => Err(err)?
-        };
-
-        self.rpc_tx.send(ClientMsg::RemoveRpc(correlation_id));
-
-        res
-    }
-    pub fn proxy_event(&self, tx: String, mut data: Vec<u8>) -> Result<(), Error> {
-        let (res, len) = {
-            let mut buf = std::io::Cursor::new(&data);
-            let len = buf.get_u32_be() as usize;
-
-            match len > data.len() - 4 {
-                true => {
-                    let custom_error = std::io::Error::new(std::io::ErrorKind::Other, "oh no!");
-                    return Err(Error::Io(custom_error));
+                    Ok(ReadResult::PayloadFinished)
                 }
-                false => (serde_json::from_slice::<MsgMeta>(&data[4..len + 4]), len)
-            }
-        };
+                n => Ok(ReadResult::PayloadData(n, data_buf))
+            }                                
+        }
+        Step::Attachment(index) => {
+            let mut data_buf = [0; DATA_BUF_SIZE];                       
 
-        let mut msg_meta = res?;
+            match adapter.read(&mut data_buf).await? {
+                0 => {
+                    let attachments = state.attachments.as_ref().ok_or(ProcessError::AttachmentFieldIsEmpty)?;
 
-        msg_meta.tx = tx;        
-        msg_meta.route.points.push(Participator::Service(self.addr.to_owned()));
+                    match index < attachments.len() - 1 {
+                        true => {
+                            let new_index = index + 1;
+                            adapter.set_limit(attachments[new_index] as u64);
+                            state.step = Step::Attachment(new_index);
+                        }
+                        false => {
+                            adapter.set_limit(LEN_BUF_SIZE as u64);
+                            state.step = Step::Finish;
+                        }
+                    };
 
-        let mut msg_meta = serde_json::to_vec(&msg_meta)?;
-                                                      
-        let mut payload_with_attachments: Vec<_> = data.drain(4 + len..).collect();
-        let mut buf = vec![];
-
-        buf.put_u32_be(msg_meta.len() as u32);
-
-        buf.append(&mut msg_meta);
-        buf.append(&mut payload_with_attachments);
-
-        self.sender.send(Message::Binary(buf));
-        
-        Ok(())
-    }
-    pub fn proxy_rpc(&self, tx: String, mut data: Vec<u8>) -> Result<(MsgMeta, Vec<u8>), Error> {
-
-        let (res, len) = {
-            let mut buf = std::io::Cursor::new(&data);
-            let len = buf.get_u32_be() as usize;
-
-            match len > data.len() - 4 {
-                true => {
-                    let custom_error = std::io::Error::new(std::io::ErrorKind::Other, "oh no!");
-                    return Err(Error::Io(custom_error));
+                    Ok(ReadResult::AttachmentFinished(index))
                 }
-                false => (serde_json::from_slice::<MsgMeta>(&data[4..len + 4]), len)
+                n => Ok(ReadResult::AttachmentData(index, n, data_buf))
             }
-        };
-
-        let mut msg_meta = res?;
-
-        let correlation_id = msg_meta.correlation_id;
-
-        msg_meta.tx = tx;
-        msg_meta.route.points.push(Participator::Service(self.addr.to_owned()));
-
-        let mut msg_meta = serde_json::to_vec(&msg_meta)?;
-                                                      
-        let mut payload_with_attachments: Vec<_> = data.drain(4 + len..).collect();
-        let mut buf = vec![];
-
-        buf.put_u32_be(msg_meta.len() as u32);
-
-        buf.append(&mut msg_meta);
-        buf.append(&mut payload_with_attachments);
-        
-
-        let (rpc_tx, rpc_rx) = crossbeam::channel::unbounded();
-        
-        self.rpc_tx.send(ClientMsg::AddRpc(correlation_id, rpc_tx));
-        
-        self.sender.send(Message::Binary(buf));
-
-        let res = match rpc_rx.recv_timeout(std::time::Duration::from_secs(30)) {
-            Ok((msg_meta, len, data)) => {
-                //let payload = &data[len + 4..];        
-                //Ok((msg_meta, payload.to_vec()))
-                Ok((msg_meta, data))
-            }
-            Err(err) => Err(err)?
-        };
-
-        self.rpc_tx.send(ClientMsg::RemoveRpc(correlation_id));
-
-        res
+        }
+        Step::Finish => {
+            state.step = Step::Len;
+            Ok(ReadResult::MessageFinished)
+        }
     }
 }

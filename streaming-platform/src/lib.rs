@@ -1,17 +1,8 @@
-mod proto;
-mod simple {
-    pub mod server;
-    pub mod client;
-}
-//mod tls;
-mod error;
+#![recursion_limit="512"]
+#![feature(try_trait)]
+pub use tokio::{self, sync::mpsc};
+pub use sp_dto;
 
-pub use crate::simple::{server::{start, start_with_link}, client::{connect, connect2}};
-pub use crate::proto::{MagicBall, MagicBall2, ClientKind};
-//pub use crate::tls::{start_tls, connect_tls};
-pub use crate::error::Error;
-
-#[derive(Clone)]
-pub struct AuthData {
-
-}
+pub mod server;
+pub mod client;
+pub mod proto;

@@ -1,8 +1,7 @@
 [workspace]
 
 members = [
-	"streaming-platform",
-	"sp-tokio",
+	"streaming-platform",	
 	#"sp-tokio-tls",
 	"sp-dto",
 	"sp-manager",

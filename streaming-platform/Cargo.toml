@@ -22,3 +22,4 @@ sp-dto = { path = "../sp-dto" }
 
 default = []
 file-server = []
+file-client = []

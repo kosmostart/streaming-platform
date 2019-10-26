@@ -12,5 +12,5 @@ serde = "*"
 serde_derive = "*"
 serde_json = "*"
 toml = "*"
-streaming-platform = { path = "../streaming-platform" }
+streaming-platform = { path = "../streaming-platform", features = ["file-client"] }
 sp-pack-core = { path = "../sp-pack-core" }

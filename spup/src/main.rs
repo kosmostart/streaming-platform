@@ -5,7 +5,7 @@ use std::io::BufReader;
 use std::io::prelude::*;
 use serde_derive::Deserialize;
 use serde_json::json;
-use streaming_platform::{tokio, tokio::runtime::Runtime, mpsc, sp_dto::*, client::{connect, write, ClientMsg}, proto::MPSC_CLIENT_BUF_SIZE};
+use streaming_platform::{tokio, tokio::runtime::Runtime, mpsc, sp_dto::*, client::{connect_future, write, ClientMsg}, proto::MPSC_CLIENT_BUF_SIZE};
 use sp_pack_core::unpack;
 
 #[derive(Debug, Deserialize)]
@@ -85,5 +85,5 @@ fn main() {
         }    
     });
 
-    rt.block_on(connect(&config.host, &config.addr, &config.access_key, read_tx, write_rx));    
+    rt.block_on(connect_future(&config.host, &config.addr, &config.access_key, &config.path, read_tx, write_rx));
 }

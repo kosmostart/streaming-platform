@@ -1,23 +1,12 @@
 use std::option;
-use std::fmt;
-use std::error::Error;
-use std::collections::HashMap;
-use std::io::prelude::*;
-use std::io::{Cursor, BufReader};
-use std::fs::{self, DirEntry};
-use std::path::Path;
+use std::io::Cursor;
 use std::net::SocketAddr;
 use bytes::Buf;
-use futures::future::{Fuse, FusedFuture, FutureExt};
-use futures::stream::StreamExt;
-use futures::{select, pin_mut};
-use tokio::runtime::Runtime;
 use tokio::io::Take;
-use tokio::net::{TcpListener, TcpStream, tcp::split::{ReadHalf, WriteHalf}};
-use tokio::sync::mpsc::{self, Sender, Receiver, error::SendError};
+use tokio::net::tcp::split::ReadHalf;
+use tokio::sync::mpsc::{Sender, error::SendError};
 use tokio::prelude::*;
-use tokio::fs::File;
-use serde_json::{Value, from_slice};
+use serde_json::from_slice;
 use serde_derive::Deserialize;
 use sp_dto::*;
 
@@ -233,4 +222,52 @@ pub async fn read(state: &mut State, adapter: &mut Take<ReadHalf<'_>>) -> Result
             Ok(ReadResult::MessageFinished)
         }
     }
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct Config {
+    pub host: String,
+    pub dirs: Option<Vec<Dir>>
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct Dir {
+    pub access_key: String,
+    pub path: String
+}
+
+pub struct Client {
+    net_addr: SocketAddr,
+    tx: Sender<(usize, [u8; DATA_BUF_SIZE])>
+}
+
+pub enum ServerMsg {
+    AddClient(String, SocketAddr, Sender<(usize, [u8; DATA_BUF_SIZE])>),
+    SendBuf(String, (usize, [u8; DATA_BUF_SIZE])),
+    RemoveClient(String)
+}
+
+pub enum ClientMsg {
+    FileReceiveComplete(String)
+}
+
+pub async fn write(data: Vec<u8>, write_tx: &mut Sender<(usize, [u8; DATA_BUF_SIZE])>) -> Result<(), ProcessError> {
+    let mut source = &data[..];
+
+    loop {
+        let mut data_buf = [0; DATA_BUF_SIZE];
+        let n = source.read(&mut data_buf).await.unwrap();
+
+        //println!("n {}, data_buf len {}", n, dto.len());
+
+        match n {
+            0 => break,
+            _ => {
+                write_tx.send((n, data_buf)).await.unwrap();
+                //println!("write ok");
+            }
+        }
+    }
+
+    Ok(())
 }

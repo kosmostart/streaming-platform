@@ -9,5 +9,5 @@ members = [
 	"sp-pack-core",
 	"sp-build",
 	"sp-public-host",
-	"spup"
+	"spup"	
 ]

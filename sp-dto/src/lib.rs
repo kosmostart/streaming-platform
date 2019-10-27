@@ -279,7 +279,7 @@ pub fn rpc_dto<T>(tx: String, rx: String, key: String, payload: T, route: Route)
     Ok(buf)
 }
 
-pub fn rpc_dto_with_correlation_id<T>(tx: String, rx: String, key: String, mut payload: T, route: Route) -> Result<(Uuid, Vec<u8>), Error> where T: Debug, T: serde::Serialize, for<'de> T: serde::Deserialize<'de> {
+pub fn rpc_dto_with_correlation_id<T>(tx: String, rx: String, key: String, payload: T, route: Route) -> Result<(Uuid, Vec<u8>), Error> where T: Debug, T: serde::Serialize, for<'de> T: serde::Deserialize<'de> {
     let mut payload = serde_json::to_vec(&payload)?;
     let correlation_id = Uuid::new_v4();
 

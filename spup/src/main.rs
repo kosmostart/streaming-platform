@@ -5,7 +5,7 @@ use std::io::BufReader;
 use std::io::prelude::*;
 use serde_derive::Deserialize;
 use serde_json::json;
-use streaming_platform::{tokio, tokio::runtime::Runtime, mpsc, sp_dto::*, client::{connect_future, write, ClientMsg}, proto::MPSC_CLIENT_BUF_SIZE};
+use streaming_platform::{tokio, tokio::runtime::Runtime, mpsc, sp_dto::*, connect_future, write, ClientMsg, MPSC_CLIENT_BUF_SIZE};
 use sp_pack_core::unpack;
 
 #[derive(Debug, Deserialize)]
@@ -77,6 +77,9 @@ fn main() {
     rt.spawn(async move {
         loop {
             let msg = read_rx.recv().await.expect("connection issues acquired");
+            tokio::spawn(async move {
+                println!("async task");
+            });
             match msg {
                 ClientMsg::FileReceiveComplete(name) => {
                     unpack(&(path.clone() + "/" + &name));
@@ -85,5 +88,5 @@ fn main() {
         }    
     });
 
-    rt.block_on(connect_future(&config.host, &config.addr, &config.access_key, &config.path, read_tx, write_rx));
+    rt.block_on(connect_future(&config.host, &config.path, read_tx, write_rx));
 }

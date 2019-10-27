@@ -21,5 +21,4 @@ sp-dto = { path = "../sp-dto" }
 [features]
 
 default = []
-file-server = []
-file-client = []
+fs = []

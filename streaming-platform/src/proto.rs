@@ -247,6 +247,11 @@ pub enum ServerMsg {
     RemoveClient(String)
 }
 
+pub enum Mode {
+    Stream,
+    FullMessage
+}
+
 pub enum ClientMsg {
     FileReceiveComplete(String)
 }
@@ -256,16 +261,11 @@ pub async fn write(data: Vec<u8>, write_tx: &mut Sender<(usize, [u8; DATA_BUF_SI
 
     loop {
         let mut data_buf = [0; DATA_BUF_SIZE];
-        let n = source.read(&mut data_buf).await.unwrap();
-
-        //println!("n {}, data_buf len {}", n, dto.len());
+        let n = source.read(&mut data_buf).await?;        
 
         match n {
             0 => break,
-            _ => {
-                write_tx.send((n, data_buf)).await.unwrap();
-                //println!("write ok");
-            }
+            _ => write_tx.send((n, data_buf)).await?
         }
     }
 

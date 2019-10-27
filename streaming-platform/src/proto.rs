@@ -237,8 +237,8 @@ pub struct Dir {
 }
 
 pub struct Client {
-    net_addr: SocketAddr,
-    tx: Sender<(usize, [u8; DATA_BUF_SIZE])>
+    pub net_addr: SocketAddr,
+    pub tx: Sender<(usize, [u8; DATA_BUF_SIZE])>
 }
 
 pub enum ServerMsg {

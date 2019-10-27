@@ -72,7 +72,7 @@ async fn process(mut stream: TcpStream, mut read_tx: Sender<ClientMsg>, mut writ
     }    
 }
 
-fn magic_ball(host: &str, addr: &str, access_key: &str) {
+pub fn magic_ball(host: &str, addr: &str, access_key: &str) {
     let rt = Runtime::new().expect("failed to create runtime");
 
     let (mut read_tx, mut read_rx) = mpsc::channel(MPSC_CLIENT_BUF_SIZE);

@@ -1,9 +1,18 @@
 #![recursion_limit="512"]
 #![feature(try_trait)]
-pub use tokio::{self, sync::mpsc};
+pub use tokio;
 pub use sp_dto;
-//pub use crate::{client::{connect_future, write, ClientMsg, magic_ball}, proto::MPSC_CLIENT_BUF_SIZE};
+pub use proto::ClientMsg;
+#[cfg(not(feature = "fs"))]
+pub use broker::server::{start, start_future};
+#[cfg(feature = "fs")]
+pub use fs::server::{start, start_future};
+#[cfg(not(feature = "fs"))]
+pub use broker::client::{magic_ball, connect_future};
+#[cfg(feature = "fs")]
+pub use fs::client::{magic_ball, connect_future};
 
+#[cfg(not(feature = "fs"))]
 mod broker {
     pub mod server;
     pub mod client;

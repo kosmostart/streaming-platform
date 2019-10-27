@@ -99,7 +99,7 @@ async fn process(save_path: &str, mut stream: TcpStream, mut read_tx: Sender<Cli
     Ok(())
 }
 
-pub fn magic_ball(host: &str, addr: &str, access_key: &str, save_path: &str) {
+pub fn magic_ball(host: &str, addr: &str, access_key: &str, save_path: &str, process_msg: fn(ClientMsg, String)) {
     let rt = Runtime::new().expect("failed to create runtime");
 
     let (mut read_tx, mut read_rx) = mpsc::channel(MPSC_CLIENT_BUF_SIZE);
@@ -108,7 +108,9 @@ pub fn magic_ball(host: &str, addr: &str, access_key: &str, save_path: &str) {
     let mut write_tx = write_tx.clone();
 
     let addr = addr.to_owned();
-    let access_key = access_key.to_owned();
+    let access_key = access_key.to_owned();    
+    let save_path = save_path.to_owned();
+    let save_path2 = save_path.to_owned();
 
     rt.spawn(async move {        
         let target = "SvcHub";
@@ -141,16 +143,10 @@ pub fn magic_ball(host: &str, addr: &str, access_key: &str, save_path: &str) {
 
     rt.spawn(async move {
         loop {
-            let msg = read_rx.recv().await.expect("connection issues acquired");
-            tokio::spawn(async move {
-                println!("async task");
-            });
-            match msg {
-                ClientMsg::FileReceiveComplete(name) => {                    
-                }
-            }
+            let msg = read_rx.recv().await.expect("connection issues acquired");                 
+            process_msg(msg, save_path.clone());
         }    
     });    
 
-    rt.block_on(connect_future(host, save_path, read_tx, write_rx));
+    rt.block_on(connect_future(host, &save_path2, read_tx, write_rx));
 }

@@ -252,8 +252,24 @@ pub enum Mode {
     FullMessage
 }
 
+/// Messages received from client
 pub enum ClientMsg {
-    FileReceiveComplete(String)
+    /// This is sent with fs future
+    FileReceiveComplete(String),
+    /// This is sent in Stream mode without fs future
+    MsgMeta(MsgMeta),
+    /// This is sent in Stream mode without fs future
+    PayloadData(usize, [u8; DATA_BUF_SIZE]),
+    /// This is sent in Stream mode without fs future
+    PayloadFinished,
+    /// This is sent in Stream mode without fs future
+    AttachmentData(usize, usize, [u8; DATA_BUF_SIZE]),
+    /// This is sent in Stream mode without fs future
+    AttachmentFinished(usize),
+    /// This is sent in Stream mode without fs future
+    MessageFinished,
+    /// This is sent in FullMessage mode without fs future
+    Message(MsgMeta, Vec<u8>, Vec<u8>)
 }
 
 pub async fn write(data: Vec<u8>, write_tx: &mut Sender<(usize, [u8; DATA_BUF_SIZE])>) -> Result<(), ProcessError> {

@@ -54,7 +54,7 @@ pub fn magic_ball(host: &str, addr: &str, access_key: &str, mode: Mode, process_
         }    
     });
 
-    rt.block_on(connect_future(host, read_tx, write_rx));
+    rt.block_on(connect_future(host, mode, read_tx, write_rx));
 }
 
 pub async fn connect_future(host: &str, mode: Mode, mut read_tx: Sender<ClientMsg>, mut write_rx: Receiver<(usize, [u8; DATA_BUF_SIZE])>) {    
@@ -78,9 +78,7 @@ async fn process_stream(mut stream: TcpStream, mut read_tx: Sender<ClientMsg>, m
     //println!("auth {:?}", auth_payload);        
 
     let mut adapter = socket_read.take(LEN_BUF_SIZE as u64);
-    let mut state = State::new();
-
-    let mut msg_meta = None;    
+    let mut state = State::new();    
 
     loop {
         let f1 = read(&mut state, &mut adapter).fuse();
@@ -93,27 +91,13 @@ async fn process_stream(mut stream: TcpStream, mut read_tx: Sender<ClientMsg>, m
                 let res = res?;                
 
                 match res {
-                    ReadResult::LenFinished => {
-                        println!("len ok");
-                    }
-                    ReadResult::MsgMeta(new_msg_meta) => {
-                        println!("{:?}", new_msg_meta);                        
-                        
-                        msg_meta = Some(new_msg_meta);
-                    }
-                    ReadResult::PayloadData(n, buf) => {
-                        println!("payload data");
-                    }
-                    ReadResult::PayloadFinished => {
-                        println!("payload ok");
-                    }
-                    ReadResult::AttachmentData(index, n, buf) => {                        
-                    }
-                    ReadResult::AttachmentFinished(index) => {           
-                    }
-                    ReadResult::MessageFinished => {
-                        println!("message ok");
-                    }
+                    ReadResult::LenFinished => {}
+                    ReadResult::MsgMeta(new_msg_meta) => read_tx.send(ClientMsg::MsgMeta(new_msg_meta)).await?,
+                    ReadResult::PayloadData(n, buf) => read_tx.send(ClientMsg::PayloadData(n, buf)).await?,
+                    ReadResult::PayloadFinished => read_tx.send(ClientMsg::PayloadFinished).await?,
+                    ReadResult::AttachmentData(index, n, buf) => read_tx.send(ClientMsg::AttachmentData(index, n, buf)).await?,
+                    ReadResult::AttachmentFinished(index) => read_tx.send(ClientMsg::AttachmentFinished(index)).await?,
+                    ReadResult::MessageFinished => read_tx.send(ClientMsg::MessageFinished).await?
                 };                            
             }
             res = f2 => {                
@@ -132,46 +116,20 @@ async fn process_full_message(mut stream: TcpStream, mut read_tx: Sender<ClientM
     //let auth_payload: Value = from_slice(&auth_payload)?;    
 
     //println!("auth {:?}", auth_msg_meta);
-    //println!("auth {:?}", auth_payload);        
+    //println!("auth {:?}", auth_payload);
 
-    let mut adapter = socket_read.take(LEN_BUF_SIZE as u64);
-    let mut state = State::new();
-
-    let mut msg_meta = None;    
+    let mut state = State::new();    
 
     loop {
-        let f1 = read(&mut state, &mut adapter).fuse();
+        let f1 = read_full(&mut socket_read).fuse();
         let f2 = write_rx.recv().fuse();
 
         pin_mut!(f1, f2);
 
         let res = select! {
             res = f1 => {                
-                let res = res?;                
-
-                match res {
-                    ReadResult::LenFinished => {
-                        println!("len ok");
-                    }
-                    ReadResult::MsgMeta(new_msg_meta) => {
-                        println!("{:?}", new_msg_meta);                        
-                        
-                        msg_meta = Some(new_msg_meta);
-                    }
-                    ReadResult::PayloadData(n, buf) => {
-                        println!("payload data");
-                    }
-                    ReadResult::PayloadFinished => {
-                        println!("payload ok");
-                    }
-                    ReadResult::AttachmentData(index, n, buf) => {                        
-                    }
-                    ReadResult::AttachmentFinished(index) => {           
-                    }
-                    ReadResult::MessageFinished => {
-                        println!("message ok");
-                    }
-                };                            
+                let (msg_meta, payload, attachments) = res?;
+                read_tx.send(ClientMsg::Message(msg_meta, payload, attachments)).await?;                
             }
             res = f2 => {                
                 let (n, buf) = res?;                

@@ -1415,6 +1415,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "sp-file-hub"
+version = "0.1.0"
+dependencies = [
+ "streaming-platform 0.1.0",
+]
+
+[[package]]
 name = "sp-manager"
 version = "0.1.0"
 dependencies = [

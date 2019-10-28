@@ -99,12 +99,9 @@ async fn process_stream(save_path: &str, mut stream: TcpStream, mut read_tx: Sen
                 let res = res?;                
 
                 match res {
-                    ReadResult::LenFinished => {
-                        println!("len ok");
+                    ReadResult::LenFinished => {                        
                     }
-                    ReadResult::MsgMeta(new_msg_meta) => {
-                        println!("{:?}", new_msg_meta);
-
+                    ReadResult::MsgMeta(new_msg_meta) => {                        
                         match new_msg_meta.key.as_ref() {
                             "Hub.GetFile" => {                                
                                 let attachment = new_msg_meta.attachments.iter().nth(0).ok_or(ProcessError::GetFile(GetFileError::AttachmentsAreEmpty))?;
@@ -115,11 +112,9 @@ async fn process_stream(save_path: &str, mut stream: TcpStream, mut read_tx: Sen
                         
                         msg_meta = Some(new_msg_meta);
                     }
-                    ReadResult::PayloadData(n, buf) => {
-                        println!("payload data");
+                    ReadResult::PayloadData(n, buf) => {                        
                     }
-                    ReadResult::PayloadFinished => {
-                        println!("payload ok");
+                    ReadResult::PayloadFinished => {                        
                     }
                     ReadResult::AttachmentData(index, n, buf) => {                        
                         match file {
@@ -136,15 +131,13 @@ async fn process_stream(save_path: &str, mut stream: TcpStream, mut read_tx: Sen
                             None => {}
                         }                        
                     }
-                    ReadResult::MessageFinished => {
-                        println!("message ok");
+                    ReadResult::MessageFinished => {                        
                     }
                 };                            
             }
             res = f2 => {                
                 let (n, buf) = res?;                
-                socket_write.write_all(&buf[..n]).await?;
-                println!("send ok");
+                socket_write.write_all(&buf[..n]).await?;                
             }
         };
     }    

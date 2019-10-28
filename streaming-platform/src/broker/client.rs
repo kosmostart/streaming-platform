@@ -64,7 +64,6 @@ pub async fn connect_future(host: &str, mode: Mode, mut read_tx: Sender<ClientMs
         Mode::Stream => process_stream(stream, read_tx, write_rx).await,
         Mode::FullMessage => process_full_message(stream, read_tx, write_rx).await
     };
-
     println!("{:?}", res);
 }
 
@@ -102,8 +101,7 @@ async fn process_stream(mut stream: TcpStream, mut read_tx: Sender<ClientMsg>, m
             }
             res = f2 => {                
                 let (n, buf) = res?;                
-                socket_write.write_all(&buf[..n]).await?;
-                println!("send ok");
+                socket_write.write_all(&buf[..n]).await?;                
             }
         };
     }    
@@ -133,8 +131,7 @@ async fn process_full_message(mut stream: TcpStream, mut read_tx: Sender<ClientM
             }
             res = f2 => {                
                 let (n, buf) = res?;                
-                socket_write.write_all(&buf[..n]).await?;
-                println!("send ok");
+                socket_write.write_all(&buf[..n]).await?;                
             }
         };
     }    

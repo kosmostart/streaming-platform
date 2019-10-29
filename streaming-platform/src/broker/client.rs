@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use futures::{select, pin_mut};
 use tokio::net::TcpStream;
 use tokio::prelude::*;
@@ -12,11 +13,39 @@ pub fn magic_ball(host: &str, addr: &str, access_key: &str, mode: Mode, process_
 
     let (mut read_tx, mut read_rx) = mpsc::channel(MPSC_CLIENT_BUF_SIZE);
     let (mut write_tx, mut write_rx) = mpsc::channel(MPSC_CLIENT_BUF_SIZE);
+    //let (mut rpc_tx, mut rpc_rx) = mpsc::channel(MPSC_RPC_BUF_SIZE);
 
     let addr = addr.to_owned();
     let access_key = access_key.to_owned();
 
     let mut write_tx = write_tx.clone();
+/*
+    rt.spawn(async move {
+        let mut rpcs = HashMap::new();        
+
+        loop {
+            let msg = rpc_rx.recv().await.expect("rpc msg receive failed");
+
+            match msg {
+                RpcMsg::AddRpc(correlation_id, rpc_client_tx) => {
+                    rpcs.insert(correlation_id, rpc_client_tx);
+                }
+                RpcMsg::RemoveRpc(correlation_id) => {
+                    rpcs.remove(&correlation_id);
+                }
+                RpcMsg::RpcDataRequest(correlation_id) => {
+                    match rpcs.get(&correlation_id) {
+                        Some(rpc_client_tx) => {
+                            state_to_client_tx.send(RpcMsg::RpcDataResponse(correlation_id, rpc_client_tx.clone()));
+                        }
+                        None => {                            
+                        }
+                    }                        
+                }                
+            }
+        }
+    });
+*/
 
     rt.spawn(async move {        
         let target = "SvcHub";
@@ -104,7 +133,7 @@ async fn process_stream(mut stream: TcpStream, mut read_tx: Sender<ClientMsg>, m
                 socket_write.write_all(&buf[..n]).await?;                
             }
         };
-    }    
+    }
 }
 
 async fn process_full_message(mut stream: TcpStream, mut read_tx: Sender<ClientMsg>, mut write_rx: Receiver<(usize, [u8; DATA_BUF_SIZE])>) -> Result<(), ProcessError> {

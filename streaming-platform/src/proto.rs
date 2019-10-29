@@ -8,12 +8,13 @@ use tokio::sync::mpsc::{Sender, error::SendError};
 use tokio::prelude::*;
 use serde_json::from_slice;
 use serde_derive::Deserialize;
-use sp_dto::*;
+use sp_dto::{*, uuid::Uuid};
 
 pub const LEN_BUF_SIZE: usize = 4;
 pub const DATA_BUF_SIZE: usize = 1024;
 pub const MPSC_SERVER_BUF_SIZE: usize = 1000;
 pub const MPSC_CLIENT_BUF_SIZE: usize = 100;
+pub const MPSC_RPC_BUF_SIZE: usize = 10000;
 
 #[derive(Debug, Clone)]
 pub enum ClientKind {
@@ -286,4 +287,12 @@ pub async fn write(data: Vec<u8>, write_tx: &mut Sender<(usize, [u8; DATA_BUF_SI
     }
 
     Ok(())
+}
+
+// Used for RPC implementation
+pub enum RpcMsg {
+    AddRpc(Uuid, Sender<(MsgMeta, Vec<u8>, Vec<u8>)>),
+    RemoveRpc(Uuid),
+    RpcDataRequest(Uuid),
+    RpcDataResponse(Uuid, Sender<(MsgMeta, Vec<u8>, Vec<u8>)>)
 }

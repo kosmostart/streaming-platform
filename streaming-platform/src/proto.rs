@@ -1,13 +1,14 @@
+use std::fmt::Debug;
 use std::option;
 use std::io::Cursor;
 use std::net::SocketAddr;
 use bytes::Buf;
 use tokio::io::Take;
 use tokio::net::tcp::split::ReadHalf;
-use tokio::sync::mpsc::{Sender, error::SendError};
+use tokio::sync::{mpsc::{Sender, error::SendError}, oneshot};
 use tokio::prelude::*;
 use serde_json::from_slice;
-use serde_derive::Deserialize;
+use serde_derive::{Deserialize};
 use sp_dto::{*, uuid::Uuid};
 
 pub const LEN_BUF_SIZE: usize = 4;
@@ -299,10 +300,15 @@ pub enum RpcMsg {
 
 pub struct MagicBall {    
     write_tx: Sender<(usize, [u8; DATA_BUF_SIZE])>,
-    rpc_tx:: Sender<(usize, [u8; DATA_BUF_SIZE])>,
+    rpc_tx: Sender<RpcMsg>,
+    addr: String    
 }
 
 impl MagicBall {
+    pub fn get_addr(&self) -> String {
+		self.addr.clone()
+	}
+    /*
     pub async fn send_event(&mut self, dto: Vec<u8>) -> Result<(), ProcessError> {
         write(dto, &mut self.write_tx).await
     }
@@ -311,4 +317,109 @@ impl MagicBall {
 
         Ok(())
     }
+    */
+    pub async fn send_event<T>(&mut self, addr: &str, key: &str, payload: T) -> Result<(), ProcessError> where T: serde::Serialize, for<'de> T: serde::Deserialize<'de>, T: Debug {
+        let route = Route {
+            source: Participator::Service(self.addr.clone()),
+            spec: RouteSpec::Simple,
+            points: vec![Participator::Service(self.addr.to_owned())]
+        };
+
+        let dto = event_dto(self.addr.clone(), addr.to_owned(), key.to_owned(), payload, route)?;
+
+        write(dto, &mut self.write_tx).await?;
+        
+        Ok(())
+    }
+    pub async fn send_event_with_route<T>(&mut self, addr: &str, key: &str, payload: T, mut route: Route) -> Result<(), ProcessError> where T: serde::Serialize, for<'de> T: serde::Deserialize<'de>, T: Debug {
+        //info!("send_event, route {:?}, target addr {}, key {}, payload {:?}, ", route, addr, key, payload);
+
+        route.points.push(Participator::Service(self.get_addr()));
+
+        let dto = event_dto(self.get_addr(), addr.to_owned(), key.to_owned(), payload, route)?;
+
+        write(dto, &mut self.write_tx).await?;
+        
+        Ok(())
+    }    
+    pub fn send_rpc(&self, addr: &str, key: &str, payload: T) -> Result<(MsgMeta, R), Error> where T: serde::Serialize, for<'de> T: serde::Deserialize<'de>, T: Debug {
+        let route = Route {
+            source: Participator::Service(self.addr.clone()),
+            spec: RouteSpec::Simple,
+            points: vec![Participator::Service(self.addr.to_owned())]
+        };
+
+		//info!("send_rpc, route {:?}, target addr {}, key {}, payload {:?}, ", route, addr, key, payload);
+		
+        let (correlation_id, dto) = rpc_dto_with_correlation_id(self.addr.clone(), addr.to_owned(), key.to_owned(), payload, route)?;
+        let (rpc_tx, rpc_rx) = crossbeam::channel::unbounded();
+        
+        self.rpc_tx.send(RpcMsg::AddRpc(correlation_id, rpc_tx));                
+        write(dto, &mut self.write_tx).await?;
+
+        let res = match rpc_rx.recv_timeout(std::time::Duration::from_secs(30)) {
+            Ok((msg_meta, len, data)) => {
+                let payload = &data[len + 4..];
+                let payload = serde_json::from_slice::<R>(&data[len + 4..])?;
+                Ok((msg_meta, payload))
+            }
+            Err(err) => Err(err)?
+        };
+
+        self.rpc_tx.send(RpcMsg::RemoveRpc(correlation_id));
+
+        res
+    }
+    pub fn send_rpc_with_route(&self, addr: &str, key: &str, payload: T, mut route: Route) -> Result<(MsgMeta, R), Error> where T: serde::Serialize, for<'de> T: serde::Deserialize<'de>, T: Debug {
+		//info!("send_rpc, route {:?}, target addr {}, key {}, payload {:?}, ", route, addr, key, payload);
+
+        route.points.push(Participator::Service(self.addr.to_owned()));
+		
+        let (correlation_id, dto) = rpc_dto_with_correlation_id(self.addr.clone(), addr.to_owned(), key.to_owned(), payload, route)?;
+        let (rpc_tx, rpc_rx) = crossbeam::channel::unbounded();
+        
+        self.rpc_tx.send(ClientMsg::AddRpc(correlation_id, rpc_tx));        
+        write(dto, &mut self.write_tx).await?;
+
+        let res = match rpc_rx.recv_timeout(std::time::Duration::from_secs(30)) {
+            Ok((msg_meta, len, data)) => {
+                let payload = &data[len + 4..];
+                let payload = serde_json::from_slice::<R>(&data[len + 4..])?;
+                Ok((msg_meta, payload))
+            }
+            Err(err) => Err(err)?
+        };
+
+        self.rpc_tx.send(RpcMsg::RemoveRpc(correlation_id));
+
+        res
+    }
+    
+    /*
+    pub fn reply_to_rpc(&self, addr: String, key: String, correlation_id: Uuid, payload: R, mut route: Route) -> Result<(), Error> {
+        route.points.push(Participator::Service(self.addr.to_owned()));
+
+        let dto = reply_to_rpc_dto(self.addr.clone(), addr, key, correlation_id, payload, route)?;
+
+        self.sender.send(Message::Binary(dto));
+        
+        Ok(())
+    }
+    */
+    /*
+    pub fn recv_event(&self) -> Result<(MsgMeta, R), Error> {
+        let (msg_meta, len, data) = self.rx.recv()?;            
+
+        let payload = serde_json::from_slice::<R>(&data[len + 4..])?;        
+
+        Ok((msg_meta, payload))
+    }
+    pub fn recv_rpc_request(&self) -> Result<(MsgMeta, T), Error> {
+        let (msg_meta, len, data) = self.rpc_request_rx.recv()?;            
+
+        let payload = serde_json::from_slice::<T>(&data[len + 4..])?;        
+
+        Ok((msg_meta, payload))
+    }
+    */
 }

@@ -141,6 +141,4 @@ async fn process_stream(save_path: &str, mut stream: TcpStream, mut read_tx: Sen
             }
         };
     }    
-
-    Ok(())
 }

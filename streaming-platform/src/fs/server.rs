@@ -189,9 +189,7 @@ async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut 
 
         }
     }
-    */ 
-
-    Ok(())
+    */    
 }
 
 async fn process_msg(msg_meta: &MsgMeta, payload: &Value, socket_write: &mut WriteHalf<'_>, config: &Config) -> Result<(), ProcessError> {

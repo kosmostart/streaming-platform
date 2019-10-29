@@ -8,7 +8,7 @@ use serde_json::json;
 use sp_dto::*;
 use crate::proto::*;
 
-pub fn magic_ball(host: &str, addr: &str, access_key: &str, mode: Mode, process_msg: fn(ClientMsg)) {
+pub fn magic_ball(host: &str, addr: &str, access_key: &str, mode: Mode) {
     let rt = Runtime::new().expect("failed to create runtime");
 
     let (mut read_tx, mut read_rx) = mpsc::channel(MPSC_CLIENT_BUF_SIZE);
@@ -76,12 +76,39 @@ pub fn magic_ball(host: &str, addr: &str, access_key: &str, mode: Mode, process_
         println!("{:?}", res);
     });
 
-    rt.spawn(async move {
-        loop {
-            let msg = read_rx.recv().await.expect("connection issues acquired");                 
-            process_msg(msg);
-        }    
-    });
+    match mode {
+        Mode::Stream(process_msg) => {
+            rt.spawn(async move {
+                loop {
+                    let msg = read_rx.recv().await.expect("connection issues acquired");                 
+                    process_msg(msg);
+                }    
+            });
+        }
+        Mode::FullMessage => {
+            rt.spawn(async move {
+                loop {
+                    let msg = read_rx.recv().await.expect("connection issues acquired");                 
+                    match msg {
+                        ClientMsg::Message(msg_meta, payload, attachments) => {
+                            match msg_meta.kind {
+                                MsgKind::Event => {
+
+                                }
+                                MsgKind::RpcRequest => {
+                                    
+                                }
+                                MsgKind::RpcResponse => {
+                                    
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }    
+            });
+        }
+    }    
 
     rt.block_on(connect_future(host, mode, read_tx, write_rx));
 }
@@ -90,7 +117,7 @@ pub async fn connect_future(host: &str, mode: Mode, mut read_tx: Sender<ClientMs
     let mut stream = TcpStream::connect(host).await.unwrap();    
 
     let res = match mode {
-        Mode::Stream => process_stream(stream, read_tx, write_rx).await,
+        Mode::Stream(_) => process_stream(stream, read_tx, write_rx).await,
         Mode::FullMessage => process_full_message(stream, read_tx, write_rx).await
     };
     println!("{:?}", res);

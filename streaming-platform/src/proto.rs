@@ -249,7 +249,7 @@ pub enum ServerMsg {
 }
 
 pub enum Mode {
-    Stream,
+    Stream(fn(ClientMsg)),
     FullMessage
 }
 
@@ -295,4 +295,20 @@ pub enum RpcMsg {
     RemoveRpc(Uuid),
     RpcDataRequest(Uuid),
     RpcDataResponse(Uuid, Sender<(MsgMeta, Vec<u8>, Vec<u8>)>)
+}
+
+pub struct MagicBall {    
+    write_tx: Sender<(usize, [u8; DATA_BUF_SIZE])>,
+    rpc_tx:: Sender<(usize, [u8; DATA_BUF_SIZE])>,
+}
+
+impl MagicBall {
+    pub async fn send_event(&mut self, dto: Vec<u8>) -> Result<(), ProcessError> {
+        write(dto, &mut self.write_tx).await
+    }
+    pub async fn send_rpc(&mut self, dto: Vec<u8>) -> Result<(), ProcessError> {
+        write(dto, &mut self.write_tx).await?;
+
+        Ok(())
+    }
 }

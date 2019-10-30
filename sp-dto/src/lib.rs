@@ -182,7 +182,7 @@ impl MsgMeta {
     }
 }
 
-pub fn event_dto<T>(tx: String, rx: String, key: String, payload: T, route: Route) -> Result<Vec<u8>, Error> where T: Debug, T: serde::Serialize, for<'de> T: serde::Deserialize<'de> {
+pub fn event_dto<T>(tx: String, rx: String, key: String, payload: T, route: Route) -> Result<Vec<u8>, Error> where T: Debug, T: serde::Serialize {
     let mut payload = serde_json::to_vec(&payload)?;
     let correlation_id = Uuid::new_v4();
 
@@ -209,7 +209,7 @@ pub fn event_dto<T>(tx: String, rx: String, key: String, payload: T, route: Rout
     Ok(buf)
 }
 
-pub fn reply_to_rpc_dto<T>(tx: String, rx: String, key: String, correlation_id: Uuid, payload: T, route: Route) -> Result<Vec<u8>, Error> where T: Debug, T: serde::Serialize, for<'de> T: serde::Deserialize<'de> {
+pub fn reply_to_rpc_dto<T>(tx: String, rx: String, key: String, correlation_id: Uuid, payload: T, route: Route) -> Result<Vec<u8>, Error> where T: Debug, T: serde::Serialize {
     let mut payload = serde_json::to_vec(&payload)?;
 
     let msg_meta = MsgMeta {
@@ -252,7 +252,7 @@ pub fn reply_to_rpc_dto<T>(tx: String, rx: String, key: String, correlation_id: 
     }
     */
 
-pub fn rpc_dto<T>(tx: String, rx: String, key: String, payload: T, route: Route) -> Result<Vec<u8>, Error> where T: Debug, T: serde::Serialize, for<'de> T: serde::Deserialize<'de> {
+pub fn rpc_dto<T>(tx: String, rx: String, key: String, payload: T, route: Route) -> Result<Vec<u8>, Error> where T: Debug, T: serde::Serialize {
     let mut payload = serde_json::to_vec(&payload)?;
     let correlation_id = Uuid::new_v4();
 
@@ -279,7 +279,7 @@ pub fn rpc_dto<T>(tx: String, rx: String, key: String, payload: T, route: Route)
     Ok(buf)
 }
 
-pub fn rpc_dto_with_correlation_id<T>(tx: String, rx: String, key: String, payload: T, route: Route) -> Result<(Uuid, Vec<u8>), Error> where T: Debug, T: serde::Serialize, for<'de> T: serde::Deserialize<'de> {
+pub fn rpc_dto_with_correlation_id<T>(tx: String, rx: String, key: String, payload: T, route: Route) -> Result<(Uuid, Vec<u8>), Error> where T: Debug, T: serde::Serialize {
     let mut payload = serde_json::to_vec(&payload)?;
     let correlation_id = Uuid::new_v4();
 
@@ -306,7 +306,7 @@ pub fn rpc_dto_with_correlation_id<T>(tx: String, rx: String, key: String, paylo
     Ok((correlation_id, buf))
 }
 
-pub fn rpc_dto_with_attachments<T>(tx: String, rx: String, key: String, payload: T, attachments: Vec<(String, Vec<u8>)>, route: Route) -> Result<Vec<u8>, Error> where T: Debug, T: serde::Serialize, for<'de> T: serde::Deserialize<'de> {
+pub fn rpc_dto_with_attachments<T>(tx: String, rx: String, key: String, payload: T, attachments: Vec<(String, Vec<u8>)>, route: Route) -> Result<Vec<u8>, Error> where T: Debug, T: serde::Serialize {
     let mut payload = serde_json::to_vec(&payload)?;
     let correlation_id = Uuid::new_v4();
     let mut attachments_meta = vec![];
@@ -344,7 +344,7 @@ pub fn rpc_dto_with_attachments<T>(tx: String, rx: String, key: String, payload:
     Ok(buf)
 }
 
-pub fn rpc_dto_with_later_attachments<T>(tx: String, rx: String, key: String, payload: T, attachments: Vec<(String, u64)>, route: Route) -> Result<Vec<u8>, Error> where T: Debug, T: serde::Serialize, for<'de> T: serde::Deserialize<'de> {
+pub fn rpc_dto_with_later_attachments<T>(tx: String, rx: String, key: String, payload: T, attachments: Vec<(String, u64)>, route: Route) -> Result<Vec<u8>, Error> where T: Debug, T: serde::Serialize {
     let mut payload = serde_json::to_vec(&payload)?;
     let correlation_id = Uuid::new_v4();
     let mut attachments_meta = vec![];    

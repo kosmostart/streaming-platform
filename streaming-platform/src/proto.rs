@@ -34,6 +34,7 @@ pub enum ProcessError {
     SerdeJson(serde_json::Error),
     GetFile(GetFileError),
     SendError(SendError),
+    OneshotRecvError(oneshot::error::RecvError),
     NoneError
 }
 
@@ -68,6 +69,12 @@ impl From<option::NoneError> for ProcessError {
 impl From<SendError> for ProcessError {
 	fn from(err: SendError) -> ProcessError {
 		ProcessError::SendError(err)
+	}
+}
+
+impl From<oneshot::error::RecvError> for ProcessError {
+	fn from(err: oneshot::error::RecvError) -> ProcessError {
+		ProcessError::OneshotRecvError(err)
 	}
 }
 
@@ -292,7 +299,7 @@ pub async fn write(data: Vec<u8>, write_tx: &mut Sender<(usize, [u8; DATA_BUF_SI
 
 // Used for RPC implementation
 pub enum RpcMsg {
-    AddRpc(Uuid, Sender<(MsgMeta, Vec<u8>, Vec<u8>)>),
+    AddRpc(Uuid, oneshot::Sender<(MsgMeta, Vec<u8>, Vec<u8>)>),
     RemoveRpc(Uuid),
     RpcDataRequest(Uuid),
     RpcDataResponse(Uuid, Sender<(MsgMeta, Vec<u8>, Vec<u8>)>)
@@ -342,7 +349,7 @@ impl MagicBall {
         
         Ok(())
     }    
-    pub async fn send_rpc<T, R>(&self, addr: &str, key: &str, payload: T) -> Result<(MsgMeta, R), Error> where T: serde::Serialize, for<'de> T: serde::Deserialize<'de>, T: Debug {
+    pub async fn rpc<T, R>(&mut self, addr: &str, key: &str, payload: T) -> Result<(MsgMeta, R, Vec<u8>), ProcessError> where T: serde::Serialize, T: Debug, for<'de> R: serde::Deserialize<'de>, R: Debug {
         let route = Route {
             source: Participator::Service(self.addr.clone()),
             spec: RouteSpec::Simple,
@@ -352,47 +359,35 @@ impl MagicBall {
 		//info!("send_rpc, route {:?}, target addr {}, key {}, payload {:?}, ", route, addr, key, payload);
 		
         let (correlation_id, dto) = rpc_dto_with_correlation_id(self.addr.clone(), addr.to_owned(), key.to_owned(), payload, route)?;
-        let (rpc_tx, rpc_rx) = crossbeam::channel::unbounded();
+        let (rpc_tx, rpc_rx) = oneshot::channel();
         
         self.rpc_tx.send(RpcMsg::AddRpc(correlation_id, rpc_tx));                
         write(dto, &mut self.write_tx).await?;
 
-        let res = match rpc_rx.recv_timeout(std::time::Duration::from_secs(30)) {
-            Ok((msg_meta, len, data)) => {
-                let payload = &data[len + 4..];
-                let payload = serde_json::from_slice::<R>(&data[len + 4..])?;
-                Ok((msg_meta, payload))
-            }
-            Err(err) => Err(err)?
-        };
+        let (msg_meta, payload, attachments) = rpc_rx.await?;
+        let payload: R = from_slice(&payload)?;
 
         self.rpc_tx.send(RpcMsg::RemoveRpc(correlation_id));
 
-        res
+        Ok((msg_meta, payload, attachments))
     }
-    pub async fn send_rpc_with_route<T, R>(&self, addr: &str, key: &str, payload: T, mut route: Route) -> Result<(MsgMeta, R), Error> where T: serde::Serialize, for<'de> T: serde::Deserialize<'de>, T: Debug {
+    pub async fn rpc_with_route<T, R>(&mut self, addr: &str, key: &str, payload: T, mut route: Route) -> Result<(MsgMeta, R, Vec<u8>), ProcessError> where T: serde::Serialize, T: Debug, for<'de> R: serde::Deserialize<'de>, R: Debug {
 		//info!("send_rpc, route {:?}, target addr {}, key {}, payload {:?}, ", route, addr, key, payload);
 
         route.points.push(Participator::Service(self.addr.to_owned()));
 		
         let (correlation_id, dto) = rpc_dto_with_correlation_id(self.addr.clone(), addr.to_owned(), key.to_owned(), payload, route)?;
-        let (rpc_tx, rpc_rx) = crossbeam::channel::unbounded();
+        let (rpc_tx, rpc_rx) = oneshot::channel();
         
         self.rpc_tx.send(RpcMsg::AddRpc(correlation_id, rpc_tx));        
         write(dto, &mut self.write_tx).await?;
 
-        let res = match rpc_rx.recv_timeout(std::time::Duration::from_secs(30)) {
-            Ok((msg_meta, len, data)) => {
-                let payload = &data[len + 4..];
-                let payload = serde_json::from_slice::<R>(&data[len + 4..])?;
-                Ok((msg_meta, payload))
-            }
-            Err(err) => Err(err)?
-        };
+        let (msg_meta, payload, attachments) = rpc_rx.await?;
+        let payload: R = from_slice(&payload)?;
 
         self.rpc_tx.send(RpcMsg::RemoveRpc(correlation_id));
 
-        res
+        Ok((msg_meta, payload, attachments))
     }
     
     /*

@@ -342,7 +342,7 @@ impl MagicBall {
         
         Ok(())
     }    
-    pub fn send_rpc(&self, addr: &str, key: &str, payload: T) -> Result<(MsgMeta, R), Error> where T: serde::Serialize, for<'de> T: serde::Deserialize<'de>, T: Debug {
+    pub async fn send_rpc<T, R>(&self, addr: &str, key: &str, payload: T) -> Result<(MsgMeta, R), Error> where T: serde::Serialize, for<'de> T: serde::Deserialize<'de>, T: Debug {
         let route = Route {
             source: Participator::Service(self.addr.clone()),
             spec: RouteSpec::Simple,
@@ -370,7 +370,7 @@ impl MagicBall {
 
         res
     }
-    pub fn send_rpc_with_route(&self, addr: &str, key: &str, payload: T, mut route: Route) -> Result<(MsgMeta, R), Error> where T: serde::Serialize, for<'de> T: serde::Deserialize<'de>, T: Debug {
+    pub async fn send_rpc_with_route<T, R>(&self, addr: &str, key: &str, payload: T, mut route: Route) -> Result<(MsgMeta, R), Error> where T: serde::Serialize, for<'de> T: serde::Deserialize<'de>, T: Debug {
 		//info!("send_rpc, route {:?}, target addr {}, key {}, payload {:?}, ", route, addr, key, payload);
 
         route.points.push(Participator::Service(self.addr.to_owned()));
@@ -378,7 +378,7 @@ impl MagicBall {
         let (correlation_id, dto) = rpc_dto_with_correlation_id(self.addr.clone(), addr.to_owned(), key.to_owned(), payload, route)?;
         let (rpc_tx, rpc_rx) = crossbeam::channel::unbounded();
         
-        self.rpc_tx.send(ClientMsg::AddRpc(correlation_id, rpc_tx));        
+        self.rpc_tx.send(RpcMsg::AddRpc(correlation_id, rpc_tx));        
         write(dto, &mut self.write_tx).await?;
 
         let res = match rpc_rx.recv_timeout(std::time::Duration::from_secs(30)) {

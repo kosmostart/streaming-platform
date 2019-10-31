@@ -299,10 +299,9 @@ pub async fn write(data: Vec<u8>, write_tx: &mut Sender<(usize, [u8; DATA_BUF_SI
 
 // Used for RPC implementation
 pub enum RpcMsg {
-    AddRpc(Uuid, oneshot::Sender<(MsgMeta, Vec<u8>, Vec<u8>)>),
-    RemoveRpc(Uuid),
+    AddRpc(Uuid, oneshot::Sender<(MsgMeta, Vec<u8>, Vec<u8>)>),    
     RpcDataRequest(Uuid),
-    RpcDataResponse(Uuid, Sender<(MsgMeta, Vec<u8>, Vec<u8>)>)
+    RpcDataResponse(Uuid, oneshot::Sender<(MsgMeta, Vec<u8>, Vec<u8>)>)
 }
 
 pub struct MagicBall {    
@@ -365,9 +364,7 @@ impl MagicBall {
         write(dto, &mut self.write_tx).await?;
 
         let (msg_meta, payload, attachments) = rpc_rx.await?;
-        let payload: R = from_slice(&payload)?;
-
-        self.rpc_tx.send(RpcMsg::RemoveRpc(correlation_id));
+        let payload: R = from_slice(&payload)?;        
 
         Ok((msg_meta, payload, attachments))
     }
@@ -383,9 +380,7 @@ impl MagicBall {
         write(dto, &mut self.write_tx).await?;
 
         let (msg_meta, payload, attachments) = rpc_rx.await?;
-        let payload: R = from_slice(&payload)?;
-
-        self.rpc_tx.send(RpcMsg::RemoveRpc(correlation_id));
+        let payload: R = from_slice(&payload)?;        
 
         Ok((msg_meta, payload, attachments))
     }

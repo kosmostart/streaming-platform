@@ -13,39 +13,38 @@ pub fn magic_ball(host: &str, addr: &str, access_key: &str, mode: Mode) {
 
     let (mut read_tx, mut read_rx) = mpsc::channel(MPSC_CLIENT_BUF_SIZE);
     let (mut write_tx, mut write_rx) = mpsc::channel(MPSC_CLIENT_BUF_SIZE);
-    //let (mut rpc_tx, mut rpc_rx) = mpsc::channel(MPSC_RPC_BUF_SIZE);
+    let (mut rpc_inbound_tx, mut rpc_inbound_rx) = mpsc::channel(MPSC_RPC_BUF_SIZE);
+    let (mut rpc_outbound_tx, mut rpc_outbound_rx) = mpsc::channel(MPSC_RPC_BUF_SIZE);
 
     let addr = addr.to_owned();
     let access_key = access_key.to_owned();
 
     let mut write_tx = write_tx.clone();
-/*
+
     rt.spawn(async move {
         let mut rpcs = HashMap::new();        
 
         loop {
-            let msg = rpc_rx.recv().await.expect("rpc msg receive failed");
+            let msg = rpc_inbound_rx.recv().await.expect("rpc inbound msg receive failed");
 
             match msg {
-                RpcMsg::AddRpc(correlation_id, rpc_client_tx) => {
-                    rpcs.insert(correlation_id, rpc_client_tx);
-                }
-                RpcMsg::RemoveRpc(correlation_id) => {
-                    rpcs.remove(&correlation_id);
-                }
+                RpcMsg::AddRpc(correlation_id, rpc_tx) => {
+                    rpcs.insert(correlation_id, rpc_tx);
+                }                
                 RpcMsg::RpcDataRequest(correlation_id) => {
-                    match rpcs.get(&correlation_id) {
-                        Some(rpc_client_tx) => {
-                            state_to_client_tx.send(RpcMsg::RpcDataResponse(correlation_id, rpc_client_tx.clone()));
+                    match rpcs.remove(&correlation_id) {
+                        Some(rpc_tx) => {
+                            rpc_outbound_tx.send(RpcMsg::RpcDataResponse(correlation_id, rpc_tx));
                         }
                         None => {                            
                         }
                     }                        
-                }                
+                }
+                _=> {                    
+                }
             }
         }
     });
-*/
 
     rt.spawn(async move {        
         let target = "SvcHub";
@@ -88,7 +87,7 @@ pub fn magic_ball(host: &str, addr: &str, access_key: &str, mode: Mode) {
         Mode::FullMessage => {
             rt.spawn(async move {
                 loop {
-                    let msg = read_rx.recv().await.expect("connection issues acquired");                 
+                    let msg = read_rx.recv().await.expect("connection issues acquired");
                     match msg {
                         ClientMsg::Message(msg_meta, payload, attachments) => {
                             match msg_meta.kind {
@@ -99,7 +98,26 @@ pub fn magic_ball(host: &str, addr: &str, access_key: &str, mode: Mode) {
                                     
                                 }
                                 MsgKind::RpcResponse => {
-                                    
+                                    rpc_inbound_tx.send(RpcMsg::RpcDataRequest(msg_meta.correlation_id));
+
+                                    let msg = rpc_outbound_rx.recv().await.expect("rpc outbound msg receive failed");
+
+                                    match msg {
+                                        RpcMsg::RpcDataResponse(received_correlation_id, rpc_tx) => {
+                                            match received_correlation_id == msg_meta.correlation_id {
+                                                true => {
+                                                    //debug!("Sending to rpc_tx {:?}", msg_meta);
+                                                    rpc_tx.send((msg_meta, payload, attachments));
+                                                }
+                                                false => {
+                                                    //error!("received_correlation_id not equals correlation_id: {}, {}", received_correlation_id, msg_meta.correlation_id);
+                                                }
+                                            }
+                                        }
+                                        _ => {
+                                            //error!("Client handler: wrong RpcMsg");
+                                        }
+                                    }                                
                                 }
                             }
                         }

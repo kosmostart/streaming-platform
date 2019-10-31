@@ -61,7 +61,7 @@ pub async fn start_future() -> Result<(), ProcessError> {
 
                     clients.insert(addr, client);
                 }
-                ServerMsg::SendBuf(addr, buf) => {
+                ServerMsg::SendBuf(addr, n, buf) => {
                     let client = clients.get(&addr);
                 }
                 ServerMsg::RemoveClient(addr) => {

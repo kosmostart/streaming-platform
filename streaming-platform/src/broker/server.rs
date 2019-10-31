@@ -52,7 +52,7 @@ pub async fn start_future() -> Result<(), ProcessError> {
 
                     clients.insert(addr, client);
                 }
-                ServerMsg::SendBuf(addr, buf) => {
+                ServerMsg::SendBuf(addr, n, buf) => {
                     let client = clients.get(&addr);
                 }
                 ServerMsg::RemoveClient(addr) => {
@@ -90,7 +90,7 @@ async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut 
     
     let (mut client_tx, mut client_rx) = mpsc::channel(MPSC_CLIENT_BUF_SIZE);
 
-    server_tx.send(ServerMsg::AddClient(auth_msg_meta.tx.clone(), client_net_addr, client_tx)).await.unwrap();    
+    server_tx.send(ServerMsg::AddClient(auth_msg_meta.tx.clone(), client_net_addr, client_tx)).await?;
 
     let mut adapter = socket_read.take(LEN_BUF_SIZE as u64);
     let mut state = State::new();
@@ -115,14 +115,28 @@ async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut 
                         println!("{:?}", new_msg_meta);                                            
                         msg_meta = Some(new_msg_meta);
                     }
-                    ReadResult::PayloadData(n, buf) => {
-                        println!("payload data");
+                    ReadResult::PayloadData(n, buf) => {                        
+                        match msg_meta {
+                            Some(ref msg_meta) => {
+                                server_tx.send(ServerMsg::SendBuf(msg_meta.tx.clone(), n, buf)).await?;
+                            }
+                            None => {
+
+                            }
+                        }
                     }
                     ReadResult::PayloadFinished => {
                         println!("payload ok");
                     }
                     ReadResult::AttachmentData(index, n, buf) => {
-                        println!("attachment data");
+                        match msg_meta {
+                            Some(ref msg_meta) => {
+                                server_tx.send(ServerMsg::SendBuf(msg_meta.tx.clone(), n, buf)).await?;
+                            }
+                            None => {
+
+                            }
+                        }
                     }
                     ReadResult::AttachmentFinished(index) => {
                         println!("attachment ok");

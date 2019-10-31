@@ -168,7 +168,7 @@ pub async fn read(state: &mut State, adapter: &mut Take<ReadHalf<'_>>) -> Result
         Step::MsgMeta(len) => {
             adapter.set_limit(len as u64);
             state.acc.clear();
-            let n = adapter.read_to_end(&mut state.acc).await?;            
+            let n = adapter.read_to_end(&mut state.acc).await?;
 
             let msg_meta: MsgMeta = from_slice(&state.acc)?;
             adapter.set_limit(msg_meta.payload_size as u64);
@@ -252,7 +252,7 @@ pub struct Client {
 
 pub enum ServerMsg {
     AddClient(String, SocketAddr, Sender<(usize, [u8; DATA_BUF_SIZE])>),
-    SendBuf(String, (usize, [u8; DATA_BUF_SIZE])),
+    SendBuf(String, usize, [u8; DATA_BUF_SIZE]),
     RemoveClient(String)
 }
 
@@ -304,10 +304,10 @@ pub enum RpcMsg {
     RpcDataResponse(Uuid, oneshot::Sender<(MsgMeta, Vec<u8>, Vec<u8>)>)
 }
 
-pub struct MagicBall {    
+pub struct MagicBall {
+    addr: String,
     write_tx: Sender<(usize, [u8; DATA_BUF_SIZE])>,
-    rpc_tx: Sender<RpcMsg>,
-    addr: String    
+    rpc_inbound_tx: Sender<RpcMsg>
 }
 
 impl MagicBall {
@@ -360,7 +360,7 @@ impl MagicBall {
         let (correlation_id, dto) = rpc_dto_with_correlation_id(self.addr.clone(), addr.to_owned(), key.to_owned(), payload, route)?;
         let (rpc_tx, rpc_rx) = oneshot::channel();
         
-        self.rpc_tx.send(RpcMsg::AddRpc(correlation_id, rpc_tx));                
+        self.rpc_inbound_tx.send(RpcMsg::AddRpc(correlation_id, rpc_tx));                
         write(dto, &mut self.write_tx).await?;
 
         let (msg_meta, payload, attachments) = rpc_rx.await?;
@@ -376,7 +376,7 @@ impl MagicBall {
         let (correlation_id, dto) = rpc_dto_with_correlation_id(self.addr.clone(), addr.to_owned(), key.to_owned(), payload, route)?;
         let (rpc_tx, rpc_rx) = oneshot::channel();
         
-        self.rpc_tx.send(RpcMsg::AddRpc(correlation_id, rpc_tx));        
+        self.rpc_inbound_tx.send(RpcMsg::AddRpc(correlation_id, rpc_tx));        
         write(dto, &mut self.write_tx).await?;
 
         let (msg_meta, payload, attachments) = rpc_rx.await?;

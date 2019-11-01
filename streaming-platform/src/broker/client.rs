@@ -17,9 +17,12 @@ pub fn magic_ball(host: &str, addr: &str, access_key: &str, mode: Mode) {
     let (mut rpc_outbound_tx, mut rpc_outbound_rx) = mpsc::channel(MPSC_RPC_BUF_SIZE);
 
     let addr = addr.to_owned();
+    let addr2 = addr.to_owned();
     let access_key = access_key.to_owned();
-
-    let mut write_tx = write_tx.clone();
+    let mut rpc_inbound_tx2 = rpc_inbound_tx.clone();
+    
+    let mut write_tx2 = write_tx.clone();
+    let mut write_tx3 = write_tx.clone();
 
     rt.spawn(async move {
         let mut rpcs = HashMap::new();        
@@ -84,21 +87,26 @@ pub fn magic_ball(host: &str, addr: &str, access_key: &str, mode: Mode) {
                 }    
             });
         }
-        Mode::FullMessage => {
+        Mode::FullMessage(process_event, proccess_rpc_request) => {
             rt.spawn(async move {
+                let mut mb = MagicBall::new(addr2, write_tx2, rpc_inbound_tx);
+
                 loop {
                     let msg = read_rx.recv().await.expect("connection issues acquired");
                     match msg {
-                        ClientMsg::Message(msg_meta, payload, attachments) => {
+                        ClientMsg::Message(mut msg_meta, payload, attachments) => {
                             match msg_meta.kind {
                                 MsgKind::Event => {
-
+                                    process_event(&mut mb, &msg_meta, payload, attachments);
                                 }
                                 MsgKind::RpcRequest => {
-                                    
+                                    let (payload, attachments, attachments_data) = proccess_rpc_request(&mut mb, &msg_meta, payload, attachments);
+                                    msg_meta.route.points.push(Participator::Service(mb.get_addr()));
+                                    let res = reply_to_rpc_dto2(mb.get_addr(), msg_meta.tx, msg_meta.key, msg_meta.correlation_id, payload, attachments, attachments_data, msg_meta.route).expect("failed to create rpc reply");
+                                    write(res, &mut write_tx3).await.expect("failed to write rpc response");
                                 }
                                 MsgKind::RpcResponse => {
-                                    rpc_inbound_tx.send(RpcMsg::RpcDataRequest(msg_meta.correlation_id));
+                                    rpc_inbound_tx2.send(RpcMsg::RpcDataRequest(msg_meta.correlation_id));
 
                                     let msg = rpc_outbound_rx.recv().await.expect("rpc outbound msg receive failed");
 
@@ -136,7 +144,7 @@ pub async fn connect_future(host: &str, mode: Mode, mut read_tx: Sender<ClientMs
 
     let res = match mode {
         Mode::Stream(_) => process_stream(stream, read_tx, write_rx).await,
-        Mode::FullMessage => process_full_message(stream, read_tx, write_rx).await
+        Mode::FullMessage(_, _) => process_full_message(stream, read_tx, write_rx).await    
     };
     println!("{:?}", res);
 }

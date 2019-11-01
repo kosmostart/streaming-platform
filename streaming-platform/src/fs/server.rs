@@ -117,10 +117,10 @@ async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut 
                 let res = res?;                
 
                 match res {
-                    ReadResult::LenFinished => {
+                    ReadResult::LenFinished(_) => {
                         println!("len ok");
                     }
-                    ReadResult::MsgMeta(new_msg_meta) => {
+                    ReadResult::MsgMeta(new_msg_meta, _) => {
                         println!("{:?}", new_msg_meta);
                         
                         let res = process_msg(&new_msg_meta, &auth_payload, &mut socket_write, config).await?;

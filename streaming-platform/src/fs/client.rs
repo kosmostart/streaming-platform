@@ -99,9 +99,9 @@ async fn process_stream(save_path: &str, mut stream: TcpStream, mut read_tx: Sen
                 let res = res?;                
 
                 match res {
-                    ReadResult::LenFinished => {                        
+                    ReadResult::LenFinished(_) => {
                     }
-                    ReadResult::MsgMeta(new_msg_meta) => {                        
+                    ReadResult::MsgMeta(new_msg_meta, _) => {
                         match new_msg_meta.key.as_ref() {
                             "Hub.GetFile" => {                                
                                 let attachment = new_msg_meta.attachments.iter().nth(0).ok_or(ProcessError::GetFile(GetFileError::AttachmentsAreEmpty))?;

@@ -201,7 +201,7 @@ pub enum ServerMsg {
 
 pub enum Mode {
     Stream(fn(ClientMsg)),
-    FullMessage
+    FullMessage(fn(&mut MagicBall, &MsgMeta, Vec<u8>, Vec<u8>), fn(&mut MagicBall, &MsgMeta, Vec<u8>, Vec<u8>) -> (Vec<u8>, Vec<(String, u64)>, Vec<u8>))
 }
 
 /// Messages received from client
@@ -270,6 +270,13 @@ pub struct MagicBall {
 }
 
 impl MagicBall {
+    pub fn new(addr: String, write_tx: Sender<(usize, [u8; DATA_BUF_SIZE])>, rpc_inbound_tx: Sender<RpcMsg>) -> MagicBall {
+        MagicBall {
+            addr,
+            write_tx,
+            rpc_inbound_tx
+        }
+    }
     pub fn get_addr(&self) -> String {
 		self.addr.clone()
 	}

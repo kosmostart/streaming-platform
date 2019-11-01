@@ -418,7 +418,16 @@ pub fn event_dto2(tx: String, rx: String, key: String, mut payload: Vec<u8>, rou
     Ok(buf)
 }
 
-pub fn reply_to_rpc_dto2(tx: String, rx: String, key: String, correlation_id: Uuid, mut payload: Vec<u8>, route: Route) -> Result<Vec<u8>, Error> {
+pub fn reply_to_rpc_dto2(tx: String, rx: String, key: String, correlation_id: Uuid, mut payload: Vec<u8>, attachments: Vec<(String, u64)>, mut attachments_data: Vec<u8>, route: Route) -> Result<Vec<u8>, Error> {
+    let mut attachments_meta = vec![];
+
+    for (attachment_name,attachment_size) in attachments {
+        attachments_meta.push(Attachment {
+            name: attachment_name,
+            size: attachment_size
+        });                
+    }
+
     let msg_meta = MsgMeta {
         tx,
         rx,
@@ -427,7 +436,7 @@ pub fn reply_to_rpc_dto2(tx: String, rx: String, key: String, correlation_id: Uu
         correlation_id,
         route,
         payload_size: payload.len() as u64,
-		attachments: vec![]
+		attachments: attachments_meta
     };
 
     let mut msg_meta = serde_json::to_vec(&msg_meta)?;        
@@ -438,6 +447,7 @@ pub fn reply_to_rpc_dto2(tx: String, rx: String, key: String, correlation_id: Uu
 
     buf.append(&mut msg_meta);
     buf.append(&mut payload);
+    buf.append(&mut attachments_data);
     
     Ok(buf)
 }

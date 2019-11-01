@@ -11,29 +11,13 @@ use serde_json::{Value, from_slice};
 use sp_dto::MsgMeta;    
 use crate::proto::*;
 
-pub fn start() {
+pub fn start(config: Config) {
     let rt = Runtime::new().expect("failed to create runtime"); 
     
-    rt.block_on(start_future());
+    rt.block_on(start_future(config));
 }
 
-pub async fn start_future() -> Result<(), ProcessError> {
-    let config_path = std::env::args().nth(1)
-        .expect("path to config file not passed as argument");
-
-    let file = std::fs::File::open(config_path)
-        .expect("failed to open config");
-
-    let mut buf_reader = BufReader::new(file);
-
-    let mut config_string = String::new();
-
-    buf_reader.read_to_string(&mut config_string)
-        .expect("failed to read config");
-
-    let config: Config = toml::from_str(&config_string)
-        .expect("failed to deserialize config");	
-
+pub async fn start_future(config: Config) -> Result<(), ProcessError> {
     let mut listener = TcpListener::bind(config.host.clone()).await?;
 
     let (mut server_tx, mut server_rx) = mpsc::channel(MPSC_SERVER_BUF_SIZE);

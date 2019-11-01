@@ -24,60 +24,6 @@ pub enum ClientKind {
     Hub
 }
 
-#[derive(Debug)]
-pub enum ProcessError {
-    StreamClosed,
-    NotEnoughBytesForLen,
-    IncorrectReadResult,
-    AttachmentFieldIsEmpty,
-    Io(std::io::Error),
-    SerdeJson(serde_json::Error),
-    GetFile(GetFileError),
-    SendError(SendError),
-    OneshotRecvError(oneshot::error::RecvError),
-    NoneError
-}
-
-#[derive(Debug)]
-pub enum GetFileError {
-    ConfigDirsIsEmpty,
-    NoAccessKeyInPayload,
-    TargetDirNotFound,
-    NoFilesInTargetDir,
-    FileNameIsEmpty,
-    AttachmentsAreEmpty
-}
-
-impl From<std::io::Error> for ProcessError {
-	fn from(err: std::io::Error) -> ProcessError {
-		ProcessError::Io(err)
-	}
-}
-
-impl From<serde_json::Error> for ProcessError {
-	fn from(err: serde_json::Error) -> ProcessError {
-		ProcessError::SerdeJson(err)
-	}
-}
-
-impl From<option::NoneError> for ProcessError {
-	fn from(err: option::NoneError) -> ProcessError {
-		ProcessError::NoneError
-	}
-}
-
-impl From<SendError> for ProcessError {
-	fn from(err: SendError) -> ProcessError {
-		ProcessError::SendError(err)
-	}
-}
-
-impl From<oneshot::error::RecvError> for ProcessError {
-	fn from(err: oneshot::error::RecvError) -> ProcessError {
-		ProcessError::OneshotRecvError(err)
-	}
-}
-
 /// Read full message from source in to memory. Should be used carefully with large message content.
 pub async fn read_full(socket_read: &mut ReadHalf<'_>) -> Result<(MsgMeta, Vec<u8>, Vec<u8>), ProcessError> {
     let mut len_buf = [0; LEN_BUF_SIZE];
@@ -110,9 +56,9 @@ pub async fn read_full(socket_read: &mut ReadHalf<'_>) -> Result<(MsgMeta, Vec<u
 /// The result of reading function
 pub enum ReadResult {
     /// This one indicates MsgMeta struct len was read successfully
-    LenFinished,
+    LenFinished([u8; DATA_BUF_SIZE]),
     /// Message data stream is prepended with MsgMeta struct
-    MsgMeta(MsgMeta),
+    MsgMeta(MsgMeta, Vec<u8>),
     /// Payload data stream message
     PayloadData(usize, [u8; DATA_BUF_SIZE]),
     /// This one indicates payload data stream finished
@@ -136,48 +82,45 @@ pub enum Step {
 
 /// Data structure used for convenience when streaming data from source
 pub struct State {
-    pub len_buf: [u8; LEN_BUF_SIZE],    
-    pub acc: Vec<u8>,
-    pub attachments: Option<Vec<u64>>,
-    pub step: Step
+    pub step: Step,
+    pub attachments: Option<Vec<u64>>    
 }
 
 impl State {
     pub fn new() -> State {
         State {            
-            len_buf: [0; LEN_BUF_SIZE],
-            acc: vec![],
-            attachments: None,
-            step: Step::Len
+            step: Step::Len,
+            attachments: None
         }  
     }    
 }
 
 pub async fn read(state: &mut State, adapter: &mut Take<ReadHalf<'_>>) -> Result<ReadResult, ProcessError> {
     match state.step {
-        Step::Len => {                
-            adapter.read_exact(&mut state.len_buf).await?;                
+        Step::Len => {
+            let mut len_buf = [0; DATA_BUF_SIZE];
+            adapter.read(&mut len_buf).await?;
 
-            let mut buf = Cursor::new(&state.len_buf);
+            let mut buf = Cursor::new(&len_buf[..LEN_BUF_SIZE]);
             let len = buf.get_u32_be();
 
             state.step = Step::MsgMeta(len);
 
-            Ok(ReadResult::LenFinished)
+            Ok(ReadResult::LenFinished(len_buf))
         }
         Step::MsgMeta(len) => {
             adapter.set_limit(len as u64);
-            state.acc.clear();
-            let n = adapter.read_to_end(&mut state.acc).await?;
+            let mut buf = vec![];
+            let n = adapter.read_to_end(&mut buf).await?;
 
-            let msg_meta: MsgMeta = from_slice(&state.acc)?;
+            let msg_meta: MsgMeta = from_slice(&buf)?;
             adapter.set_limit(msg_meta.payload_size as u64);
 
             state.attachments = Some(msg_meta.attachments.iter().map(|x| x.size).collect());
 
             state.step = Step::Payload;
 
-            Ok(ReadResult::MsgMeta(msg_meta))
+            Ok(ReadResult::MsgMeta(msg_meta, buf))
         }
         Step::Payload => {
             let mut data_buf = [0; DATA_BUF_SIZE];                       
@@ -291,6 +234,22 @@ pub async fn write(data: Vec<u8>, write_tx: &mut Sender<(usize, [u8; DATA_BUF_SI
         match n {
             0 => break,
             _ => write_tx.send((n, data_buf)).await?
+        }
+    }
+
+    Ok(())
+}
+
+pub async fn server_write(data: Vec<u8>, rx: &str, write_tx: &mut Sender<ServerMsg>) -> Result<(), ProcessError> {
+    let mut source = &data[..];
+
+    loop {
+        let mut data_buf = [0; DATA_BUF_SIZE];
+        let n = source.read(&mut data_buf).await?;        
+
+        match n {
+            0 => break,
+            _ => write_tx.send(ServerMsg::SendBuf(rx.to_owned(), n, data_buf)).await?
         }
     }
 
@@ -412,4 +371,58 @@ impl MagicBall {
         Ok((msg_meta, payload))
     }
     */
+}
+
+#[derive(Debug)]
+pub enum ProcessError {
+    StreamClosed,
+    NotEnoughBytesForLen,
+    IncorrectReadResult,
+    AttachmentFieldIsEmpty,
+    Io(std::io::Error),
+    SerdeJson(serde_json::Error),
+    GetFile(GetFileError),
+    SendError(SendError),
+    OneshotRecvError(oneshot::error::RecvError),
+    NoneError
+}
+
+#[derive(Debug)]
+pub enum GetFileError {
+    ConfigDirsIsEmpty,
+    NoAccessKeyInPayload,
+    TargetDirNotFound,
+    NoFilesInTargetDir,
+    FileNameIsEmpty,
+    AttachmentsAreEmpty
+}
+
+impl From<std::io::Error> for ProcessError {
+	fn from(err: std::io::Error) -> ProcessError {
+		ProcessError::Io(err)
+	}
+}
+
+impl From<serde_json::Error> for ProcessError {
+	fn from(err: serde_json::Error) -> ProcessError {
+		ProcessError::SerdeJson(err)
+	}
+}
+
+impl From<option::NoneError> for ProcessError {
+	fn from(err: option::NoneError) -> ProcessError {
+		ProcessError::NoneError
+	}
+}
+
+impl From<SendError> for ProcessError {
+	fn from(err: SendError) -> ProcessError {
+		ProcessError::SendError(err)
+	}
+}
+
+impl From<oneshot::error::RecvError> for ProcessError {
+	fn from(err: oneshot::error::RecvError) -> ProcessError {
+		ProcessError::OneshotRecvError(err)
+	}
 }

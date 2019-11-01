@@ -8,6 +8,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc::{self, Sender};
 use tokio::prelude::*;
 use serde_json::{Value, from_slice};
+use sp_dto::MsgMeta;    
 use crate::proto::*;
 
 pub fn start() {
@@ -41,7 +42,7 @@ pub async fn start_future() -> Result<(), ProcessError> {
         let mut clients = HashMap::new();
 
         loop {
-            let msg = server_rx.recv().await.expect("clients msg receive failed");
+            let msg = server_rx.recv().await.expect("ServerMsg receive failed");
 
             match msg {
                 ServerMsg::AddClient(addr, net_addr, tx) => {
@@ -53,7 +54,11 @@ pub async fn start_future() -> Result<(), ProcessError> {
                     clients.insert(addr, client);
                 }
                 ServerMsg::SendBuf(addr, n, buf) => {
-                    let client = clients.get(&addr);
+                    match clients.get_mut(&addr) {
+                        Some(client) => client.tx.send((n, buf)).await.expect("ServerMsg::SendBuf processing failed on tx send"),
+                        None => {
+                        }
+                    }
                 }
                 ServerMsg::RemoveClient(addr) => {
                     clients.remove(&addr);
@@ -95,7 +100,7 @@ async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut 
     let mut adapter = socket_read.take(LEN_BUF_SIZE as u64);
     let mut state = State::new();
 
-    let mut msg_meta = None;
+    let mut msg_meta: Option<MsgMeta> = None;
 
     loop {
         let f1 = read(&mut state, &mut adapter).fuse();
@@ -108,12 +113,20 @@ async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut 
                 let res = res?;
 
                 match res {
-                    ReadResult::LenFinished => {
-                        println!("len ok");
+                    ReadResult::LenFinished(buf) => {
+                        match msg_meta {
+                            Some(ref msg_meta) => {
+                                server_tx.send(ServerMsg::SendBuf(msg_meta.tx.clone(), LEN_BUF_SIZE, buf)).await?;
+                            }
+                            None => {
+
+                            }
+                        }
                     }
-                    ReadResult::MsgMeta(new_msg_meta) => {
-                        println!("{:?}", new_msg_meta);                                            
-                        msg_meta = Some(new_msg_meta);
+                    ReadResult::MsgMeta(new_msg_meta, buf) => {
+                        println!("{:?}", new_msg_meta);
+                        server_write(buf, &new_msg_meta.rx, &mut server_tx);
+                        msg_meta = Some(new_msg_meta);                        
                     }
                     ReadResult::PayloadData(n, buf) => {                        
                         match msg_meta {
@@ -139,10 +152,10 @@ async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut 
                         }
                     }
                     ReadResult::AttachmentFinished(index) => {
-                        println!("attachment ok");
+                        //println!("attachment ok");
                     }
                     ReadResult::MessageFinished => {
-                        println!("message ok");
+                        //println!("message ok");
                     }
                 };                            
             }

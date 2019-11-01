@@ -164,8 +164,8 @@ async fn process_stream(mut stream: TcpStream, mut read_tx: Sender<ClientMsg>, m
                 let res = res?;                
 
                 match res {
-                    ReadResult::LenFinished => {}
-                    ReadResult::MsgMeta(new_msg_meta) => read_tx.send(ClientMsg::MsgMeta(new_msg_meta)).await?,
+                    ReadResult::LenFinished(_) => {}
+                    ReadResult::MsgMeta(new_msg_meta, _) => read_tx.send(ClientMsg::MsgMeta(new_msg_meta)).await?,
                     ReadResult::PayloadData(n, buf) => read_tx.send(ClientMsg::PayloadData(n, buf)).await?,
                     ReadResult::PayloadFinished => read_tx.send(ClientMsg::PayloadFinished).await?,
                     ReadResult::AttachmentData(index, n, buf) => read_tx.send(ClientMsg::AttachmentData(index, n, buf)).await?,

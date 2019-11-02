@@ -7,7 +7,7 @@ use tokio::io::Take;
 use tokio::net::tcp::split::ReadHalf;
 use tokio::sync::{mpsc::{Sender, error::SendError}, oneshot};
 use tokio::prelude::*;
-use serde_json::from_slice;
+use serde_json::{from_slice, Value};
 use serde_derive::{Deserialize};
 use sp_dto::{*, uuid::Uuid};
 
@@ -201,7 +201,8 @@ pub enum ServerMsg {
 
 pub enum Mode {
     Stream(fn(ClientMsg)),
-    FullMessage(fn(&mut MagicBall, &MsgMeta, Vec<u8>, Vec<u8>), fn(&mut MagicBall, &MsgMeta, Vec<u8>, Vec<u8>) -> (Vec<u8>, Vec<(String, u64)>, Vec<u8>))
+    FullMessage(fn(&mut MagicBall, &MsgMeta, Vec<u8>, Vec<u8>), fn(&mut MagicBall, &MsgMeta, Vec<u8>, Vec<u8>) -> (Vec<u8>, Vec<(String, u64)>, Vec<u8>)),
+    FullMessageSimple(fn(&mut MagicBall, &MsgMeta, Value, Vec<u8>), fn(&mut MagicBall, &MsgMeta, Value, Vec<u8>) -> Value)
 }
 
 /// Messages received from client

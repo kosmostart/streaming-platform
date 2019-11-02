@@ -4,7 +4,7 @@ use tokio::net::TcpStream;
 use tokio::prelude::*;
 use tokio::runtime::Runtime;
 use tokio::sync::mpsc::{self, Sender, Receiver};
-use serde_json::json;
+use serde_json::{json, Value, from_slice, to_vec};
 use sp_dto::*;
 use crate::proto::*;
 
@@ -134,6 +134,55 @@ pub fn magic_ball(host: &str, addr: &str, access_key: &str, mode: Mode) {
                 }    
             });
         }
+        Mode::FullMessageSimple(process_event, proccess_rpc_request) => {
+            rt.spawn(async move {
+                let mut mb = MagicBall::new(addr2, write_tx2, rpc_inbound_tx);
+
+                loop {
+                    let msg = read_rx.recv().await.expect("connection issues acquired");
+                    match msg {
+                        ClientMsg::Message(mut msg_meta, payload, attachments) => {
+                            match msg_meta.kind {
+                                MsgKind::Event => {
+                                    let payload: Value = from_slice(&payload).expect("failed to deserialize event payload");
+                                    process_event(&mut mb, &msg_meta, payload, attachments);
+                                }
+                                MsgKind::RpcRequest => {
+                                    let payload: Value = from_slice(&payload).expect("failed to deserialize rpc request payload");
+                                    let payload = to_vec(&proccess_rpc_request(&mut mb, &msg_meta, payload, attachments)).expect("failed to serialize rpc process result");
+                                    msg_meta.route.points.push(Participator::Service(mb.get_addr()));
+                                    let res = reply_to_rpc_dto2(mb.get_addr(), msg_meta.tx, msg_meta.key, msg_meta.correlation_id, payload, vec![], vec![], msg_meta.route).expect("failed to create rpc reply");
+                                    write(res, &mut write_tx3).await.expect("failed to write rpc response");
+                                }
+                                MsgKind::RpcResponse => {
+                                    rpc_inbound_tx2.send(RpcMsg::RpcDataRequest(msg_meta.correlation_id));
+
+                                    let msg = rpc_outbound_rx.recv().await.expect("rpc outbound msg receive failed");
+
+                                    match msg {
+                                        RpcMsg::RpcDataResponse(received_correlation_id, rpc_tx) => {
+                                            match received_correlation_id == msg_meta.correlation_id {
+                                                true => {
+                                                    //debug!("Sending to rpc_tx {:?}", msg_meta);
+                                                    rpc_tx.send((msg_meta, payload, attachments));
+                                                }
+                                                false => {
+                                                    //error!("received_correlation_id not equals correlation_id: {}, {}", received_correlation_id, msg_meta.correlation_id);
+                                                }
+                                            }
+                                        }
+                                        _ => {
+                                            //error!("Client handler: wrong RpcMsg");
+                                        }
+                                    }                                
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }    
+            });
+        }
     }    
 
     rt.block_on(connect_future(host, mode, read_tx, write_rx));
@@ -144,7 +193,8 @@ pub async fn connect_future(host: &str, mode: Mode, mut read_tx: Sender<ClientMs
 
     let res = match mode {
         Mode::Stream(_) => process_stream(stream, read_tx, write_rx).await,
-        Mode::FullMessage(_, _) => process_full_message(stream, read_tx, write_rx).await    
+        Mode::FullMessage(_, _) | 
+        Mode::FullMessageSimple(_, _) => process_full_message(stream, read_tx, write_rx).await
     };
     println!("{:?}", res);
 }

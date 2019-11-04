@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fmt::Debug;
 use std::option;
 use std::io::Cursor;
@@ -201,8 +202,8 @@ pub enum ServerMsg {
 
 pub enum Mode {
     Stream(fn(ClientMsg)),
-    FullMessage(fn(&mut MagicBall, &MsgMeta, Vec<u8>, Vec<u8>), fn(&mut MagicBall, &MsgMeta, Vec<u8>, Vec<u8>) -> (Vec<u8>, Vec<(String, u64)>, Vec<u8>)),
-    FullMessageSimple(fn(&mut MagicBall, &MsgMeta, Value, Vec<u8>), fn(&mut MagicBall, &MsgMeta, Value, Vec<u8>) -> Value)
+    FullMessage(fn(&HashMap<String, String>, &mut MagicBall, &MsgMeta, Vec<u8>, Vec<u8>), fn(&HashMap<String, String>, &mut MagicBall, &MsgMeta, Vec<u8>, Vec<u8>) -> (Vec<u8>, Vec<(String, u64)>, Vec<u8>)),
+    FullMessageSimple(fn(&HashMap<String, String>, &mut MagicBall, &MsgMeta, Value, Vec<u8>), fn(&HashMap<String, String>, &mut MagicBall, &MsgMeta, Value, Vec<u8>) -> Value)
 }
 
 /// Messages received from client

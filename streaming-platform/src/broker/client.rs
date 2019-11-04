@@ -8,7 +8,7 @@ use serde_json::{json, Value, from_slice, to_vec};
 use sp_dto::*;
 use crate::proto::*;
 
-pub fn magic_ball(host: &str, addr: &str, access_key: &str, mode: Mode) {
+pub fn magic_ball(host: &str, addr: &str, access_key: &str, mode: Mode, config: HashMap<String, String>) {
     let rt = Runtime::new().expect("failed to create runtime");
 
     let (mut read_tx, mut read_rx) = mpsc::channel(MPSC_CLIENT_BUF_SIZE);
@@ -97,10 +97,10 @@ pub fn magic_ball(host: &str, addr: &str, access_key: &str, mode: Mode) {
                         ClientMsg::Message(mut msg_meta, payload, attachments) => {
                             match msg_meta.kind {
                                 MsgKind::Event => {
-                                    process_event(&mut mb, &msg_meta, payload, attachments);
+                                    process_event(&config, &mut mb, &msg_meta, payload, attachments);
                                 }
                                 MsgKind::RpcRequest => {
-                                    let (payload, attachments, attachments_data) = proccess_rpc_request(&mut mb, &msg_meta, payload, attachments);
+                                    let (payload, attachments, attachments_data) = proccess_rpc_request(&config, &mut mb, &msg_meta, payload, attachments);
                                     msg_meta.route.points.push(Participator::Service(mb.get_addr()));
                                     let res = reply_to_rpc_dto2(mb.get_addr(), msg_meta.tx, msg_meta.key, msg_meta.correlation_id, payload, attachments, attachments_data, msg_meta.route).expect("failed to create rpc reply");
                                     write(res, &mut write_tx3).await.expect("failed to write rpc response");
@@ -145,11 +145,11 @@ pub fn magic_ball(host: &str, addr: &str, access_key: &str, mode: Mode) {
                             match msg_meta.kind {
                                 MsgKind::Event => {
                                     let payload: Value = from_slice(&payload).expect("failed to deserialize event payload");
-                                    process_event(&mut mb, &msg_meta, payload, attachments);
+                                    process_event(&config, &mut mb, &msg_meta, payload, attachments);
                                 }
                                 MsgKind::RpcRequest => {
                                     let payload: Value = from_slice(&payload).expect("failed to deserialize rpc request payload");
-                                    let payload = to_vec(&proccess_rpc_request(&mut mb, &msg_meta, payload, attachments)).expect("failed to serialize rpc process result");
+                                    let payload = to_vec(&proccess_rpc_request(&config, &mut mb, &msg_meta, payload, attachments)).expect("failed to serialize rpc process result");
                                     msg_meta.route.points.push(Participator::Service(mb.get_addr()));
                                     let res = reply_to_rpc_dto2(mb.get_addr(), msg_meta.tx, msg_meta.key, msg_meta.correlation_id, payload, vec![], vec![], msg_meta.route).expect("failed to create rpc reply");
                                     write(res, &mut write_tx3).await.expect("failed to write rpc response");

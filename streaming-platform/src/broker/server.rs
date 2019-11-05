@@ -12,7 +12,7 @@ use sp_dto::MsgMeta;
 use crate::proto::*;
 
 pub fn start(config: Config) {
-    let rt = Runtime::new().expect("failed to create runtime"); 
+    let mut rt = Runtime::new().expect("failed to create runtime"); 
     
     rt.block_on(start_future(config));
 }

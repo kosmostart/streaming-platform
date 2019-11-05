@@ -1661,10 +1661,9 @@ dependencies = [
 [[package]]
 name = "tokio"
 version = "0.2.0-alpha.6"
-source = "git+https://github.com/tokio-rs/tokio#e699d4653430ac048b5c228c64f5d6707b1eef77"
+source = "git+https://github.com/tokio-rs/tokio#a6253ed05a1e0d14bc64915f5937c29092df9497"
 dependencies = [
  "bytes 0.4.12 (registry+https://github.com/rust-lang/crates.io-index)",
- "crossbeam-channel 0.3.9 (registry+https://github.com/rust-lang/crates.io-index)",
  "fnv 1.0.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures-core-preview 0.3.0-alpha.19 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures-sink-preview 0.3.0-alpha.19 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1763,7 +1762,7 @@ dependencies = [
 [[package]]
 name = "tokio-macros"
 version = "0.2.0-alpha.6"
-source = "git+https://github.com/tokio-rs/tokio#e699d4653430ac048b5c228c64f5d6707b1eef77"
+source = "git+https://github.com/tokio-rs/tokio#a6253ed05a1e0d14bc64915f5937c29092df9497"
 dependencies = [
  "quote 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "syn 1.0.7 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -2206,7 +2205,7 @@ dependencies = [
 [[package]]
 name = "yew"
 version = "0.10.0"
-source = "git+https://github.com/DenisKolodin/yew#8bad9b28fff177f30e5ab5b204eb650815a1518c"
+source = "git+https://github.com/DenisKolodin/yew#c178d5273fd4375e4facf58ede6973705b25a189"
 dependencies = [
  "anymap 0.12.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "bincode 1.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -2228,7 +2227,7 @@ dependencies = [
 [[package]]
 name = "yew-macro"
 version = "0.10.0"
-source = "git+https://github.com/DenisKolodin/yew#8bad9b28fff177f30e5ab5b204eb650815a1518c"
+source = "git+https://github.com/DenisKolodin/yew#c178d5273fd4375e4facf58ede6973705b25a189"
 dependencies = [
  "autocfg 0.1.7 (registry+https://github.com/rust-lang/crates.io-index)",
  "boolinator 2.4.0 (registry+https://github.com/rust-lang/crates.io-index)",

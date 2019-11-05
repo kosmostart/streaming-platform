@@ -20,7 +20,7 @@ use sp_dto::*;
 use crate::proto::*;
 
 pub fn start() {
-    let rt = Runtime::new().expect("failed to create runtime"); 
+    let mut rt = Runtime::new().expect("failed to create runtime");
     
     rt.block_on(start_future());
 }

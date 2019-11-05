@@ -13,7 +13,7 @@ use sp_dto::*;
 use crate::proto::*;
 
 pub fn magic_ball(host: &str, addr: &str, access_key: &str, save_path: &str, process_msg: fn(ClientMsg, String)) {
-    let rt = Runtime::new().expect("failed to create runtime");
+    let mut rt = Runtime::new().expect("failed to create runtime");
 
     let (mut read_tx, mut read_rx) = mpsc::channel(MPSC_CLIENT_BUF_SIZE);
     let (mut write_tx, mut write_rx) = mpsc::channel(MPSC_CLIENT_BUF_SIZE);    

@@ -443,3 +443,45 @@ impl From<oneshot::error::RecvError> for ProcessError {
 		ProcessError::OneshotRecvError(err)
 	}
 }
+
+
+/*
+#![feature(unboxed_closures, fn_traits)]
+use std::future::Future;
+
+fn main() {
+    start(f);
+}
+
+async fn f(data: &[String]) {
+    println!("{:?}", data);
+}
+
+async fn start<F>(prm: F) 
+where
+    F: for<'a> AsyncFn<'a, (&'a [String],), ()>
+{
+    let data = vec![];
+    
+    prm.call_async((&data,)).await;
+}
+
+// =======================================
+
+trait AsyncFn<'a, Args: 'a, R> {
+    type Output: Future<Output = R> + 'a;
+
+    fn call_async(&self, args: Args) -> Self::Output;
+}
+
+impl<'a, Args: 'a, R, F: Fn<Args>> AsyncFn<'a, Args, R> for F
+where
+    F::Output: Future<Output = R> + 'a,
+{
+    type Output = F::Output;
+
+    fn call_async(&self, args: Args) -> Self::Output {
+        self.call(args)
+    }
+}
+*/

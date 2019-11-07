@@ -2,15 +2,15 @@
 #![feature(try_trait)]
 pub use tokio;
 pub use sp_dto;
-pub use proto::{Config, ClientMsg, Mode, MagicBall};
+pub use proto::{Config, ClientMsg, MagicBall};
 #[cfg(not(feature = "fs"))]
 pub use broker::server::{start, start_future};
 #[cfg(feature = "fs")]
 pub use fs::server::{start, start_future};
 #[cfg(not(feature = "fs"))]
-pub use broker::client::{magic_ball, connect_future};
+pub use broker::client::{stream_mode, full_message_raw_mode, full_message_mode};
 #[cfg(feature = "fs")]
-pub use fs::client::{magic_ball, connect_future};
+pub use fs::client::magic_ball;
 
 #[cfg(not(feature = "fs"))]
 mod broker {

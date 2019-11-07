@@ -1,4 +1,6 @@
 use std::collections::HashMap;
+use std::pin::Pin;
+use std::error::Error;
 use std::fmt::Debug;
 use std::option;
 use std::io::Cursor;
@@ -200,11 +202,16 @@ pub enum ServerMsg {
     RemoveClient(String)
 }
 
-pub enum Mode {
-    Stream(fn(ClientMsg)),
-    FullMessage(fn(&HashMap<String, String>, &mut MagicBall, &MsgMeta, Vec<u8>, Vec<u8>), fn(&HashMap<String, String>, &mut MagicBall, &MsgMeta, Vec<u8>, Vec<u8>) -> (Vec<u8>, Vec<(String, u64)>, Vec<u8>)),
-    FullMessageSimple(fn(&HashMap<String, String>, &mut MagicBall, &MsgMeta, Value, Vec<u8>), fn(&HashMap<String, String>, &mut MagicBall, &MsgMeta, Value, Vec<u8>) -> Value)
-}
+//where T: Future<Output = Value>, T: Send
+pub type ProcessStreamMsg<T> = fn(ClientMsg) -> T;
+//where T: Future<Output = Result<(), Box<dyn Error>>, T: Send
+pub type ProcessEventRaw<T> = fn(&HashMap<String, String>, &mut MagicBall, &MsgMeta, Vec<u8>, Vec<u8>) -> T;
+//where T: Future<Output = Result<(Vec<u8>, Vec<(String, u64)>, Vec<u8>), Box<dyn Error>>>, T: Send
+pub type ProcessRpcRaw<T> = fn(&HashMap<String, String>, &mut MagicBall, &MsgMeta, Vec<u8>, Vec<u8>) -> T;
+//where T: Future<Output = Result<(), Box<dyn Error>>>, T: Send
+pub type ProcessEvent<T> = fn(&HashMap<String, String>, &mut MagicBall, &MsgMeta, Value, Vec<u8>) -> T;
+//where T: Future<Output = Result<Value, Box<dyn Error>>>, T: Send
+pub type ProcessRpc<T> = fn(&HashMap<String, String>, &mut MagicBall, &MsgMeta, Value, Vec<u8>) -> T;
 
 /// Messages received from client
 pub enum ClientMsg {

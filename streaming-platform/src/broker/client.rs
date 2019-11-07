@@ -152,10 +152,14 @@ where
                 ClientMsg::Message(mut msg_meta, payload, attachments) => {
                     match msg_meta.kind {
                         MsgKind::Event => {
-                            let res = process_event(&config, &mut mb, &msg_meta, payload, attachments).await;
+                            let res = process_event(config.clone(), mb.clone(), msg_meta, payload, attachments).await;
                         }
-                        MsgKind::RpcRequest => {                                    
-                            let (payload, attachments, attachments_data) = match process_rpc(&config, &mut mb, &msg_meta, payload, attachments).await {
+                        MsgKind::RpcRequest => {
+                            let mut route = msg_meta.route.clone();
+                            let correlation_id = msg_meta.correlation_id;
+                            let tx = msg_meta.tx.clone();
+                            let key = msg_meta.key.clone();
+                            let (payload, attachments, attachments_data) = match process_rpc(config.clone(), mb.clone(), msg_meta, payload, attachments).await {
                                 Ok(res) => res,
                                 Err(err) => {
                                     let payload = to_vec(&json!({
@@ -165,8 +169,8 @@ where
                                     (payload, vec![], vec![])
                                 }
                             };
-                            msg_meta.route.points.push(Participator::Service(mb.get_addr()));
-                            let res = reply_to_rpc_dto2(mb.get_addr(), msg_meta.tx, msg_meta.key, msg_meta.correlation_id, payload, attachments, attachments_data, msg_meta.route).expect("failed to create rpc reply");
+                            route.points.push(Participator::Service(mb.get_addr()));
+                            let res = reply_to_rpc_dto2(mb.get_addr(), tx, key, correlation_id, payload, attachments, attachments_data, route).expect("failed to create rpc reply");
                             write(res, &mut write_tx3).await.expect("failed to write rpc response");
                         }
                         MsgKind::RpcResponse => {
@@ -273,17 +277,21 @@ where
                     match msg_meta.kind {
                         MsgKind::Event => {
                             let payload: Value = from_slice(&payload).expect("failed to deserialize event payload");
-                            let res = process_event(&config, &mut mb, &msg_meta, payload, attachments).await;
+                            let res = process_event(config.clone(), mb.clone(), msg_meta, payload, attachments).await;
                         }
                         MsgKind::RpcRequest => {
+                            let mut route = msg_meta.route.clone();
+                            let correlation_id = msg_meta.correlation_id;
+                            let tx = msg_meta.tx.clone();
+                            let key = msg_meta.key.clone();
                             let payload: Value = from_slice(&payload).expect("failed to deserialize rpc request payload");
-                            let res = match process_rpc(&config, &mut mb, &msg_meta, payload, attachments).await {
+                            let res = match process_rpc(config.clone(), mb.clone(), msg_meta, payload, attachments).await {
                                 Ok(res) => res,
                                 Err(err) => json!({ "err": err.to_string() })
                             };
                             let payload = to_vec(&res).expect("failed to serialize rpc process result");
-                            msg_meta.route.points.push(Participator::Service(mb.get_addr()));
-                            let res = reply_to_rpc_dto2(mb.get_addr(), msg_meta.tx, msg_meta.key, msg_meta.correlation_id, payload, vec![], vec![], msg_meta.route).expect("failed to create rpc reply");
+                            route.points.push(Participator::Service(mb.get_addr()));
+                            let res = reply_to_rpc_dto2(mb.get_addr(), tx, key, correlation_id, payload, vec![], vec![], route).expect("failed to create rpc reply");
                             write(res, &mut write_tx3).await.expect("failed to write rpc response");
                         }
                         MsgKind::RpcResponse => {

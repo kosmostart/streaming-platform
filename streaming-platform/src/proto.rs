@@ -205,13 +205,13 @@ pub enum ServerMsg {
 //where T: Future<Output = Value>, T: Send
 pub type ProcessStreamMsg<T> = fn(ClientMsg) -> T;
 //where T: Future<Output = Result<(), Box<dyn Error>>, T: Send
-pub type ProcessEventRaw<T> = fn(&HashMap<String, String>, &mut MagicBall, &MsgMeta, Vec<u8>, Vec<u8>) -> T;
+pub type ProcessEventRaw<T> = fn(HashMap<String, String>, MagicBall, MsgMeta, Vec<u8>, Vec<u8>) -> T;
 //where T: Future<Output = Result<(Vec<u8>, Vec<(String, u64)>, Vec<u8>), Box<dyn Error>>>, T: Send
-pub type ProcessRpcRaw<T> = fn(&HashMap<String, String>, &mut MagicBall, &MsgMeta, Vec<u8>, Vec<u8>) -> T;
+pub type ProcessRpcRaw<T> = fn(HashMap<String, String>, MagicBall, MsgMeta, Vec<u8>, Vec<u8>) -> T;
 //where T: Future<Output = Result<(), Box<dyn Error>>>, T: Send
-pub type ProcessEvent<T> = fn(&HashMap<String, String>, &mut MagicBall, &MsgMeta, Value, Vec<u8>) -> T;
+pub type ProcessEvent<T> = fn(HashMap<String, String>, MagicBall, MsgMeta, Value, Vec<u8>) -> T;
 //where T: Future<Output = Result<Value, Box<dyn Error>>>, T: Send
-pub type ProcessRpc<T> = fn(&HashMap<String, String>, &mut MagicBall, &MsgMeta, Value, Vec<u8>) -> T;
+pub type ProcessRpc<T> = fn(HashMap<String, String>, MagicBall, MsgMeta, Value, Vec<u8>) -> T;
 
 /// Messages received from client
 pub enum ClientMsg {
@@ -272,6 +272,7 @@ pub enum RpcMsg {
     RpcDataResponse(Uuid, oneshot::Sender<(MsgMeta, Vec<u8>, Vec<u8>)>)
 }
 
+#[derive(Clone)]
 pub struct MagicBall {
     addr: String,
     write_tx: Sender<(usize, [u8; DATA_BUF_SIZE])>,

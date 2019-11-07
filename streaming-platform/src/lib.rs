@@ -2,7 +2,7 @@
 #![feature(try_trait)]
 pub use tokio;
 pub use sp_dto;
-pub use proto::{Config, ClientMsg, MagicBall};
+pub use proto::{Config, ClientMsg, ProcessStreamMsg, ProcessEventRaw, ProcessRpcRaw, ProcessEvent, ProcessRpc, MagicBall};
 #[cfg(not(feature = "fs"))]
 pub use broker::server::{start, start_future};
 #[cfg(feature = "fs")]

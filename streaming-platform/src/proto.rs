@@ -180,7 +180,7 @@ pub async fn read(state: &mut State, adapter: &mut Take<ReadHalf<'_>>) -> Result
 }
 
 #[derive(Debug, Deserialize, Clone)]
-pub struct Config {
+pub struct ServerConfig {
     pub host: String,
     pub dirs: Option<Vec<Dir>>
 }

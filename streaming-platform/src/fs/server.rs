@@ -37,7 +37,7 @@ pub async fn start_future() -> Result<(), ProcessError> {
     buf_reader.read_to_string(&mut config_string)
         .expect("failed to read config");
 
-    let config: Config = toml::from_str(&config_string)
+    let config: ServerConfig = toml::from_str(&config_string)
         .expect("failed to deserialize config");	
 
     let mut listener = TcpListener::bind(config.host.clone()).await?;
@@ -86,7 +86,7 @@ pub async fn start_future() -> Result<(), ProcessError> {
     }
 }
 
-async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut server_tx: Sender<ServerMsg>, config: &Config) -> Result<(), ProcessError> {
+async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut server_tx: Sender<ServerMsg>, config: &ServerConfig) -> Result<(), ProcessError> {
     let (mut socket_read, mut socket_write) = stream.split();
 
     let (auth_msg_meta, auth_payload, auth_attachments) = read_full(&mut socket_read).await?;
@@ -190,7 +190,7 @@ async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut 
     */    
 }
 
-async fn process_msg(msg_meta: &MsgMeta, payload: &Value, socket_write: &mut WriteHalf<'_>, config: &Config) -> Result<(), ProcessError> {
+async fn process_msg(msg_meta: &MsgMeta, payload: &Value, socket_write: &mut WriteHalf<'_>, config: &ServerConfig) -> Result<(), ProcessError> {
     match msg_meta.key.as_ref() {
         "Hub.GetFile" => {
             let access_key = payload["access_key"].as_str().ok_or(ProcessError::GetFile(GetFileError::NoAccessKeyInPayload))?;

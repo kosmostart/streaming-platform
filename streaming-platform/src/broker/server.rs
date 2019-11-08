@@ -10,13 +10,13 @@ use serde_json::{Value, from_slice};
 use sp_dto::MsgMeta;    
 use crate::proto::*;
 
-pub fn start(config: Config) {
+pub fn start(config: ServerConfig) {
     let mut rt = Runtime::new().expect("failed to create runtime"); 
     
     rt.block_on(start_future(config));
 }
 
-pub async fn start_future(config: Config) -> Result<(), ProcessError> {
+pub async fn start_future(config: ServerConfig) -> Result<(), ProcessError> {
     let mut listener = TcpListener::bind(config.host.clone()).await?;
 
     let (mut server_tx, mut server_rx) = mpsc::channel(MPSC_SERVER_BUF_SIZE);
@@ -67,7 +67,7 @@ pub async fn start_future(config: Config) -> Result<(), ProcessError> {
     }
 }
 
-async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut server_tx: Sender<ServerMsg>, config: &Config) -> Result<(), ProcessError> {
+async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut server_tx: Sender<ServerMsg>, config: &ServerConfig) -> Result<(), ProcessError> {
     let (mut socket_read, mut socket_write) = stream.split();
 
     let (auth_msg_meta, auth_payload, auth_attachments) = read_full(&mut socket_read).await?;

@@ -1,7 +1,5 @@
 use std::error::Error;
 use bytes::BufMut;
-use futures::future::{Fuse, FusedFuture, FutureExt};
-use futures::stream::StreamExt;
 use futures::{select, pin_mut};
 use tokio::fs::File;                  
 use tokio::net::TcpStream;

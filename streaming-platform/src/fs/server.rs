@@ -5,8 +5,6 @@ use std::fs::{self, DirEntry};
 use std::path::Path;
 use std::net::SocketAddr;
 use bytes::Buf;
-use futures::future::{Fuse, FusedFuture, FutureExt};
-use futures::stream::StreamExt;
 use futures::{select, pin_mut};
 use tokio::runtime::Runtime;
 use tokio::io::Take;

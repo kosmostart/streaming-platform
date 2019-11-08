@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::io::{Cursor, BufReader, Read};
 use std::net::SocketAddr;
-use futures::future::FutureExt;
 use futures::{select, pin_mut};
 use tokio::runtime::Runtime;
 use tokio::net::{TcpListener, TcpStream};

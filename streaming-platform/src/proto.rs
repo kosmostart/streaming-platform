@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::pin::Pin;
 use std::error::Error;
-use std::fmt::Debug;
+use std::fmt::{Debug, Display};
 use std::option;
 use std::io::Cursor;
 use std::net::SocketAddr;
@@ -412,6 +412,18 @@ pub enum GetFileError {
     NoFilesInTargetDir,
     FileNameIsEmpty,
     AttachmentsAreEmpty
+}
+
+impl Display for ProcessError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "SuperError is here!")
+    }
+}
+
+impl Error for ProcessError {
+    fn description(&self) -> &str {
+        "I'm the superhero of errors"
+    }    
 }
 
 impl From<std::io::Error> for ProcessError {

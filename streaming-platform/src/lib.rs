@@ -1,5 +1,6 @@
 #![recursion_limit="512"]
 #![feature(try_trait)]
+pub use futures;
 pub use tokio;
 pub use sp_dto;
 pub use proto::{ServerConfig, ClientMsg, ProcessStreamMsg, ProcessEventRaw, ProcessRpcRaw, ProcessEvent, ProcessRpc, MagicBall, ProcessError};

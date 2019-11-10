@@ -13,4 +13,5 @@ serde = "*"
 serde_derive = "*"
 toml = "*"
 sysinfo = "*"
+tokio = { path = "../../tokio/tokio" }
 warp = { git = "https://github.com/seanmonstar/warp", features = ["tls"] }

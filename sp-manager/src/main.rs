@@ -5,6 +5,7 @@ use std::io::prelude::*;
 use std::net::SocketAddr;
 use serde_derive::Deserialize;
 use sysinfo::{ProcessExt, SystemExt};
+use tokio::runtime::Runtime;
 use warp::Filter;
 
 #[derive(Debug, Deserialize)]
@@ -52,7 +53,7 @@ struct Config {
     services: Option<Vec<Service>>
 }
 
-fn main() {
+fn main() {    
     let config_path = std::env::args().nth(1)
         .expect("path to config file not passed as argument");
 
@@ -365,7 +366,7 @@ fn main() {
             .and(warp::header("user-agent"))
             .map(|agent: String| {
                 format!("Hello, your agent is {}", agent)
-            })
+            })            
         .or(
             warp::path("start")
                 .and(warp::path::param())
@@ -407,8 +408,10 @@ fn main() {
         )        
         ;
 	
-    let addr = "0.0.0.0:49999".parse::<SocketAddr>().unwrap();    
-    warp::serve(routes).run(addr);
+    let addr = "0.0.0.0:49999".parse::<SocketAddr>().unwrap();        
+    let mut rt = Runtime::new().expect("failed to create runtime");    
+
+    rt.block_on(warp::serve(routes).run(addr));
 }
 
 fn fix_running_self(running: &Vec<Process>) {

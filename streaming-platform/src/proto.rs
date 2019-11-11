@@ -203,16 +203,20 @@ pub enum ServerMsg {
     RemoveClient(String)
 }
 
-//where T: Future<Output = Value>, T: Send
+/// Type for function called on data stream message processing
 pub type ProcessStreamMsg<T> = fn(ClientMsg) -> T;
-//where T: Future<Output = Result<(), Box<dyn Error>>, T: Send
+/// Type for function called on event processing with raw payload
 pub type ProcessEventRaw<T> = fn(HashMap<String, String>, MagicBall, MsgMeta, Vec<u8>, Vec<u8>) -> T;
-//where T: Future<Output = Result<(Vec<u8>, Vec<(String, u64)>, Vec<u8>), Box<dyn Error>>>, T: Send
+/// Type for function called on rpc processing with raw payload
 pub type ProcessRpcRaw<T> = fn(HashMap<String, String>, MagicBall, MsgMeta, Vec<u8>, Vec<u8>) -> T;
-//where T: Future<Output = Result<(), Box<dyn Error>>>, T: Send
+/// Type for function called on event processing with json payload
 pub type ProcessEvent<T> = fn(HashMap<String, String>, MagicBall, MsgMeta, Value, Vec<u8>) -> T;
-//where T: Future<Output = Result<Value, Box<dyn Error>>>, T: Send
+/// Type for function called on rpc processing with json payload
 pub type ProcessRpc<T> = fn(HashMap<String, String>, MagicBall, MsgMeta, Value, Vec<u8>) -> T;
+/// Type for function called on stream client starting
+pub type StreamStartup<T> = fn(HashMap<String, String>) -> T;
+/// Type for function called on client starting
+pub type Startup<T> = fn(HashMap<String, String>, MagicBall) -> T;
 
 /// Messages received from client
 pub enum ClientMsg {

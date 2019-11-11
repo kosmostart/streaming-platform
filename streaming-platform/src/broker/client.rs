@@ -10,9 +10,10 @@ use serde_json::{json, Value, from_slice, to_vec};
 use sp_dto::*;
 use crate::proto::*;
 
-pub fn stream_mode<T: 'static>(host: &str, addr: &str, access_key: &str, process_stream_msg: ProcessStreamMsg<T>, config: HashMap<String, String>)
+pub fn stream_mode<T: 'static, Q: 'static>(host: &str, addr: &str, access_key: &str, process_stream_msg: ProcessStreamMsg<T>, startup: StreamStartup<Q>, config: HashMap<String, String>)
 where 
-    T: Future<Output = ()>, T: Send
+    T: Future<Output = ()> + Send,
+    Q: Future<Output = ()> + Send
 {
     let mut rt = Runtime::new().expect("failed to create runtime");    
 
@@ -72,6 +73,8 @@ where
     });
 
     rt.spawn(async move {
+        tokio::spawn(startup(config.clone()));
+
         loop {
             let msg = read_rx.recv().await.expect("connection issues acquired");                 
             process_stream_msg(msg).await;
@@ -81,10 +84,11 @@ where
     rt.block_on(connect_stream_future(host, read_tx, write_rx));    
 }
 
-pub fn full_message_raw_mode<T: 'static, Q: 'static>(host: &str, addr: &str, access_key: &str, process_event: ProcessEventRaw<T>, process_rpc: ProcessRpcRaw<Q>, config: HashMap<String, String>)
+pub fn full_message_raw_mode<T: 'static, Q: 'static, R: 'static>(host: &str, addr: &str, access_key: &str, process_event: ProcessEventRaw<T>, process_rpc: ProcessRpcRaw<Q>, startup: Startup<R>, config: HashMap<String, String>)
 where 
-    T: Future<Output = Result<(), Box<dyn Error>>>, T: Send,
-    Q: Future<Output = Result<(Vec<u8>, Vec<(String, u64)>, Vec<u8>), Box<dyn Error>>>, Q: Send
+    T: Future<Output = Result<(), Box<dyn Error>>> + Send,
+    Q: Future<Output = Result<(Vec<u8>, Vec<(String, u64)>, Vec<u8>), Box<dyn Error>>> + Send,
+    R: Future<Output = ()> + Send
 {
     let mut rt = Runtime::new().expect("failed to create runtime");    
 
@@ -145,6 +149,8 @@ where
 
     rt.spawn(async move {
         let mut mb = MagicBall::new(addr2, write_tx2, rpc_inbound_tx);
+
+        tokio::spawn(startup(config.clone(), mb.clone()));
 
         loop {
             let msg = read_rx.recv().await.expect("connection issues acquired");
@@ -205,10 +211,11 @@ where
     rt.block_on(connect_full_message_future(host, read_tx, write_rx));    
 }
 
-pub fn full_message_mode<T: 'static, Q: 'static>(host: &str, addr: &str, access_key: &str, process_event: ProcessEvent<T>, process_rpc: ProcessRpc<Q>, config: HashMap<String, String>)
+pub fn full_message_mode<T: 'static, Q: 'static, R: 'static>(host: &str, addr: &str, access_key: &str, process_event: ProcessEvent<T>, process_rpc: ProcessRpc<Q>, startup: Startup<R>, config: HashMap<String, String>)
 where 
-    T: Future<Output = Result<(), Box<dyn Error>>>, T: Send,
-    Q: Future<Output = Result<Value, Box<dyn Error>>>, Q: Send
+    T: Future<Output = Result<(), Box<dyn Error>>> + Send,
+    Q: Future<Output = Result<Value, Box<dyn Error>>> + Send,
+    R: Future<Output = ()> + Send
 {
     let mut rt = Runtime::new().expect("failed to create runtime");    
 
@@ -223,7 +230,7 @@ where
     let mut rpc_inbound_tx2 = rpc_inbound_tx.clone();
     
     let mut write_tx2 = write_tx.clone();
-    let mut write_tx3 = write_tx.clone();
+    let mut write_tx3 = write_tx.clone();    
 
     rt.spawn(async move {
         let mut rpcs = HashMap::new();        
@@ -269,6 +276,8 @@ where
 
     rt.spawn(async move {
         let mut mb = MagicBall::new(addr2, write_tx2, rpc_inbound_tx);
+
+        tokio::spawn(startup(config.clone(), mb.clone()));
 
         loop {
             let msg = read_rx.recv().await.expect("connection issues acquired");

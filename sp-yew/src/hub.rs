@@ -36,9 +36,19 @@ pub struct Hub {
     cfg: HubCfg
 }
 
+#[derive(Clone, PartialEq)]
 pub struct HubCfg {
     pub fetch_host: Option<String>,
     pub ws_host: Option<String>
+}
+
+impl Default for HubCfg {
+    fn default() -> Self {
+        HubCfg {
+            fetch_host: None,
+            ws_host: None
+        }        
+    }
 }
 
 impl Hub {    
@@ -313,6 +323,23 @@ impl Agent for Worker {
                 let (msg_meta, payload, _) = get_msg::<Value>(&data).expect("failed to get msg on FetchReady");
                 self.fetch_tasks.remove(&msg_meta.correlation_id);
                 self.console.log(&msg_meta.view());
+
+                match msg_meta.kind {
+                    MsgKind::RpcResponse => {
+                        match msg_meta.source_cmp_addr() {
+                            Some(addr) => {
+                                match self.clients.get(&addr) {
+                                    Some(client_id) => self.link.response(*client_id, Response::Msg(msg_meta, payload)),
+                                    None => self.console.log(&format!("hub: missing client {}", msg_meta.rx))
+                                }
+                            }
+                            None => {
+                                self.console.log("error: client not found for this rpc");
+                            }
+                        }                        
+                    }
+                    _ => {}
+                }                
             }
             Msg::FetchError(err) => {
                 self.console.log(&format!("error: fetch, {:?}", err));

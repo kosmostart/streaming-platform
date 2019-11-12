@@ -5,13 +5,13 @@ use std::fmt::{Debug, Display};
 use std::option;
 use std::io::Cursor;
 use std::net::SocketAddr;
-use bytes::Buf;
+use bytes::{Buf, BufMut};
 //use tokio::io::Take;
 use tokio::tokio_io::io::take::Take;
 use tokio::net::tcp::split::ReadHalf;
 use tokio::sync::{mpsc::{Sender, error::SendError}, oneshot};
 use tokio::prelude::*;
-use serde_json::{from_slice, Value};
+use serde_json::{from_slice, Value, to_vec};
 use serde_derive::{Deserialize};
 use sp_dto::{*, uuid::Uuid};
 
@@ -345,7 +345,7 @@ impl MagicBall {
         write(dto, &mut self.write_tx).await?;
 
         let (msg_meta, payload, attachments) = rpc_rx.await?;
-        let payload: R = from_slice(&payload)?;        
+        let payload: R = from_slice(&payload)?;
 
         Ok((msg_meta, payload, attachments))
     }
@@ -365,7 +365,87 @@ impl MagicBall {
 
         Ok((msg_meta, payload, attachments))
     }
-    
+    pub async fn proxy_event(&mut self, tx: String, mut data: Vec<u8>) -> Result<(), ProcessError> {
+        let (res, len) = {
+            let mut buf = Cursor::new(&data);
+            let len = buf.get_u32_be() as usize;
+
+            match len > data.len() - 4 {
+                true => {
+                    let custom_error = std::io::Error::new(std::io::ErrorKind::Other, "len incosistent with data on proxy event");
+                    return Err(ProcessError::Io(custom_error));
+                }
+                false => (serde_json::from_slice::<MsgMeta>(&data[4..len + 4]), len)
+            }
+        };
+
+        let mut msg_meta = res?;
+
+        msg_meta.tx = tx;        
+        msg_meta.route.points.push(Participator::Service(self.addr.to_owned()));
+
+        let mut msg_meta = serde_json::to_vec(&msg_meta)?;
+                                                      
+        let mut payload_with_attachments: Vec<_> = data.drain(4 + len..).collect();
+        let mut buf = vec![];
+
+        buf.put_u32_be(msg_meta.len() as u32);
+
+        buf.append(&mut msg_meta);
+        buf.append(&mut payload_with_attachments);
+
+        write(buf, &mut self.write_tx).await?;
+        
+        Ok(())
+    }    
+    pub async fn proxy_rpc(&mut self, tx: String, mut data: Vec<u8>) -> Result<(MsgMeta, Vec<u8>), ProcessError> {
+        let (res, len) = {
+            let mut buf = std::io::Cursor::new(&data);
+            let len = buf.get_u32_be() as usize;
+
+            match len > data.len() - 4 {
+                true => {
+                    let custom_error = std::io::Error::new(std::io::ErrorKind::Other, "len incosistent with data on proxy rpc request");
+                    return Err(ProcessError::Io(custom_error));
+                }
+                false => (serde_json::from_slice::<MsgMeta>(&data[4..len + 4]), len)
+            }
+        };
+
+        let mut msg_meta = res?;
+
+        let correlation_id = msg_meta.correlation_id;
+
+        msg_meta.tx = tx;
+        msg_meta.route.points.push(Participator::Service(self.addr.to_owned()));
+
+        let mut msg_meta = to_vec(&msg_meta)?;
+                                                      
+        let mut payload_with_attachments: Vec<_> = data.drain(4 + len..).collect();
+        let mut buf = vec![];
+
+        buf.put_u32_be(msg_meta.len() as u32);
+
+        buf.append(&mut msg_meta);
+        buf.append(&mut payload_with_attachments);
+
+        let (rpc_tx, rpc_rx) = oneshot::channel();
+        
+        self.rpc_inbound_tx.send(RpcMsg::AddRpc(correlation_id, rpc_tx));                
+        write(buf, &mut self.write_tx).await?;
+
+        let (msg_meta, mut payload, mut attachments) = rpc_rx.await?;
+
+        let mut buf = vec![];
+        let mut msg_meta_buf = to_vec(&msg_meta)?;
+
+        buf.put_u32_be(msg_meta_buf.len() as u32);
+        buf.append(&mut msg_meta_buf);
+        buf.append(&mut payload);
+        buf.append(&mut attachments);
+        
+        Ok((msg_meta, buf))
+    }
     /*
     pub fn reply_to_rpc(&self, addr: String, key: String, correlation_id: Uuid, payload: R, mut route: Route) -> Result<(), Error> {
         route.points.push(Participator::Service(self.addr.to_owned()));

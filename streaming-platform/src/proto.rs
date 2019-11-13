@@ -31,21 +31,22 @@ pub enum ClientKind {
 
 /// Read full message from source in to memory. Should be used carefully with large message content.
 pub async fn read_full(socket_read: &mut ReadHalf<'_>) -> Result<(MsgMeta, Vec<u8>, Vec<u8>), ProcessError> {
+    //info!("read_full start {}", addr);
     let mut len_buf = [0; LEN_BUF_SIZE];
     socket_read.read_exact(&mut len_buf).await?;
 
     let mut buf = Cursor::new(len_buf);        
     let len = buf.get_u32_be() as usize;
-    info!("read_full len {}", len);
+    //info!("read_full len {} {}", addr, len);
     let mut adapter = socket_read.take(len as u64);
 
     let mut msg_meta = vec![];
 
     let n = adapter.read_to_end(&mut msg_meta).await?;
-    info!("read_full n {}", n);
+    //info!("read_full n {} {}", addr, n);
 
     let msg_meta: MsgMeta = from_slice(&msg_meta)?;        
-    info!("read_full {:?}", msg_meta);
+    //info!("read_full {} {:?}", addr, msg_meta);
     let mut adapter = socket_read.take(msg_meta.payload_size as u64);
 
     let mut payload = vec![];
@@ -56,7 +57,7 @@ pub async fn read_full(socket_read: &mut ReadHalf<'_>) -> Result<(MsgMeta, Vec<u
     let mut attachments = vec![];
     let n = adapter.read_to_end(&mut attachments).await?;
 
-    info!("read_full ok");
+    //info!("read_full ok {}", addr);
     
     Ok((msg_meta, payload, attachments))
 }
@@ -104,10 +105,10 @@ impl State {
 }
 
 pub async fn read(state: &mut State, adapter: &mut Take<ReadHalf<'_>>) -> Result<ReadResult, ProcessError> {
-    info!("reading");
+    //info!("reading");
     match state.step {        
         Step::Len => {
-            info!("step len");
+            //info!("step len");
             let mut len_buf = [0; DATA_BUF_SIZE];
             adapter.read(&mut len_buf).await?;
 
@@ -116,7 +117,7 @@ pub async fn read(state: &mut State, adapter: &mut Take<ReadHalf<'_>>) -> Result
 
             state.step = Step::MsgMeta(len);
 
-            info!("step len ok");
+            //info!("step len ok");
 
             Ok(ReadResult::LenFinished(len_buf))
         }

@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::future::Future;
 use std::error::Error;
+use log::*;
 use futures::{select, pin_mut};
 use tokio::net::TcpStream;
 use tokio::prelude::*;
@@ -24,6 +25,7 @@ where
 
     let addr = addr.to_owned();
     let addr2 = addr.to_owned();
+    let addr3 = addr.to_owned();
     let access_key = access_key.to_owned();
     let mut rpc_inbound_tx2 = rpc_inbound_tx.clone();
     
@@ -81,7 +83,7 @@ where
         }    
     });
 
-    rt.block_on(connect_stream_future(host, read_tx, write_rx));    
+    rt.block_on(connect_stream_future(host, addr3, read_tx, write_rx));    
 }
 
 pub fn full_message_raw_mode<T: 'static, Q: 'static, R: 'static>(host: &str, addr: &str, access_key: &str, process_event: ProcessEventRaw<T>, process_rpc: ProcessRpcRaw<Q>, startup: Startup<R>, config: HashMap<String, String>)
@@ -99,6 +101,7 @@ where
 
     let addr = addr.to_owned();
     let addr2 = addr.to_owned();
+    let addr3 = addr.to_owned();
     let access_key = access_key.to_owned();
     let mut rpc_inbound_tx2 = rpc_inbound_tx.clone();
     
@@ -208,7 +211,7 @@ where
         }    
     });
 
-    rt.block_on(connect_full_message_future(host, read_tx, write_rx));    
+    rt.block_on(connect_full_message_future(host, addr3, read_tx, write_rx));    
 }
 
 pub fn full_message_mode<T: 'static, Q: 'static, R: 'static>(host: &str, addr: &str, access_key: &str, process_event: ProcessEvent<T>, process_rpc: ProcessRpc<Q>, startup: Startup<R>, config: HashMap<String, String>)
@@ -226,6 +229,7 @@ where
 
     let addr = addr.to_owned();
     let addr2 = addr.to_owned();
+    let addr3 = addr.to_owned();
     let access_key = access_key.to_owned();
     let mut rpc_inbound_tx2 = rpc_inbound_tx.clone();
     
@@ -332,26 +336,26 @@ where
         }    
     });
 
-    rt.block_on(connect_full_message_future(host, read_tx, write_rx));
+    rt.block_on(connect_full_message_future(host, addr3, read_tx, write_rx));
 }
 
-pub async fn connect_stream_future(host: &str, mut read_tx: Sender<ClientMsg>, mut write_rx: Receiver<(usize, [u8; DATA_BUF_SIZE])>) {    
+pub async fn connect_stream_future(host: &str, addr: String, mut read_tx: Sender<ClientMsg>, mut write_rx: Receiver<(usize, [u8; DATA_BUF_SIZE])>) {    
     let mut stream = TcpStream::connect(host).await.unwrap();        
 
-    let res = process_full_message(stream, read_tx, write_rx).await;
+    let res = process_stream(addr, stream, read_tx, write_rx).await;
 
     println!("{:?}", res);
 }
 
-pub async fn connect_full_message_future(host: &str, mut read_tx: Sender<ClientMsg>, mut write_rx: Receiver<(usize, [u8; DATA_BUF_SIZE])>) {    
+pub async fn connect_full_message_future(host: &str, addr: String, mut read_tx: Sender<ClientMsg>, mut write_rx: Receiver<(usize, [u8; DATA_BUF_SIZE])>) {    
     let mut stream = TcpStream::connect(host).await.unwrap();        
 
-    let res = process_full_message(stream, read_tx, write_rx).await;
+    let res = process_full_message(addr, stream, read_tx, write_rx).await;
 
     println!("{:?}", res);
 }
 
-async fn process_stream(mut stream: TcpStream, mut read_tx: Sender<ClientMsg>, mut write_rx: Receiver<(usize, [u8; DATA_BUF_SIZE])>) -> Result<(), ProcessError> {
+async fn process_stream(addr: String, mut stream: TcpStream, mut read_tx: Sender<ClientMsg>, mut write_rx: Receiver<(usize, [u8; DATA_BUF_SIZE])>) -> Result<(), ProcessError> {
     let (mut socket_read, mut socket_write) = stream.split();
 
     //let (auth_msg_meta, auth_payload, auth_attachments) = read_full(&mut socket_read).await?;
@@ -391,7 +395,7 @@ async fn process_stream(mut stream: TcpStream, mut read_tx: Sender<ClientMsg>, m
     }
 }
 
-async fn process_full_message(mut stream: TcpStream, mut read_tx: Sender<ClientMsg>, mut write_rx: Receiver<(usize, [u8; DATA_BUF_SIZE])>) -> Result<(), ProcessError> {
+async fn process_full_message(addr: String, mut stream: TcpStream, mut read_tx: Sender<ClientMsg>, mut write_rx: Receiver<(usize, [u8; DATA_BUF_SIZE])>) -> Result<(), ProcessError> {
     let (mut socket_read, mut socket_write) = stream.split();
 
     //let (auth_msg_meta, auth_payload, auth_attachments) = read_full(&mut socket_read).await?;
@@ -409,13 +413,18 @@ async fn process_full_message(mut stream: TcpStream, mut read_tx: Sender<ClientM
         pin_mut!(f1, f2);
 
         let res = select! {
-            res = f1 => {                
+            res = f1 => {  
+                //info!("client fm f1 {}", addr);
                 let (msg_meta, payload, attachments) = res?;
+                //info!("client fm f1 {} {:?}", addr, msg_meta);
                 read_tx.send(ClientMsg::Message(msg_meta, payload, attachments)).await?;
+                //info!("client fm f1 ok");
             }
-            res = f2 => {                
+            res = f2 => {             
+                //info!("client fm f2 {}", addr);   
                 let (n, buf) = res?;                
                 socket_write.write_all(&buf[..n]).await?;                
+                //info!("client fm f2 ok {} {}", n, addr);   
             }
         };
     }    

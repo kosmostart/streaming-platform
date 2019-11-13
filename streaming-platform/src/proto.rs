@@ -36,15 +36,16 @@ pub async fn read_full(socket_read: &mut ReadHalf<'_>) -> Result<(MsgMeta, Vec<u
 
     let mut buf = Cursor::new(len_buf);        
     let len = buf.get_u32_be() as usize;
-    println!("len {}", len);
+    info!("read_full len {}", len);
     let mut adapter = socket_read.take(len as u64);
 
     let mut msg_meta = vec![];
 
     let n = adapter.read_to_end(&mut msg_meta).await?;
-    println!("n {}", n);
+    info!("read_full n {}", n);
 
     let msg_meta: MsgMeta = from_slice(&msg_meta)?;        
+    info!("read_full {:?}", msg_meta);
     let mut adapter = socket_read.take(msg_meta.payload_size as u64);
 
     let mut payload = vec![];
@@ -54,6 +55,8 @@ pub async fn read_full(socket_read: &mut ReadHalf<'_>) -> Result<(MsgMeta, Vec<u
 
     let mut attachments = vec![];
     let n = adapter.read_to_end(&mut attachments).await?;
+
+    info!("read_full ok");
     
     Ok((msg_meta, payload, attachments))
 }

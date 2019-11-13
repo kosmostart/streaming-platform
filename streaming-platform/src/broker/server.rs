@@ -38,9 +38,15 @@ pub async fn start_future(config: ServerConfig) -> Result<(), ProcessError> {
                     clients.insert(addr, client);
                 }
                 ServerMsg::SendBuf(addr, n, buf) => {
+                    info!("send buf {} {}", addr, n);
+
                     match clients.get_mut(&addr) {
-                        Some(client) => client.tx.send((n, buf)).await.expect("ServerMsg::SendBuf processing failed on tx send"),
+                        Some(client) => {
+                            client.tx.send((n, buf)).await.expect("ServerMsg::SendBuf processing failed on tx send");
+                            info!("send buf ok {} {}", addr, n);
+                        }
                         None => {
+                            info!("no client for send buf {} {}", addr, n);
                         }
                     }
                 }
@@ -84,6 +90,7 @@ async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut 
     let mut adapter = socket_read.take(LEN_BUF_SIZE as u64);
     let mut state = State::new();
 
+    let mut len_buf: Option<[u8; DATA_BUF_SIZE]> = None;
     let mut msg_meta: Option<MsgMeta> = None;
 
     loop {
@@ -99,19 +106,13 @@ async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut 
                 match res {
                     ReadResult::LenFinished(buf) => {
                         info!("len finished");
-
-                        match msg_meta {
-                            Some(ref msg_meta) => {
-                                server_tx.send(ServerMsg::SendBuf(msg_meta.tx.clone(), LEN_BUF_SIZE, buf)).await?;
-                            }
-                            None => {
-
-                            }
-                        }
+                        len_buf = Some(buf);                 
                     }
                     ReadResult::MsgMeta(new_msg_meta, buf) => {
                         info!("msg meta");
                         info!("{:?}", new_msg_meta);
+                        server_tx.send(ServerMsg::SendBuf(new_msg_meta.rx.clone(), LEN_BUF_SIZE, len_buf.ok_or(ProcessError::NoneError)?)).await?;
+                        len_buf = None;
                         server_write(buf, &new_msg_meta.rx, &mut server_tx);
                         msg_meta = Some(new_msg_meta);                        
                     }
@@ -119,7 +120,7 @@ async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut 
                         info!("payload data");
                         match msg_meta {
                             Some(ref msg_meta) => {
-                                server_tx.send(ServerMsg::SendBuf(msg_meta.tx.clone(), n, buf)).await?;
+                                server_tx.send(ServerMsg::SendBuf(msg_meta.rx.clone(), n, buf)).await?;
                             }
                             None => {
 
@@ -133,7 +134,7 @@ async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut 
                         info!("attachment data");
                         match msg_meta {
                             Some(ref msg_meta) => {
-                                server_tx.send(ServerMsg::SendBuf(msg_meta.tx.clone(), n, buf)).await?;
+                                server_tx.send(ServerMsg::SendBuf(msg_meta.rx.clone(), n, buf)).await?;
                             }
                             None => {
 
@@ -143,14 +144,17 @@ async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut 
                     ReadResult::AttachmentFinished(index) => {
                         info!("attachment finished");
                     }
-                    ReadResult::MessageFinished => {
+                    ReadResult::MessageFinished => {                        
                         info!("message finished");
+                        msg_meta = None;
                     }
                 };                            
             }
             res = f2 => {
+                info!("f2 {}", auth_msg_meta.tx);
                 let (n, buf) = res?;
                 socket_write.write_all(&buf[..n]).await?;
+                info!("f2 ok {} {}", auth_msg_meta.tx, n);
             }
         };
     }

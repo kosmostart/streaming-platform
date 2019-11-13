@@ -5,6 +5,7 @@ use std::fmt::{Debug, Display};
 use std::option;
 use std::io::Cursor;
 use std::net::SocketAddr;
+use log::*;
 use bytes::{Buf, BufMut};
 //use tokio::io::Take;
 use tokio::tokio_io::io::take::Take;
@@ -100,8 +101,10 @@ impl State {
 }
 
 pub async fn read(state: &mut State, adapter: &mut Take<ReadHalf<'_>>) -> Result<ReadResult, ProcessError> {
-    match state.step {
+    info!("reading");
+    match state.step {        
         Step::Len => {
+            info!("step len");
             let mut len_buf = [0; DATA_BUF_SIZE];
             adapter.read(&mut len_buf).await?;
 
@@ -109,6 +112,8 @@ pub async fn read(state: &mut State, adapter: &mut Take<ReadHalf<'_>>) -> Result
             let len = buf.get_u32_be();
 
             state.step = Step::MsgMeta(len);
+
+            info!("step len ok");
 
             Ok(ReadResult::LenFinished(len_buf))
         }
@@ -341,7 +346,7 @@ impl MagicBall {
         let (correlation_id, dto) = rpc_dto_with_correlation_id(self.addr.clone(), addr.to_owned(), key.to_owned(), payload, route)?;
         let (rpc_tx, rpc_rx) = oneshot::channel();
         
-        self.rpc_inbound_tx.send(RpcMsg::AddRpc(correlation_id, rpc_tx));                
+        self.rpc_inbound_tx.send(RpcMsg::AddRpc(correlation_id, rpc_tx)).await?;
         write(dto, &mut self.write_tx).await?;
 
         let (msg_meta, payload, attachments) = rpc_rx.await?;
@@ -357,7 +362,7 @@ impl MagicBall {
         let (correlation_id, dto) = rpc_dto_with_correlation_id(self.addr.clone(), addr.to_owned(), key.to_owned(), payload, route)?;
         let (rpc_tx, rpc_rx) = oneshot::channel();
         
-        self.rpc_inbound_tx.send(RpcMsg::AddRpc(correlation_id, rpc_tx));        
+        self.rpc_inbound_tx.send(RpcMsg::AddRpc(correlation_id, rpc_tx)).await?;
         write(dto, &mut self.write_tx).await?;
 
         let (msg_meta, payload, attachments) = rpc_rx.await?;
@@ -430,8 +435,8 @@ impl MagicBall {
         buf.append(&mut payload_with_attachments);
 
         let (rpc_tx, rpc_rx) = oneshot::channel();
-        
-        self.rpc_inbound_tx.send(RpcMsg::AddRpc(correlation_id, rpc_tx));                
+                
+        self.rpc_inbound_tx.send(RpcMsg::AddRpc(correlation_id, rpc_tx)).await?;
         write(buf, &mut self.write_tx).await?;
 
         let (msg_meta, mut payload, mut attachments) = rpc_rx.await?;

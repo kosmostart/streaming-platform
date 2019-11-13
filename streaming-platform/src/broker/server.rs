@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::io::{Cursor, BufReader, Read};
 use std::net::SocketAddr;
+use log::*;
 use futures::{select, pin_mut};
 use tokio::runtime::Runtime;
 use tokio::net::{TcpListener, TcpStream};
@@ -93,10 +94,12 @@ async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut 
 
         let res = select! {
             res = f1 => {                
-                let res = res?;
+                let res = res?;                
 
                 match res {
                     ReadResult::LenFinished(buf) => {
+                        info!("len finished");
+
                         match msg_meta {
                             Some(ref msg_meta) => {
                                 server_tx.send(ServerMsg::SendBuf(msg_meta.tx.clone(), LEN_BUF_SIZE, buf)).await?;
@@ -107,11 +110,13 @@ async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut 
                         }
                     }
                     ReadResult::MsgMeta(new_msg_meta, buf) => {
-                        println!("{:?}", new_msg_meta);
+                        info!("msg meta");
+                        info!("{:?}", new_msg_meta);
                         server_write(buf, &new_msg_meta.rx, &mut server_tx);
                         msg_meta = Some(new_msg_meta);                        
                     }
-                    ReadResult::PayloadData(n, buf) => {                        
+                    ReadResult::PayloadData(n, buf) => {
+                        info!("payload data");
                         match msg_meta {
                             Some(ref msg_meta) => {
                                 server_tx.send(ServerMsg::SendBuf(msg_meta.tx.clone(), n, buf)).await?;
@@ -122,9 +127,10 @@ async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut 
                         }
                     }
                     ReadResult::PayloadFinished => {
-                        println!("payload ok");
+                        info!("payload finished");
                     }
                     ReadResult::AttachmentData(index, n, buf) => {
+                        info!("attachment data");
                         match msg_meta {
                             Some(ref msg_meta) => {
                                 server_tx.send(ServerMsg::SendBuf(msg_meta.tx.clone(), n, buf)).await?;
@@ -135,10 +141,10 @@ async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut 
                         }
                     }
                     ReadResult::AttachmentFinished(index) => {
-                        //println!("attachment ok");
+                        info!("attachment finished");
                     }
                     ReadResult::MessageFinished => {
-                        //println!("message ok");
+                        info!("message finished");
                     }
                 };                            
             }

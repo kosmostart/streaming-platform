@@ -38,15 +38,15 @@ pub struct Hub {
 
 #[derive(Clone, PartialEq)]
 pub struct HubCfg {
-    pub fetch_host: Option<String>,
-    pub ws_host: Option<String>
+    pub fetch_url: Option<String>,
+    pub ws_url: Option<String>
 }
 
 impl Default for HubCfg {
     fn default() -> Self {
         HubCfg {
-            fetch_host: None,
-            ws_host: None
+            fetch_url: None,
+            ws_url: None
         }        
     }
 }
@@ -83,7 +83,7 @@ impl Hub {
             points: vec![Participator::Component(self.spec.clone())]
         };
         let (correlation_id, dto) = rpc_dto_with_correlation_id(self.spec.rx.clone(), addr.to_owned(), key.to_owned(), payload, route).expect("failed to create rpc dto with correlation id on server rpc");
-        let host = self.cfg.fetch_host.clone().expect("fetch host is empty on sever rpc");
+        let host = self.cfg.fetch_url.clone().expect("fetch host is empty on sever rpc");
 
         self.hub.send(Request::Rpc(host, correlation_id, dto));
     }

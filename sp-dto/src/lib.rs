@@ -127,6 +127,7 @@ impl MsgMeta {
     pub fn view(&self) -> String {
         format!("{} -> {} {} {:?}", self.tx, self.rx, self.key, self.kind)
     }
+    /// Get key part, index is zero based, . is used as a separator.
     pub fn key_part(&self, index: usize) -> Result<&str, String> {
         let split: Vec<&str> = self.key.split(".").collect();
 
@@ -146,11 +147,53 @@ impl MsgMeta {
 
         return Ok(split[index] == value)
     }
-    pub fn source_cmp_addr(&self) -> Option<String> {
+    /// Get tx part, index is zero based, . is used as a separator.
+    pub fn tx_part(&self, index: usize) -> Result<&str, String> {
+        let split: Vec<&str> = self.tx.split(".").collect();
+
+        if index >= split.len() {
+            return Err("index equals or superior to key parts length".to_owned());
+        }
+
+        return Ok(split[index])
+    }
+    /// Compares tx part with passed value, index is zero based, . is used as a separator.
+    pub fn match_tx_part(&self, index: usize, value: &str) -> Result<bool, String> {
+        let split: Vec<&str> = self.tx.split(".").collect();
+
+        if index >= split.len() {
+            return Err("index equals or superior to key parts length".to_owned());
+        }
+
+        return Ok(split[index] == value)
+    }    
+    pub fn source_cmp_addr(&self) -> Option<&str> {
         match &self.route.source {
-            Participator::Component(spec) => Some(spec.rx.clone()),
+            Participator::Component(spec) => Some(&spec.rx),
             _ => None
         }
+    }
+    /// Get source cmp part, index is zero based, . is used as a separator.
+    pub fn source_cmp_part(&self, index: usize) -> Result<&str, String> {
+        let addr = self.source_cmp_addr().ok_or("Not a cmp source".to_owned())?;
+        let split: Vec<&str> = addr.split(".").collect();
+
+        if index >= split.len() {
+            return Err("index equals or superior to key parts length".to_owned());
+        }
+
+        return Ok(split[index])
+    }
+    /// Compares source cmp part with passed value, index is zero based, . is used as a separator.
+    pub fn match_source_cmp_part(&self, index: usize, value: &str) -> Result<bool, String> {
+        let addr = self.source_cmp_addr().ok_or("Not a cmp source".to_owned())?;
+        let split: Vec<&str> = addr.split(".").collect();
+
+        if index >= split.len() {
+            return Err("index equals or superior to key parts length".to_owned());
+        }
+
+        return Ok(split[index] == value)
     }
     pub fn source_svc_addr(&self) -> Option<String> {
         match &self.route.source {

@@ -32,21 +32,23 @@ pub enum Response {
 
 pub struct Hub {
     hub: Box<Bridge<Worker>>,
-    spec: CmpSpec,
-    cfg: HubCfg
+    pub spec: CmpSpec,
+    pub cfg: HubCfg
 }
 
 #[derive(Clone, PartialEq)]
 pub struct HubCfg {
     pub fetch_url: Option<String>,
-    pub ws_url: Option<String>
+    pub ws_url: Option<String>,
+    pub domain: Option<String>
 }
 
 impl Default for HubCfg {
     fn default() -> Self {
         HubCfg {
             fetch_url: None,
-            ws_url: None
+            ws_url: None,
+            domain: None
         }        
     }
 }
@@ -86,6 +88,23 @@ impl Hub {
         let host = self.cfg.fetch_url.clone().expect("fetch host is empty on sever rpc");
 
         self.hub.send(Request::Rpc(host, correlation_id, dto));
+    }
+    pub fn server_rpc_with_domain(&mut self, addr: &str, key: &str, payload: Value) {
+        match &self.cfg.domain {
+            Some(domain) => {
+                let addr = addr.to_owned() + "." + domain;
+                let route = Route {
+                    source: Participator::Component(self.spec.clone()),
+                    spec: RouteSpec::Simple,
+                    points: vec![Participator::Component(self.spec.clone())]
+                };
+                let (correlation_id, dto) = rpc_dto_with_correlation_id(self.spec.rx.clone(), addr, key.to_owned(), payload, route).expect("failed to create rpc dto with correlation id on server rpc");
+                let host = self.cfg.fetch_url.clone().expect("fetch host is empty on sever rpc");
+
+                self.hub.send(Request::Rpc(host, correlation_id, dto));
+            }
+            None => panic!(format!("domain is empty on server rpc with domain call {}", self.spec.rx))
+        }        
     }
     pub fn send_event(&mut self, rx: &str, key: &str, payload: Value) {
         self.hub.send(Request::Msg(
@@ -328,7 +347,7 @@ impl Agent for Worker {
                     MsgKind::RpcResponse => {
                         match msg_meta.source_cmp_addr() {
                             Some(addr) => {
-                                match self.clients.get(&addr) {
+                                match self.clients.get(addr) {
                                     Some(client_id) => self.link.response(*client_id, Response::Msg(msg_meta, payload)),
                                     None => self.console.log(&format!("hub: missing client {}", msg_meta.rx))
                                 }

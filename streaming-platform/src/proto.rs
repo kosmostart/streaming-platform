@@ -350,11 +350,11 @@ impl MagicBall {
         let (correlation_id, dto) = rpc_dto_with_correlation_id(self.addr.clone(), addr.to_owned(), key.to_owned(), payload, route)?;
         let (rpc_tx, rpc_rx) = oneshot::channel();
         
-        self.rpc_inbound_tx.send(RpcMsg::AddRpc(correlation_id, rpc_tx)).await?;
-        write(dto, &mut self.write_tx).await?;
+        self.rpc_inbound_tx.send(RpcMsg::AddRpc(correlation_id, rpc_tx)).await?;        
+        write(dto, &mut self.write_tx).await?;        
 
         let (msg_meta, payload, attachments) = rpc_rx.await?;
-        let payload: R = from_slice(&payload)?;
+        let payload: R = from_slice(&payload)?;        
 
         Ok((msg_meta, payload, attachments))
     }

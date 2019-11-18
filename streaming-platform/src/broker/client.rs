@@ -78,8 +78,8 @@ where
         tokio::spawn(startup(config.clone()));
 
         loop {
-            let msg = read_rx.recv().await.expect("connection issues acquired");                 
-            process_stream_msg(msg).await;
+            let msg = read_rx.recv().await.expect("connection issues acquired");
+            tokio::spawn(process_stream_msg(msg));
         }    
     });
 
@@ -157,30 +157,40 @@ where
 
         loop {
             let msg = read_rx.recv().await.expect("connection issues acquired");
+            let mut mb = mb.clone();
+            let config = config.clone();
+            let mut write_tx3 = write_tx3.clone();
             match msg {
                 ClientMsg::Message(mut msg_meta, payload, attachments) => {
                     match msg_meta.kind {
                         MsgKind::Event => {
-                            let res = process_event(config.clone(), mb.clone(), msg_meta, payload, attachments).await;
-                        }
-                        MsgKind::RpcRequest => {
-                            let mut route = msg_meta.route.clone();
-                            let correlation_id = msg_meta.correlation_id;
-                            let tx = msg_meta.tx.clone();
-                            let key = msg_meta.key.clone();
-                            let (payload, attachments, attachments_data) = match process_rpc(config.clone(), mb.clone(), msg_meta, payload, attachments).await {
-                                Ok(res) => res,
-                                Err(err) => {
-                                    let payload = to_vec(&json!({
-                                        "err": err.to_string()
-                                    })).expect("failed to serialize rpc process error");
-
-                                    (payload, vec![], vec![])
+                            tokio::spawn(async move {
+                                if let Err(e) = process_event(config.clone(), mb.clone(), msg_meta, payload, attachments).await {
+                                    error!("process event error {} {:?}", mb.get_addr(), e);
                                 }
-                            };
-                            route.points.push(Participator::Service(mb.get_addr()));
-                            let res = reply_to_rpc_dto2(mb.get_addr(), tx, key, correlation_id, payload, attachments, attachments_data, route).expect("failed to create rpc reply");
-                            write(res, &mut write_tx3).await.expect("failed to write rpc response");
+                            });
+                        }                                                                            
+                        MsgKind::RpcRequest => {
+                            tokio::spawn(async move {
+                                let mut route = msg_meta.route.clone();
+                                let correlation_id = msg_meta.correlation_id;
+                                let tx = msg_meta.tx.clone();
+                                let key = msg_meta.key.clone();
+                                let (payload, attachments, attachments_data) = match process_rpc(config.clone(), mb.clone(), msg_meta, payload, attachments).await {
+                                    Ok(res) => res,
+                                    Err(e) => {
+                                        error!("process rpc error {} {:?}", mb.get_addr(), e);
+                                        let payload = to_vec(&json!({
+                                            "e": e.to_string()
+                                        })).expect("failed to serialize rpc process error");
+
+                                        (payload, vec![], vec![])
+                                    }
+                                };
+                                route.points.push(Participator::Service(mb.get_addr()));
+                                let res = reply_to_rpc_dto2(mb.get_addr(), tx, key, correlation_id, payload, attachments, attachments_data, route).expect("failed to create rpc reply");
+                                write(res, &mut write_tx3).await.expect("failed to write rpc response");
+                            });                            
                         }
                         MsgKind::RpcResponse => {
                             rpc_inbound_tx2.send(RpcMsg::RpcDataRequest(msg_meta.correlation_id)).await.expect("rpc inbound tx2 send failed");
@@ -194,14 +204,10 @@ where
                                             //debug!("Sending to rpc_tx {:?}", msg_meta);
                                             rpc_tx.send((msg_meta, payload, attachments)).expect("rpc tx send failed");
                                         }
-                                        false => {
-                                            //error!("received_correlation_id not equals correlation_id: {}, {}", received_correlation_id, msg_meta.correlation_id);
-                                        }
+                                        false => error!("received_correlation_id not equals correlation_id: {}, {}", received_correlation_id, msg_meta.correlation_id)
                                     }
                                 }
-                                _ => {
-                                    //error!("Client handler: wrong RpcMsg");
-                                }
+                                _ => error!("Client handler: wrong RpcMsg")
                             }                                
                         }
                     }
@@ -234,7 +240,7 @@ where
     let mut rpc_inbound_tx2 = rpc_inbound_tx.clone();
     
     let mut write_tx2 = write_tx.clone();
-    let mut write_tx3 = write_tx.clone();    
+    let mut write_tx3 = write_tx.clone();
 
     rt.spawn(async move {
         let mut rpcs = HashMap::new();        
@@ -245,14 +251,15 @@ where
             match msg {
                 RpcMsg::AddRpc(correlation_id, rpc_tx) => {
                     rpcs.insert(correlation_id, rpc_tx);
+                    //info!("add rpc ok {}", correlation_id);
                 }                
                 RpcMsg::RpcDataRequest(correlation_id) => {
                     match rpcs.remove(&correlation_id) {
                         Some(rpc_tx) => {
                             rpc_outbound_tx.send(RpcMsg::RpcDataResponse(correlation_id, rpc_tx)).await.expect("rpc outbound tx send failed on rpc data request");
+                            //info!("send rpc response ok {}", correlation_id);
                         }
-                        None => {                            
-                        }
+                        None => error!("send rpc response not found {}", correlation_id)
                     }
                 }
                 _=> {                    
@@ -279,54 +286,60 @@ where
     });
 
     rt.spawn(async move {
-        let mut mb = MagicBall::new(addr2, write_tx2, rpc_inbound_tx);
+        let mut mb = MagicBall::new(addr2, write_tx2, rpc_inbound_tx);        
 
         tokio::spawn(startup(config.clone(), mb.clone()));
 
-        loop {
+        loop {                        
             let msg = read_rx.recv().await.expect("connection issues acquired");
+            let mut mb = mb.clone();
+            let config = config.clone();
+            let mut write_tx3 = write_tx3.clone();
             match msg {
                 ClientMsg::Message(mut msg_meta, payload, attachments) => {
                     match msg_meta.kind {
                         MsgKind::Event => {
-                            let payload: Value = from_slice(&payload).expect("failed to deserialize event payload");
-                            let res = process_event(config.clone(), mb.clone(), msg_meta, payload, attachments).await;
+                            tokio::spawn(async move {
+                                let payload: Value = from_slice(&payload).expect("failed to deserialize event payload");
+                                if let Err(e) = process_event(config, mb, msg_meta, payload, attachments).await {
+                                    error!("process event error {}", e);
+                                }
+                            });                            
                         }
                         MsgKind::RpcRequest => {
-                            let mut route = msg_meta.route.clone();
-                            let correlation_id = msg_meta.correlation_id;
-                            let tx = msg_meta.tx.clone();
-                            let key = msg_meta.key.clone();
-                            let payload: Value = from_slice(&payload).expect("failed to deserialize rpc request payload");
-                            let res = match process_rpc(config.clone(), mb.clone(), msg_meta, payload, attachments).await {
-                                Ok(res) => res,
-                                Err(err) => json!({ "err": err.to_string() })
-                            };
-                            let payload = to_vec(&res).expect("failed to serialize rpc process result");
-                            route.points.push(Participator::Service(mb.get_addr()));
-                            let res = reply_to_rpc_dto2(mb.get_addr(), tx, key, correlation_id, payload, vec![], vec![], route).expect("failed to create rpc reply");
-                            write(res, &mut write_tx3).await.expect("failed to write rpc response");
+                            tokio::spawn(async move {                                
+                                let mut route = msg_meta.route.clone();
+                                let correlation_id = msg_meta.correlation_id;
+                                let tx = msg_meta.tx.clone();
+                                let key = msg_meta.key.clone();
+                                let payload: Value = from_slice(&payload).expect("failed to deserialize rpc request payload");                            
+                                let res = match process_rpc(config.clone(), mb.clone(), msg_meta, payload, attachments).await {
+                                    Ok(res) => res,
+                                    Err(e) =>  {
+                                        error!("process rpc error {} {:?}", mb.get_addr(), e);
+                                        json!({ "err": e.to_string() })
+                                    }
+                                };
+                                let payload = to_vec(&res).expect("failed to serialize rpc process result");
+                                route.points.push(Participator::Service(mb.get_addr()));
+                                let res = reply_to_rpc_dto2(mb.get_addr(), tx, key, correlation_id, payload, vec![], vec![], route).expect("failed to create rpc reply");
+                                write(res, &mut write_tx3).await.expect("failed to write rpc response");                                
+                            });                                                        
                         }
-                        MsgKind::RpcResponse => {
-                            rpc_inbound_tx2.send(RpcMsg::RpcDataRequest(msg_meta.correlation_id)).await.expect("rpc inbound tx2 msg send failed on rpc response");
-
-                            let msg = rpc_outbound_rx.recv().await.expect("rpc outbound msg receive failed");
+                        MsgKind::RpcResponse => {                                                        
+                            rpc_inbound_tx2.send(RpcMsg::RpcDataRequest(msg_meta.correlation_id)).await.expect("rpc inbound tx2 msg send failed on rpc response");                            
+                            let msg = rpc_outbound_rx.recv().await.expect("rpc outbound msg receive failed");                            
 
                             match msg {
                                 RpcMsg::RpcDataResponse(received_correlation_id, rpc_tx) => {
                                     match received_correlation_id == msg_meta.correlation_id {
-                                        true => {
-                                            //debug!("Sending to rpc_tx {:?}", msg_meta);
-                                            rpc_tx.send((msg_meta, payload, attachments)).expect("rpc tx send failed on rpc response");
+                                        true => {                                            
+                                            rpc_tx.send((msg_meta, payload, attachments)).expect("rpc tx send failed on rpc response");                                            
                                         }
-                                        false => {
-                                            //error!("received_correlation_id not equals correlation_id: {}, {}", received_correlation_id, msg_meta.correlation_id);
-                                        }
+                                        false => error!("received_correlation_id not equals correlation_id: {}, {}", received_correlation_id, msg_meta.correlation_id)
                                     }
                                 }
-                                _ => {
-                                    //error!("Client handler: wrong RpcMsg");
-                                }
+                                _ => error!("Client handler: wrong RpcMsg")
                             }                                
                         }
                     }

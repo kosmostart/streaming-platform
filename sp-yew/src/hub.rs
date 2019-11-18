@@ -89,6 +89,17 @@ impl Hub {
 
         self.hub.send(Request::Rpc(host, correlation_id, dto));
     }
+    pub fn server_rpc_with_client(&mut self, addr: &str, key: &str, payload: Value, client_spec: CmpSpec) {
+        let route = Route {
+            source: Participator::Component(self.spec.clone()),
+            spec: RouteSpec::Client(Participator::Component(client_spec)),
+            points: vec![Participator::Component(self.spec.clone())]
+        };
+        let (correlation_id, dto) = rpc_dto_with_correlation_id(self.spec.rx.clone(), addr.to_owned(), key.to_owned(), payload, route).expect("failed to create rpc dto with correlation id on server rpc");
+        let host = self.cfg.fetch_url.clone().expect("fetch host is empty on sever rpc");
+
+        self.hub.send(Request::Rpc(host, correlation_id, dto));
+    }
     pub fn server_rpc_with_domain(&mut self, addr: &str, key: &str, payload: Value) {
         match &self.cfg.domain {
             Some(domain) => {
@@ -345,17 +356,34 @@ impl Agent for Worker {
 
                 match msg_meta.kind {
                     MsgKind::RpcResponse => {
-                        match msg_meta.source_cmp_addr() {
-                            Some(addr) => {
-                                match self.clients.get(addr) {
-                                    Some(client_id) => self.link.response(*client_id, Response::Msg(msg_meta, payload)),
-                                    None => self.console.log(&format!("hub: missing client {}", msg_meta.rx))
+                        match msg_meta.route.spec {
+                            RouteSpec::Simple => {
+                                match msg_meta.source_cmp_addr() {
+                                    Some(addr) => {
+                                        match self.clients.get(addr) {
+                                            Some(client_id) => self.link.response(*client_id, Response::Msg(msg_meta, payload)),
+                                            None => self.console.log(&format!("hub: missing client {}", msg_meta.rx))
+                                        }
+                                    }
+                                    None => {
+                                        self.console.log("error: source cmp empty for this rpc");
+                                    }
                                 }
                             }
-                            None => {
-                                self.console.log("error: client not found for this rpc");
+                            RouteSpec::Client(_) => {
+                                match msg_meta.client_cmp_addr() {
+                                    Some(addr) => {
+                                        match self.clients.get(&addr) {
+                                            Some(client_id) => self.link.response(*client_id, Response::Msg(msg_meta, payload)),
+                                            None => self.console.log(&format!("hub: missing client {}", msg_meta.rx))
+                                        }
+                                    }
+                                    None => {
+                                        self.console.log("error: client cmp empty for this rpc");
+                                    }
+                                }
                             }
-                        }                        
+                        }                                                
                     }
                     _ => {}
                 }                

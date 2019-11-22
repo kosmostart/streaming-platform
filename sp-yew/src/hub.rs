@@ -38,6 +38,8 @@ pub struct Hub {
 
 #[derive(Clone, PartialEq)]
 pub struct HubCfg {
+    pub app_addr: Option<String>,
+    pub client_addr: Option<String>,
     pub fetch_url: Option<String>,
     pub ws_url: Option<String>,
     pub domain: Option<String>
@@ -46,6 +48,8 @@ pub struct HubCfg {
 impl Default for HubCfg {
     fn default() -> Self {
         HubCfg {
+            app_addr: None,
+            client_addr: None,
             fetch_url: None,
             ws_url: None,
             domain: None
@@ -57,7 +61,7 @@ impl Hub {
     pub fn new(spec: CmpSpec, cfg: HubCfg, callback: Callback<Response>) -> Hub {
         let mut hub = Worker::bridge(callback);
 
-        hub.send(Request::Auth(spec.rx.clone()));
+        hub.send(Request::Auth(spec.addr.clone()));
 
         Hub {
             hub,
@@ -76,26 +80,26 @@ impl Hub {
         self.spec = spec;
         self.cfg = cfg;
 
-        self.hub.send(Request::Auth(self.spec.rx.clone()));
+        self.hub.send(Request::Auth(self.spec.addr.clone()));
     }
     pub fn server_rpc(&mut self, addr: &str, key: &str, payload: Value) {
         let route = Route {
-            source: Participator::Component(self.spec.clone()),
+            source: Participator::Component(self.spec.addr.clone(), self.cfg.app_addr.clone(), self.cfg.client_addr.clone()),
             spec: RouteSpec::Simple,
-            points: vec![Participator::Component(self.spec.clone())]
+            points: vec![Participator::Component(self.spec.addr.clone(), self.cfg.app_addr.clone(), self.cfg.client_addr.clone())]
         };
-        let (correlation_id, dto) = rpc_dto_with_correlation_id(self.spec.rx.clone(), addr.to_owned(), key.to_owned(), payload, route).expect("failed to create rpc dto with correlation id on server rpc");
+        let (correlation_id, dto) = rpc_dto_with_correlation_id(self.spec.addr.clone(), addr.to_owned(), key.to_owned(), payload, route).expect("failed to create rpc dto with correlation id on server rpc");
         let host = self.cfg.fetch_url.clone().expect("fetch host is empty on sever rpc");
 
         self.hub.send(Request::Rpc(host, correlation_id, dto));
     }
-    pub fn server_rpc_with_client(&mut self, addr: &str, key: &str, payload: Value, client_spec: CmpSpec) {
+    pub fn server_rpc_with_client(&mut self, addr: &str, key: &str, payload: Value, client_addr: String) {
         let route = Route {
-            source: Participator::Component(self.spec.clone()),
-            spec: RouteSpec::Client(Participator::Component(client_spec)),
-            points: vec![Participator::Component(self.spec.clone())]
+            source: Participator::Component(self.spec.addr.clone(), self.cfg.app_addr.clone(), self.cfg.client_addr.clone()),
+            spec: RouteSpec::Client(Participator::Component(client_addr, self.cfg.app_addr.clone(), self.cfg.client_addr.clone())),
+            points: vec![Participator::Component(self.spec.addr.clone(), self.cfg.app_addr.clone(), self.cfg.client_addr.clone())]
         };
-        let (correlation_id, dto) = rpc_dto_with_correlation_id(self.spec.rx.clone(), addr.to_owned(), key.to_owned(), payload, route).expect("failed to create rpc dto with correlation id on server rpc");
+        let (correlation_id, dto) = rpc_dto_with_correlation_id(self.spec.addr.clone(), addr.to_owned(), key.to_owned(), payload, route).expect("failed to create rpc dto with correlation id on server rpc");
         let host = self.cfg.fetch_url.clone().expect("fetch host is empty on sever rpc");
 
         self.hub.send(Request::Rpc(host, correlation_id, dto));
@@ -105,30 +109,30 @@ impl Hub {
             Some(domain) => {
                 let addr = addr.to_owned() + "." + domain;
                 let route = Route {
-                    source: Participator::Component(self.spec.clone()),
+                    source: Participator::Component(self.spec.addr.clone(), self.cfg.app_addr.clone(), self.cfg.client_addr.clone()),
                     spec: RouteSpec::Simple,
-                    points: vec![Participator::Component(self.spec.clone())]
+                    points: vec![Participator::Component(self.spec.addr.clone(), self.cfg.app_addr.clone(), self.cfg.client_addr.clone())]
                 };
-                let (correlation_id, dto) = rpc_dto_with_correlation_id(self.spec.rx.clone(), addr, key.to_owned(), payload, route).expect("failed to create rpc dto with correlation id on server rpc");
+                let (correlation_id, dto) = rpc_dto_with_correlation_id(self.spec.addr.clone(), addr, key.to_owned(), payload, route).expect("failed to create rpc dto with correlation id on server rpc");
                 let host = self.cfg.fetch_url.clone().expect("fetch host is empty on sever rpc");
 
                 self.hub.send(Request::Rpc(host, correlation_id, dto));
             }
-            None => panic!(format!("domain is empty on server rpc with domain call {}", self.spec.rx))
+            None => panic!(format!("domain is empty on server rpc with domain call {}", self.spec.addr))
         }        
     }
-    pub fn send_event(&mut self, rx: &str, key: &str, payload: Value) {
+    pub fn send_event(&mut self, addr: &str, key: &str, payload: Value) {
         self.hub.send(Request::Msg(
             MsgMeta {
-                tx: self.spec.rx.clone(),
-                rx: rx.to_owned(),
+                tx: self.spec.addr.clone(),
+                rx: addr.to_owned(),
                 key: key.to_owned(),
                 kind: MsgKind::Event,
                 correlation_id: Uuid::new_v4(),
                 route: Route {
-                    source: Participator::Component(self.spec.clone()),
+                    source: Participator::Component(self.spec.addr.clone(), self.cfg.app_addr.clone(), self.cfg.client_addr.clone()),
                     spec: RouteSpec::Simple,
-                    points: vec![Participator::Component(self.spec.clone())]
+                    points: vec![Participator::Component(self.spec.addr.clone(), self.cfg.app_addr.clone(), self.cfg.client_addr.clone())]
                 },
                 payload_size: 0,
                 attachments: vec![]
@@ -139,15 +143,15 @@ impl Hub {
     pub fn send_rpc(&mut self, rx: &str, key: &str, payload: Value) {
         self.hub.send(Request::Msg(
             MsgMeta {
-                tx: self.spec.rx.clone(),
+                tx: self.spec.addr.clone(),
                 rx: rx.to_owned(),
                 key: key.to_owned(),
                 kind: MsgKind::RpcRequest,
                 correlation_id: Uuid::new_v4(),
                 route: Route {
-                    source: Participator::Component(self.spec.clone()),
+                    source: Participator::Component(self.spec.addr.clone(), self.cfg.app_addr.clone(), self.cfg.client_addr.clone()),
                     spec: RouteSpec::Simple,
-                    points: vec![Participator::Component(self.spec.clone())]
+                    points: vec![Participator::Component(self.spec.addr.clone(), self.cfg.app_addr.clone(), self.cfg.client_addr.clone())]
                 },
                 payload_size: 0,
                 attachments: vec![]
@@ -156,11 +160,11 @@ impl Hub {
         ));
     }    
     pub fn proxy_msg(&mut self, rx: &str, mut msg_meta: MsgMeta, payload: Value) {
-        msg_meta.route.points.push(Participator::Component(self.spec.clone()));
+        msg_meta.route.points.push(Participator::Component(self.spec.addr.clone(), self.cfg.app_addr.clone(), self.cfg.client_addr.clone()));
 
         self.hub.send(Request::Msg(
             MsgMeta {
-                tx: self.spec.rx.clone(),
+                tx: self.spec.addr.clone(),
                 rx: rx.to_owned(),
                 key: msg_meta.key,
                 kind: msg_meta.kind,
@@ -175,15 +179,15 @@ impl Hub {
     pub fn send_event_tx(&mut self, key: &str, payload: Value) {
         self.hub.send(Request::Msg(
             MsgMeta {
-                tx: self.spec.rx.clone(),
+                tx: self.spec.addr.clone(),
                 rx: self.spec.tx.clone(),
                 key: key.to_owned(),
                 kind: MsgKind::Event,
                 correlation_id: Uuid::new_v4(),
                 route: Route {
-                    source: Participator::Component(self.spec.clone()),
+                    source: Participator::Component(self.spec.addr.clone(), self.cfg.app_addr.clone(), self.cfg.client_addr.clone()),
                     spec: RouteSpec::Simple,
-                    points: vec![Participator::Component(self.spec.clone())]
+                    points: vec![Participator::Component(self.spec.addr.clone(), self.cfg.app_addr.clone(), self.cfg.client_addr.clone())]
                 },
                 payload_size: 0,
                 attachments: vec![]
@@ -194,15 +198,15 @@ impl Hub {
     pub fn send_rpc_tx(&mut self, key: &str, payload: Value) {
         self.hub.send(Request::Msg(
             MsgMeta {
-                tx: self.spec.rx.clone(),
+                tx: self.spec.addr.clone(),
                 rx: self.spec.tx.clone(),
                 key: key.to_owned(),
                 kind: MsgKind::RpcRequest,
                 correlation_id: Uuid::new_v4(),
                 route: Route {
-                    source: Participator::Component(self.spec.clone()),
+                    source: Participator::Component(self.spec.addr.clone(), self.cfg.app_addr.clone(), self.cfg.client_addr.clone()),
                     spec: RouteSpec::Simple,
-                    points: vec![Participator::Component(self.spec.clone())]
+                    points: vec![Participator::Component(self.spec.addr.clone(), self.cfg.app_addr.clone(), self.cfg.client_addr.clone())]
                 },
                 payload_size: 0,
                 attachments: vec![]
@@ -211,11 +215,11 @@ impl Hub {
         ));
     }    
     pub fn proxy_msg_tx(&mut self, mut msg_meta: MsgMeta, payload: Value) {
-        msg_meta.route.points.push(Participator::Component(self.spec.clone()));
+        msg_meta.route.points.push(Participator::Component(self.spec.addr.clone(), self.cfg.app_addr.clone(), self.cfg.client_addr.clone()));
 
         self.hub.send(Request::Msg(
             MsgMeta {
-                tx: self.spec.rx.clone(),
+                tx: self.spec.addr.clone(),
                 rx: self.spec.tx.clone(),
                 key: msg_meta.key,
                 kind: msg_meta.kind,
@@ -226,81 +230,7 @@ impl Hub {
             },
             payload
         ));
-    }
-    pub fn send_event_app(&mut self, key: &str, payload: Value) {
-        self.hub.send(Request::Msg(
-            MsgMeta {
-                tx: self.spec.rx.clone(),
-                rx: self.spec.app_addr.clone(),
-                key: key.to_owned(),
-                kind: MsgKind::Event,
-                correlation_id: Uuid::new_v4(),
-                route: Route {
-                    source: Participator::Component(self.spec.clone()),
-                    spec: RouteSpec::Simple,
-                    points: vec![Participator::Component(self.spec.clone())]
-                },
-                payload_size: 0,
-                attachments: vec![]
-            }, 
-            payload
-        ));
     }    
-    pub fn send_rpc_app(&mut self, key: &str, payload: Value) {
-        self.hub.send(Request::Msg(
-            MsgMeta {
-                tx: self.spec.rx.clone(),
-                rx: self.spec.app_addr.clone(),
-                key: key.to_owned(),
-                kind: MsgKind::RpcRequest,
-                correlation_id: Uuid::new_v4(),
-                route: Route {
-                    source: Participator::Component(self.spec.clone()),
-                    spec: RouteSpec::Simple,
-                    points: vec![Participator::Component(self.spec.clone())]
-                },
-                payload_size: 0,
-                attachments: vec![]
-            },
-            payload
-        ));
-    }
-    pub fn send_rpc_app_with_route_spec(&mut self, key: &str, payload: Value, spec: RouteSpec) {
-        self.hub.send(Request::Msg(
-            MsgMeta {
-                tx: self.spec.rx.clone(),
-                rx: self.spec.app_addr.clone(),
-                key: key.to_owned(),
-                kind: MsgKind::RpcRequest,
-                correlation_id: Uuid::new_v4(),
-                route: Route {
-                    source: Participator::Component(self.spec.clone()),
-                    spec,
-                    points: vec![Participator::Component(self.spec.clone())]
-                },
-                payload_size: 0,
-                attachments: vec![]
-            },
-            payload
-        ));
-    }
-    pub fn proxy_msg_app(&mut self, mut msg_meta: MsgMeta, payload: Value) {
-        msg_meta.route.points.push(Participator::Component(self.spec.clone()));
-
-        self.hub.send(Request::Msg(
-            MsgMeta {
-                tx: self.spec.rx.clone(),
-                rx: self.spec.app_addr.clone(),
-                key: msg_meta.key,
-                kind: msg_meta.kind,
-                correlation_id: msg_meta.correlation_id,
-                route: msg_meta.route,
-                payload_size: 0,
-                attachments: vec![]
-            },
-            payload
-        ));
-    }
 }
 
 pub enum Msg {    

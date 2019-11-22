@@ -9,28 +9,22 @@ pub use uuid;
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct CmpSpec {
-    pub tx: String,
-    pub rx: String,
-    pub app_addr: String,
-    pub client_addr: String
+    pub addr: String,
+    pub tx: String        
 }
 
 impl CmpSpec {
-    // these methods work for child components, note this: tx: self.rx.clone(),
-    pub fn new_rx(&self, rx: &str) -> CmpSpec {
+    // These methods create spec for child components, note this: tx: self.addr.clone(),
+    pub fn new_addr(&self, addr: &str) -> CmpSpec {
         CmpSpec {
-            tx: self.rx.clone(),
-            rx: rx.to_owned(),
-            app_addr: self.app_addr.clone(),
-            client_addr: self.client_addr.clone()
+            addr: addr.to_owned(),
+            tx: self.addr.clone()            
         }
     }
-    pub fn add_to_rx(&self, delta: &str) -> CmpSpec {
+    pub fn add_to_addr(&self, delta: &str) -> CmpSpec {
         CmpSpec {
-            tx: self.rx.clone(),
-            rx: self.rx.clone() + "." + delta,
-            app_addr: self.app_addr.clone(),
-            client_addr: self.client_addr.clone()
+            addr: self.addr.clone() + "." + delta,
+            tx: self.addr.clone()            
         }
     }
 }
@@ -38,27 +32,26 @@ impl CmpSpec {
 impl Default for CmpSpec {
     fn default() -> Self {
         CmpSpec {
-            tx: String::new(),
-            rx: String::new(),
-            app_addr: String::new(),
-            client_addr: String::new()
+            addr: String::new(),
+            tx: String::new()
         }
     }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum Participator {
-    /// UI component
-    Component(CmpSpec),
-    /// Service process running in background somewhere
+    /// UI component addr, app_addr and client addr
+    Component(String, Option<String>, Option<String>),
+    /// Service process addr running in background somewhere
     Service(String)
 }
 
+/// At the moment used in case when it is needed to overwrite rpc response receiver
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum RouteSpec {
-    /// Message path ends after it was transfered to rx.
+    /// No rpc reponse receiver overwrite will happen
     Simple,
-    /// Defines final receiver after multiple message transfers.
+    /// Rpc reponse receiver overwrite will happen
     Client(Participator)
 }
 
@@ -169,7 +162,7 @@ impl MsgMeta {
     }    
     pub fn source_cmp_addr(&self) -> Option<&str> {
         match &self.route.source {
-            Participator::Component(spec) => Some(&spec.rx),
+            Participator::Component(addr, _, _) => Some(&addr),
             _ => None
         }
     }
@@ -205,7 +198,7 @@ impl MsgMeta {
         match &self.route.spec {
             RouteSpec::Client(participator) => {
                 match participator {
-                    Participator::Component(spec) => Some(spec.rx.clone()),
+                    Participator::Component(addr, _, _) => Some(addr.clone()),
                     _ => None
                 }
             }

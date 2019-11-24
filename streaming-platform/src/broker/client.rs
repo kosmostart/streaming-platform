@@ -200,9 +200,11 @@ where
                             match msg {
                                 RpcMsg::RpcDataResponse(received_correlation_id, rpc_tx) => {
                                     match received_correlation_id == msg_meta.correlation_id {
-                                        true => {
-                                            //debug!("Sending to rpc_tx {:?}", msg_meta);
-                                            rpc_tx.send((msg_meta, payload, attachments)).expect("rpc tx send failed");
+                                        true => {                                            
+                                            match rpc_tx.send((msg_meta, payload, attachments)) {
+                                                Ok(()) => {}
+                                                Err((msg_meta, _, _)) => error!("rpc_tx send failed on rpc response {:?}", msg_meta)
+                                            }
                                         }
                                         false => error!("received_correlation_id not equals correlation_id: {}, {}", received_correlation_id, msg_meta.correlation_id)
                                     }
@@ -334,7 +336,10 @@ where
                                 RpcMsg::RpcDataResponse(received_correlation_id, rpc_tx) => {
                                     match received_correlation_id == msg_meta.correlation_id {
                                         true => {                                            
-                                            rpc_tx.send((msg_meta, payload, attachments)).expect("rpc tx send failed on rpc response");                                            
+                                            match rpc_tx.send((msg_meta, payload, attachments)) {
+                                                Ok(()) => {}
+                                                Err((msg_meta, _, _)) => error!("rpc_tx send failed on rpc response {:?}", msg_meta)
+                                            }
                                         }
                                         false => error!("received_correlation_id not equals correlation_id: {}, {}", received_correlation_id, msg_meta.correlation_id)
                                     }

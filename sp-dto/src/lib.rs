@@ -237,7 +237,7 @@ pub fn event_dto<T>(tx: String, rx: String, key: String, payload: T, route: Rout
 
     let mut buf = vec![];
 
-    buf.put_u32_be(msg_meta.len() as u32);
+    buf.put_u32(msg_meta.len() as u32);
 
     buf.append(&mut msg_meta);
     buf.append(&mut payload);
@@ -263,7 +263,7 @@ pub fn reply_to_rpc_dto<T>(tx: String, rx: String, key: String, correlation_id: 
 
     let mut buf = vec![];
 
-    buf.put_u32_be(msg_meta.len() as u32);
+    buf.put_u32(msg_meta.len() as u32);
 
     buf.append(&mut msg_meta);
     buf.append(&mut payload);
@@ -307,7 +307,7 @@ pub fn rpc_dto<T>(tx: String, rx: String, key: String, payload: T, route: Route)
 
     let mut buf = vec![];
 
-    buf.put_u32_be(msg_meta.len() as u32);
+    buf.put_u32(msg_meta.len() as u32);
 
     buf.append(&mut msg_meta);
     buf.append(&mut payload);
@@ -334,7 +334,7 @@ pub fn rpc_dto_with_correlation_id<T>(tx: String, rx: String, key: String, paylo
 
     let mut buf = vec![];
 
-    buf.put_u32_be(msg_meta.len() as u32);
+    buf.put_u32(msg_meta.len() as u32);
 
     buf.append(&mut msg_meta);
     buf.append(&mut payload);
@@ -371,7 +371,7 @@ pub fn rpc_dto_with_attachments<T>(tx: String, rx: String, key: String, payload:
 
     let mut buf = vec![];
 
-    buf.put_u32_be(msg_meta.len() as u32);
+    buf.put_u32(msg_meta.len() as u32);
 
     buf.append(&mut msg_meta);
     buf.append(&mut payload);
@@ -407,7 +407,7 @@ pub fn rpc_dto_with_later_attachments<T>(tx: String, rx: String, key: String, pa
 
     let mut buf = vec![];
 
-    buf.put_u32_be(msg_meta.len() as u32);
+    buf.put_u32(msg_meta.len() as u32);
 
     buf.append(&mut msg_meta);
     buf.append(&mut payload);    
@@ -446,7 +446,7 @@ pub fn event_dto2(tx: String, rx: String, key: String, mut payload: Vec<u8>, rou
 
     let mut buf = vec![];
 
-    buf.put_u32_be(msg_meta.len() as u32);
+    buf.put_u32(msg_meta.len() as u32);
 
     buf.append(&mut msg_meta);
     buf.append(&mut payload);
@@ -479,7 +479,7 @@ pub fn reply_to_rpc_dto2(tx: String, rx: String, key: String, correlation_id: Uu
 
     let mut buf = vec![];
 
-    buf.put_u32_be(msg_meta.len() as u32);
+    buf.put_u32(msg_meta.len() as u32);
 
     buf.append(&mut msg_meta);
     buf.append(&mut payload);
@@ -513,7 +513,7 @@ pub fn reply_to_rpc_dto_with_later_attachments2(tx: String, rx: String, key: Str
 
     let mut buf = vec![];
 
-    buf.put_u32_be(msg_meta.len() as u32);
+    buf.put_u32(msg_meta.len() as u32);
 
     buf.append(&mut msg_meta);
     buf.append(&mut payload);
@@ -554,7 +554,7 @@ pub fn rpc_dto2(tx: String, rx: String, key: String, mut payload: Vec<u8>, route
 
     let mut buf = vec![];
 
-    buf.put_u32_be(msg_meta.len() as u32);
+    buf.put_u32(msg_meta.len() as u32);
 
     buf.append(&mut msg_meta);
     buf.append(&mut payload);
@@ -590,7 +590,7 @@ pub fn rpc_dto_with_attachments2(tx: String, rx: String, key: String, mut payloa
 
     let mut buf = vec![];
 
-    buf.put_u32_be(msg_meta.len() as u32);
+    buf.put_u32(msg_meta.len() as u32);
 
     buf.append(&mut msg_meta);
     buf.append(&mut payload);
@@ -625,7 +625,7 @@ pub fn rpc_dto_with_later_attachments2(tx: String, rx: String, key: String, mut 
 
     let mut buf = vec![];
 
-    buf.put_u32_be(msg_meta.len() as u32);
+    buf.put_u32(msg_meta.len() as u32);
 
     buf.append(&mut msg_meta);
     buf.append(&mut payload);    
@@ -651,7 +651,7 @@ pub fn rpc_dto_with_correlation_id_2(tx: String, rx: String, key: String, mut pa
 
     let mut buf = vec![];
 
-    buf.put_u32_be(msg_meta.len() as u32);
+    buf.put_u32(msg_meta.len() as u32);
 
     buf.append(&mut msg_meta);
     buf.append(&mut payload);
@@ -661,14 +661,14 @@ pub fn rpc_dto_with_correlation_id_2(tx: String, rx: String, key: String, mut pa
 
 pub fn get_msg_meta(data: &[u8]) -> Result<MsgMeta, Error> {
     let mut buf = Cursor::new(data);
-    let len = buf.get_u32_be() as usize;
+    let len = buf.get_u32() as usize;
 
     serde_json::from_slice::<MsgMeta>(&data[4..len + 4])
 }
 
 pub fn get_msg<T>(data: &[u8]) -> Result<(MsgMeta, T, Vec<(String, Vec<u8>)>), Error> where T: Debug, T: serde::Serialize, for<'de> T: serde::Deserialize<'de> {
     let mut buf = Cursor::new(data);    
-    let len = buf.get_u32_be();
+    let len = buf.get_u32();
     let msg_meta_offset = (len + 4) as usize;
 
     let msg_meta = serde_json::from_slice::<MsgMeta>(&data[4..msg_meta_offset as usize])?;
@@ -691,7 +691,7 @@ pub fn get_msg<T>(data: &[u8]) -> Result<(MsgMeta, T, Vec<(String, Vec<u8>)>), E
 
 pub fn get_payload<T>(msg_meta: &MsgMeta, data: &[u8]) -> Result<T, Error> where T: Debug, T: serde::Serialize, for<'de> T: serde::Deserialize<'de> {
     let mut buf = Cursor::new(data);    
-    let len = buf.get_u32_be();
+    let len = buf.get_u32();
     let msg_meta_offset = (len + 4) as usize;    
 
     let payload_offset = msg_meta_offset + msg_meta.payload_size as usize;
@@ -703,7 +703,7 @@ pub fn get_payload<T>(msg_meta: &MsgMeta, data: &[u8]) -> Result<T, Error> where
 
 pub fn get_payload_with_attachments<T>(msg_meta: &MsgMeta, data: &[u8]) -> Result<(T, Vec<(String, Vec<u8>)>), Error> where T: Debug, T: serde::Serialize, for<'de> T: serde::Deserialize<'de> {
     let mut buf = Cursor::new(data);    
-    let len = buf.get_u32_be();
+    let len = buf.get_u32();
     let msg_meta_offset = (len + 4) as usize;
 
     let payload_offset = msg_meta_offset + msg_meta.payload_size as usize;

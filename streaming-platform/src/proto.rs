@@ -36,7 +36,7 @@ pub async fn read_full(socket_read: &mut ReadHalf<'_>) -> Result<(MsgMeta, Vec<u
     socket_read.read_exact(&mut len_buf).await?;
 
     let mut buf = Cursor::new(len_buf);        
-    let len = buf.get_u32_be() as usize;
+    let len = buf.get_u32() as usize;
     //info!("read_full len {} {}", addr, len);
     let mut adapter = socket_read.take(len as u64);
 
@@ -113,7 +113,7 @@ pub async fn read(state: &mut State, adapter: &mut Take<ReadHalf<'_>>) -> Result
             adapter.read(&mut len_buf).await?;
 
             let mut buf = Cursor::new(&len_buf[..LEN_BUF_SIZE]);
-            let len = buf.get_u32_be();
+            let len = buf.get_u32();
 
             state.step = Step::MsgMeta(len);
 
@@ -377,7 +377,7 @@ impl MagicBall {
     pub async fn proxy_event(&mut self, tx: String, mut data: Vec<u8>) -> Result<(), ProcessError> {
         let (res, len) = {
             let mut buf = Cursor::new(&data);
-            let len = buf.get_u32_be() as usize;
+            let len = buf.get_u32() as usize;
 
             match len > data.len() - 4 {
                 true => {
@@ -398,7 +398,7 @@ impl MagicBall {
         let mut payload_with_attachments: Vec<_> = data.drain(4 + len..).collect();
         let mut buf = vec![];
 
-        buf.put_u32_be(msg_meta.len() as u32);
+        buf.put_u32(msg_meta.len() as u32);
 
         buf.append(&mut msg_meta);
         buf.append(&mut payload_with_attachments);
@@ -410,7 +410,7 @@ impl MagicBall {
     pub async fn proxy_rpc(&mut self, tx: String, mut data: Vec<u8>) -> Result<(MsgMeta, Vec<u8>), ProcessError> {
         let (res, len) = {
             let mut buf = std::io::Cursor::new(&data);
-            let len = buf.get_u32_be() as usize;
+            let len = buf.get_u32() as usize;
 
             match len > data.len() - 4 {
                 true => {
@@ -433,7 +433,7 @@ impl MagicBall {
         let mut payload_with_attachments: Vec<_> = data.drain(4 + len..).collect();
         let mut buf = vec![];
 
-        buf.put_u32_be(msg_meta.len() as u32);
+        buf.put_u32(msg_meta.len() as u32);
 
         buf.append(&mut msg_meta);
         buf.append(&mut payload_with_attachments);
@@ -448,7 +448,7 @@ impl MagicBall {
         let mut buf = vec![];
         let mut msg_meta_buf = to_vec(&msg_meta)?;
 
-        buf.put_u32_be(msg_meta_buf.len() as u32);
+        buf.put_u32(msg_meta_buf.len() as u32);
         buf.append(&mut msg_meta_buf);
         buf.append(&mut payload);
         buf.append(&mut attachments);

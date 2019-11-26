@@ -277,7 +277,7 @@ impl MagicBall2 {
     pub fn proxy_event(&self, tx: String, mut data: Vec<u8>) -> Result<(), Error> {
         let (res, len) = {
             let mut buf = std::io::Cursor::new(&data);
-            let len = buf.get_u32_be() as usize;
+            let len = buf.get_u32() as usize;
 
             match len > data.len() - 4 {
                 true => {
@@ -298,7 +298,7 @@ impl MagicBall2 {
         let mut payload_with_attachments: Vec<_> = data.drain(4 + len..).collect();
         let mut buf = vec![];
 
-        buf.put_u32_be(msg_meta.len() as u32);
+        buf.put_u32(msg_meta.len() as u32);
 
         buf.append(&mut msg_meta);
         buf.append(&mut payload_with_attachments);
@@ -311,7 +311,7 @@ impl MagicBall2 {
 
         let (res, len) = {
             let mut buf = std::io::Cursor::new(&data);
-            let len = buf.get_u32_be() as usize;
+            let len = buf.get_u32() as usize;
 
             match len > data.len() - 4 {
                 true => {
@@ -334,7 +334,7 @@ impl MagicBall2 {
         let mut payload_with_attachments: Vec<_> = data.drain(4 + len..).collect();
         let mut buf = vec![];
 
-        buf.put_u32_be(msg_meta.len() as u32);
+        buf.put_u32(msg_meta.len() as u32);
 
         buf.append(&mut msg_meta);
         buf.append(&mut payload_with_attachments);

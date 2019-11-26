@@ -37,7 +37,7 @@ impl Handler for WsClient {
 
                 let len = {
                     let mut buf = std::io::Cursor::new(&data);
-                    buf.get_u32_be() as usize
+                    buf.get_u32() as usize
                 };
 
                 match serde_json::from_slice::<MsgMeta>(&data[4..len + 4]) {

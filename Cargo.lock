@@ -11,9 +11,9 @@ dependencies = [
 
 [[package]]
 name = "anyhow"
-version = "1.0.23"
+version = "1.0.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6f1072d8f55592084072d2d3cb23a4b680a8543c00f10d446118e85ad3718142"
+checksum = "9267dff192e68f3399525901e709a48c1d3982c9c072fa32f2127a0cb0babf14"
 
 [[package]]
 name = "anymap"
@@ -169,9 +169,9 @@ dependencies = [
 
 [[package]]
 name = "bytes"
-version = "0.5.1"
+version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "42e7586d1d1a8da3546dd87ea64dae7f451ce9a0fdecd7a48893c55eb18b1c8f"
+checksum = "1c85319f157e4e26c703678e68e26ab71a46c0199286fa670b21cc9fec13d895"
 
 [[package]]
 name = "c2-chacha"
@@ -882,10 +882,11 @@ dependencies = [
 
 [[package]]
 name = "mio"
-version = "0.6.19"
+version = "0.6.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "83f51996a3ed004ef184e16818edc51fadffe8e7ca68be67f9dee67d84d0ff23"
+checksum = "302dec22bcf6bae6dfb69c647187f4b4d0fb6f535521f7bc022430ce8e12008f"
 dependencies = [
+ "cfg-if",
  "fuchsia-zircon",
  "fuchsia-zircon-sys",
  "iovec",
@@ -1578,7 +1579,7 @@ dependencies = [
 name = "sp-dto"
 version = "0.1.0"
 dependencies = [
- "bytes 0.5.1",
+ "bytes 0.5.2",
  "serde",
  "serde_derive",
  "serde_json",
@@ -1715,7 +1716,7 @@ checksum = "213701ba3370744dcd1a12960caa4843b3d68b4d1c0a5d575e0d65b2ee9d16c0"
 name = "streaming-platform"
 version = "0.1.0"
 dependencies = [
- "bytes 0.5.1",
+ "bytes 0.5.2",
  "futures-preview",
  "log 0.4.8",
  "serde",
@@ -2497,7 +2498,7 @@ dependencies = [
 [[package]]
 name = "yew"
 version = "0.10.1"
-source = "git+https://github.com/DenisKolodin/yew#8fd95d867a946d68ed563af7d522e0bba98d022b"
+source = "git+https://github.com/DenisKolodin/yew#e2ed0953d6a135ad370f8e76b027e1e84fc72e96"
 dependencies = [
  "anymap",
  "bincode",
@@ -2520,7 +2521,7 @@ dependencies = [
 [[package]]
 name = "yew-macro"
 version = "0.10.1"
-source = "git+https://github.com/DenisKolodin/yew#8fd95d867a946d68ed563af7d522e0bba98d022b"
+source = "git+https://github.com/DenisKolodin/yew#e2ed0953d6a135ad370f8e76b027e1e84fc72e96"
 dependencies = [
  "autocfg",
  "boolinator",

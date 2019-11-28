@@ -169,9 +169,9 @@ dependencies = [
 
 [[package]]
 name = "bytes"
-version = "0.5.0"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "549c8cf9befa7948bfd9ebb0ed84c6b25b0400046b6db1b73c026e4117c26c12"
+checksum = "42e7586d1d1a8da3546dd87ea64dae7f451ce9a0fdecd7a48893c55eb18b1c8f"
 
 [[package]]
 name = "c2-chacha"
@@ -625,9 +625,9 @@ dependencies = [
 
 [[package]]
 name = "http"
-version = "0.1.19"
+version = "0.1.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d7e06e336150b178206af098a055e3621e8336027e2b4d126bda0bc64824baaf"
+checksum = "2790658cddc82e82b08e25176c431d7015a0adeb1718498715cbd20138a0bf68"
 dependencies = [
  "bytes 0.4.12",
  "fnv",
@@ -1578,7 +1578,7 @@ dependencies = [
 name = "sp-dto"
 version = "0.1.0"
 dependencies = [
- "bytes 0.5.0",
+ "bytes 0.5.1",
  "serde",
  "serde_derive",
  "serde_json",
@@ -1715,7 +1715,7 @@ checksum = "213701ba3370744dcd1a12960caa4843b3d68b4d1c0a5d575e0d65b2ee9d16c0"
 name = "streaming-platform"
 version = "0.1.0"
 dependencies = [
- "bytes 0.5.0",
+ "bytes 0.5.1",
  "futures-preview",
  "log 0.4.8",
  "serde",

@@ -82,7 +82,7 @@ impl Hub {
 
         self.hub.send(Request::Auth(self.spec.addr.clone()));
     }
-    pub fn server_rpc(&mut self, addr: &str, key: &str, payload: Value) {
+    pub fn rpc(&mut self, addr: &str, key: &str, payload: Value) {
         let route = Route {
             source: Participator::Component(self.spec.addr.clone(), self.cfg.app_addr.clone(), self.cfg.client_addr.clone()),
             spec: RouteSpec::Simple,
@@ -93,7 +93,7 @@ impl Hub {
 
         self.hub.send(Request::Rpc(host, correlation_id, dto));
     }
-    pub fn server_rpc_with_client(&mut self, addr: &str, key: &str, payload: Value, client_addr: String) {
+    pub fn rpc_with_client(&mut self, addr: &str, key: &str, payload: Value, client_addr: String) {
         let route = Route {
             source: Participator::Component(self.spec.addr.clone(), self.cfg.app_addr.clone(), self.cfg.client_addr.clone()),
             spec: RouteSpec::Client(Participator::Component(client_addr, self.cfg.app_addr.clone(), self.cfg.client_addr.clone())),
@@ -104,7 +104,7 @@ impl Hub {
 
         self.hub.send(Request::Rpc(host, correlation_id, dto));
     }
-    pub fn server_rpc_with_domain(&mut self, addr: &str, key: &str, payload: Value) {
+    pub fn rpc_with_domain(&mut self, addr: &str, key: &str, payload: Value) {
         match &self.cfg.domain {
             Some(domain) => {
                 let addr = addr.to_owned() + "." + domain;
@@ -121,7 +121,7 @@ impl Hub {
             None => panic!(format!("domain is empty on server rpc with domain call {}", self.spec.addr))
         }        
     }
-    pub fn send_event(&mut self, addr: &str, key: &str, payload: Value) {
+    pub fn send_event_local(&mut self, addr: &str, key: &str, payload: Value) {
         self.hub.send(Request::Msg(
             MsgMeta {
                 tx: self.spec.addr.clone(),
@@ -140,7 +140,7 @@ impl Hub {
             payload
         ));
     }
-    pub fn send_rpc(&mut self, rx: &str, key: &str, payload: Value) {
+    pub fn send_rpc_local(&mut self, rx: &str, key: &str, payload: Value) {
         self.hub.send(Request::Msg(
             MsgMeta {
                 tx: self.spec.addr.clone(),
@@ -159,7 +159,7 @@ impl Hub {
             payload
         ));
     }    
-    pub fn proxy_msg(&mut self, rx: &str, mut msg_meta: MsgMeta, payload: Value) {
+    pub fn proxy_msg_local(&mut self, rx: &str, mut msg_meta: MsgMeta, payload: Value) {
         msg_meta.route.points.push(Participator::Component(self.spec.addr.clone(), self.cfg.app_addr.clone(), self.cfg.client_addr.clone()));
 
         self.hub.send(Request::Msg(

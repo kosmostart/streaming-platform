@@ -35,7 +35,7 @@ fn main() {
 
 fn process_msg(msg: ClientMsg, save_path: String) {
     match msg {
-        ClientMsg::FileReceiveComplete(name) => unpack(&(save_path + "/" + &name)),
+        ClientMsg::FileReceiveComplete(name) => unpack(save_path, name),
         _ => {}
     }
 }

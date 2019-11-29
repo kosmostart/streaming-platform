@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::io::BufReader;
 use std::io::prelude::*;
 use rand::{Rng, thread_rng};
+use chrono::Utc;
 use serde_derive::Deserialize;
 use lz4::{Decoder, EncoderBuilder};
 
@@ -93,11 +94,13 @@ pub fn pack() {
         .expect("failed to remove temporary file");
 }
 
-pub fn unpack(from: &str) {
-    let to = from.to_owned() + ".tmp";
-    let target = from.to_owned() + "-deploy";
+pub fn unpack(save_path: String, file_name: String) {
+    let from = save_path.clone() + "/" + &file_name;
+    let to = save_path.clone() + "/" + &file_name + ".tmp";
+    let dt = Utc::now().format("%Y-%m-%d-%H-%M-%S").to_string();
+    let target = save_path.clone() + "/deploy-" + &file_name + "-" + &dt;
 
-    decompress(from, &to).unwrap();
+    decompress(&from, &to).unwrap();
 
     {
         let mut ar = tar::Archive::new(File::open(&to).unwrap());
@@ -108,7 +111,7 @@ pub fn unpack(from: &str) {
     remove_file(&to)
         .expect("failed to remove temporary file");
 
-    println!("unpack {} ok", from);
+    println!("unpack {} {} ok", save_path, file_name);
 }
 
 fn compress(from: &str, to: &str) -> Result<()> {    

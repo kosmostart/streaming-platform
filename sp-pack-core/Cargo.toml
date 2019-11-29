@@ -9,6 +9,7 @@ edition = "2018"
 [dependencies]
 
 rand = "0.7"
+chrono = "*"
 serde = "*"
 serde_derive = "*"
 toml = "*"

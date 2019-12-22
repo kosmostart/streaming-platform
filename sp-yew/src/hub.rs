@@ -89,7 +89,7 @@ impl Hub {
             points: vec![Participator::Component(self.spec.addr.clone(), self.cfg.app_addr.clone(), self.cfg.client_addr.clone())]
         };
         let (correlation_id, dto) = rpc_dto_with_correlation_id(self.spec.addr.clone(), addr.to_owned(), key.to_owned(), payload, route).expect("failed to create rpc dto with correlation id on server rpc");
-        let host = self.cfg.fetch_url.clone().expect("fetch host is empty on sever rpc");
+        let host = self.cfg.fetch_url.clone().expect("fetch host is empty on server rpc");
 
         self.hub.send(Request::Rpc(host, correlation_id, dto));
     }
@@ -100,7 +100,7 @@ impl Hub {
             points: vec![Participator::Component(self.spec.addr.clone(), self.cfg.app_addr.clone(), self.cfg.client_addr.clone())]
         };
         let (correlation_id, dto) = rpc_dto_with_correlation_id(self.spec.addr.clone(), addr.to_owned(), key.to_owned(), payload, route).expect("failed to create rpc dto with correlation id on server rpc");
-        let host = self.cfg.fetch_url.clone().expect("fetch host is empty on sever rpc");
+        let host = self.cfg.fetch_url.clone().expect("fetch host is empty on server rpc");
 
         self.hub.send(Request::Rpc(host, correlation_id, dto));
     }
@@ -114,7 +114,7 @@ impl Hub {
                     points: vec![Participator::Component(self.spec.addr.clone(), self.cfg.app_addr.clone(), self.cfg.client_addr.clone())]
                 };
                 let (correlation_id, dto) = rpc_dto_with_correlation_id(self.spec.addr.clone(), addr, key.to_owned(), payload, route).expect("failed to create rpc dto with correlation id on server rpc");
-                let host = self.cfg.fetch_url.clone().expect("fetch host is empty on sever rpc");
+                let host = self.cfg.fetch_url.clone().expect("fetch host is empty on server rpc");
 
                 self.hub.send(Request::Rpc(host, correlation_id, dto));
             }
@@ -282,7 +282,7 @@ impl Agent for Worker {
             Msg::FetchReady(data) => {
                 let (msg_meta, payload, _) = get_msg::<Value>(&data).expect("failed to get msg on FetchReady");
                 self.fetch_tasks.remove(&msg_meta.correlation_id);
-                self.console.log(&msg_meta.view());
+                self.console.log(&msg_meta.display());
 
                 match msg_meta.kind {
                     MsgKind::RpcResponse => {

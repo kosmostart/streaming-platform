@@ -116,8 +116,8 @@ impl MsgMeta {
 
         len
     }
-    /// Zero based index for key part, . is used as a separator.
-    pub fn view(&self) -> String {
+    /// Short display of message meta data
+    pub fn display(&self) -> String {
         format!("{} -> {} {} {:?}", self.tx, self.rx, self.key, self.kind)
     }
     /// Get key part, index is zero based, . is used as a separator.

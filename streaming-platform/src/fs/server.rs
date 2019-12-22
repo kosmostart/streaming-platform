@@ -19,7 +19,6 @@ use crate::proto::*;
 
 pub fn start() {
     let mut rt = Runtime::new().expect("failed to create runtime");
-    
     rt.block_on(start_future());
 }
 

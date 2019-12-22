@@ -13,7 +13,6 @@ use crate::proto::*;
 
 pub fn start(config: ServerConfig) {
     let mut rt = Runtime::new().expect("failed to create runtime"); 
-    
     rt.block_on(start_future(config));
 }
 

@@ -72,14 +72,10 @@ fn main() {
     println!("{:#?}", config);
 
     println!("quering system data");
-
     let mut system = sysinfo::System::new();
-
     // First we update all information of our system struct.
     system.refresh_all();
-
     let mut running = vec![];
-
     for (pid, proc_) in system.get_process_list() {
         //println!("{}:{} => status: {:?}", pid, proc_.name(), proc_.status());
 
@@ -88,12 +84,11 @@ fn main() {
             name: proc_.name().to_owned()
         });
     }
-
     fix_running_self(&running);
 
     println!("waiting for socket clean up");
 
-    thread::sleep(time::Duration::from_millis(10000));
+    thread::sleep(time::Duration::from_millis(5000));
 
     println!("done");
 
@@ -106,6 +101,19 @@ fn main() {
     let stated_processes = std::thread::Builder::new()
         .name("started-processes".to_owned())
         .spawn(move || {
+            println!("quering system data");
+            let mut system = sysinfo::System::new();
+            // First we update all information of our system struct.
+            system.refresh_all();
+            let mut running = vec![];
+            for (pid, proc_) in system.get_process_list() {
+                //println!("{}:{} => status: {:?}", pid, proc_.name(), proc_.status());
+
+                running.push(Process {
+                    id: *pid as usize,
+                    name: proc_.name().to_owned()
+                });
+            }            
             let mut started = std::collections::HashMap::new();
 
             match config.hubs {

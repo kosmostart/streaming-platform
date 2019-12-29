@@ -5,10 +5,10 @@ use std::fs::{self, DirEntry};
 use std::path::Path;
 use std::net::SocketAddr;
 use bytes::Buf;
-use futures::{select, pin_mut};
+use futures::{select, pin_mut, future::FutureExt};
 use tokio::runtime::Runtime;
 use tokio::io::Take;
-use tokio::net::{TcpListener, TcpStream, tcp::split::{ReadHalf, WriteHalf}};
+use tokio::net::{TcpListener, TcpStream, tcp::{ReadHalf, WriteHalf}};
 use tokio::sync::mpsc::{self, Sender, Receiver};
 use tokio::prelude::*;
 use tokio::fs::File;
@@ -96,7 +96,10 @@ async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut 
     
     let (mut client_tx, mut client_rx) = mpsc::channel(MPSC_CLIENT_BUF_SIZE);
 
-    server_tx.send(ServerMsg::AddClient(auth_msg_meta.tx.clone(), client_net_addr, client_tx)).await.unwrap();    
+    match server_tx.send(ServerMsg::AddClient(auth_msg_meta.tx.clone(), client_net_addr, client_tx)).await {
+        Ok(()) => {}
+        Err(_) => panic!("failed to add client")
+    }
 
     let mut adapter = socket_read.take(LEN_BUF_SIZE as u64);
     let mut state = State::new();

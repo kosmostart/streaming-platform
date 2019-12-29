@@ -10,5 +10,5 @@ members = [
 	"sp-build",
 	"sp-public-host",
 	"sp-file-hub",
-	"spup"	
+	"spup"
 ]

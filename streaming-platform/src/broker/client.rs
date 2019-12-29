@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::error::Error;
 use log::*;
-use futures::{select, pin_mut};
+use futures::{select, pin_mut, future::FutureExt};
 use tokio::net::TcpStream;
 use tokio::prelude::*;
 use tokio::runtime::Runtime;
@@ -45,7 +45,10 @@ where
                 RpcMsg::RpcDataRequest(correlation_id) => {
                     match rpcs.remove(&correlation_id) {
                         Some(rpc_tx) => {
-                            rpc_outbound_tx.send(RpcMsg::RpcDataResponse(correlation_id, rpc_tx)).await.expect("rpc outbound tx send failed on rpc data request");
+                            match rpc_outbound_tx.send(RpcMsg::RpcDataResponse(correlation_id, rpc_tx)).await {
+                                Ok(()) => {}
+                                Err(_) => panic!("rpc outbound tx send failed on rpc data request")
+                            }
                         }
                         None => {                            
                         }
@@ -121,7 +124,10 @@ where
                 RpcMsg::RpcDataRequest(correlation_id) => {
                     match rpcs.remove(&correlation_id) {
                         Some(rpc_tx) => {
-                            rpc_outbound_tx.send(RpcMsg::RpcDataResponse(correlation_id, rpc_tx)).await.expect("rpc outbound tx send failed on rpc data request");
+                            match rpc_outbound_tx.send(RpcMsg::RpcDataResponse(correlation_id, rpc_tx)).await {
+                                Ok(()) => {}
+                                Err(_) => panic!("rpc outbound tx send failed on rpc data request")
+                            }
                         }
                         None => {                            
                         }
@@ -193,7 +199,10 @@ where
                             });                            
                         }
                         MsgKind::RpcResponse => {
-                            rpc_inbound_tx2.send(RpcMsg::RpcDataRequest(msg_meta.correlation_id)).await.expect("rpc inbound tx2 send failed");
+                            match rpc_inbound_tx2.send(RpcMsg::RpcDataRequest(msg_meta.correlation_id)).await {
+                                Ok(()) => {}
+                                Err(_) => panic!("rpc inbound tx2 send failed")
+                            }
 
                             let msg = rpc_outbound_rx.recv().await.expect("rpc outbound msg receive failed");
 
@@ -258,7 +267,10 @@ where
                 RpcMsg::RpcDataRequest(correlation_id) => {
                     match rpcs.remove(&correlation_id) {
                         Some(rpc_tx) => {
-                            rpc_outbound_tx.send(RpcMsg::RpcDataResponse(correlation_id, rpc_tx)).await.expect("rpc outbound tx send failed on rpc data request");
+                            match rpc_outbound_tx.send(RpcMsg::RpcDataResponse(correlation_id, rpc_tx)).await {
+                                Ok(()) => {}
+                                Err(_) => panic!("rpc outbound tx send failed on rpc data request")
+                            }
                             //info!("send rpc response ok {}", correlation_id);
                         }
                         None => error!("send rpc response not found {}", correlation_id)
@@ -329,7 +341,10 @@ where
                             });                                                        
                         }
                         MsgKind::RpcResponse => {                                                        
-                            rpc_inbound_tx2.send(RpcMsg::RpcDataRequest(msg_meta.correlation_id)).await.expect("rpc inbound tx2 msg send failed on rpc response");                            
+                            match rpc_inbound_tx2.send(RpcMsg::RpcDataRequest(msg_meta.correlation_id)).await {
+                                Ok(()) => {}
+                                Err(_) => panic!("rpc inbound tx2 msg send failed on rpc response")
+                            }
                             let msg = rpc_outbound_rx.recv().await.expect("rpc outbound msg receive failed");                            
 
                             match msg {

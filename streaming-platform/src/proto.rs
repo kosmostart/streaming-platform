@@ -8,8 +8,8 @@ use std::net::SocketAddr;
 use log::*;
 use bytes::{Buf, BufMut};
 //use tokio::io::Take;
-use tokio::tokio_io::io::take::Take;
-use tokio::net::tcp::split::ReadHalf;
+use tokio::io::Take;
+use tokio::net::tcp::ReadHalf;
 use tokio::sync::{mpsc::{Sender, error::SendError}, oneshot};
 use tokio::prelude::*;
 use serde_json::{from_slice, Value, to_vec};
@@ -493,7 +493,10 @@ pub enum ProcessError {
     Io(std::io::Error),
     SerdeJson(serde_json::Error),
     GetFile(GetFileError),
-    SendError(SendError),
+    SendBufError,
+    SendServerMsgError,
+    SendClientMsgError,
+    SendRpcMsgError,
     OneshotRecvError(oneshot::error::RecvError),
     NoneError
 }
@@ -538,9 +541,27 @@ impl From<option::NoneError> for ProcessError {
 	}
 }
 
-impl From<SendError> for ProcessError {
-	fn from(err: SendError) -> ProcessError {
-		ProcessError::SendError(err)
+impl From<SendError<(usize, [u8; DATA_BUF_SIZE])>> for ProcessError {
+	fn from(err: SendError<(usize, [u8; DATA_BUF_SIZE])>) -> ProcessError {
+		ProcessError::SendBufError
+	}
+}
+
+impl From<SendError<ServerMsg>> for ProcessError {
+	fn from(err: SendError<ServerMsg>) -> ProcessError {
+		ProcessError::SendServerMsgError
+	}
+}
+
+impl From<SendError<ClientMsg>> for ProcessError {
+	fn from(err: SendError<ClientMsg>) -> ProcessError {
+		ProcessError::SendClientMsgError
+	}
+}
+
+impl From<SendError<RpcMsg>> for ProcessError {
+	fn from(err: SendError<RpcMsg>) -> ProcessError {
+		ProcessError::SendRpcMsgError
 	}
 }
 

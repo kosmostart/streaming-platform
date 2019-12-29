@@ -247,7 +247,7 @@ impl Agent for Worker {
     fn create(link: AgentLink<Self>) -> Self {
         let mut console = ConsoleService::new(); 
         console.log("hub created");
-        let fetch_cb = link.send_back(move |response: fetch::Response<Result<Vec<u8>, Error>>| {
+        let fetch_cb = link.callback(move |response: fetch::Response<Result<Vec<u8>, Error>>| {
             let (meta, data) = response.into_parts();
             println!("{:?}", meta);
             match data {
@@ -279,7 +279,7 @@ impl Agent for Worker {
                                 match msg_meta.source_cmp_addr() {
                                     Some(addr) => {
                                         match self.clients.get(addr) {
-                                            Some(client_id) => self.link.response(*client_id, Response::Msg(msg_meta, payload)),
+                                            Some(client_id) => self.link.respond(*client_id, Response::Msg(msg_meta, payload)),
                                             None => self.console.log(&format!("hub: missing client {}", msg_meta.rx))
                                         }
                                     }
@@ -292,7 +292,7 @@ impl Agent for Worker {
                                 match msg_meta.client_cmp_addr() {
                                     Some(addr) => {
                                         match self.clients.get(&addr) {
-                                            Some(client_id) => self.link.response(*client_id, Response::Msg(msg_meta, payload)),
+                                            Some(client_id) => self.link.respond(*client_id, Response::Msg(msg_meta, payload)),
                                             None => self.console.log(&format!("hub: missing client {}", msg_meta.rx))
                                         }
                                     }
@@ -312,7 +312,7 @@ impl Agent for Worker {
         }
     }
     // Handle incoming messages form components of other agents.
-    fn handle(&mut self, msg: Self::Input, who: HandlerId) {
+    fn handle_input(&mut self, msg: Self::Input, who: HandlerId) {
         //self.console.log(&format!("hub: {:?}", msg));        
         match msg {
             Request::Auth(addr) => {
@@ -321,7 +321,7 @@ impl Agent for Worker {
             }
             Request::Msg(msg_meta, payload) => {
                 match self.clients.get(&msg_meta.rx) {
-                    Some(client_id) => self.link.response(*client_id, Response::Msg(msg_meta, payload)),
+                    Some(client_id) => self.link.respond(*client_id, Response::Msg(msg_meta, payload)),
                     None => self.console.log(&format!("hub: missing client {}", msg_meta.rx))
                 }
             }

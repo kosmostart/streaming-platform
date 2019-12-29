@@ -10,9 +10,8 @@ edition = "2018"
 
 log = "*"
 bytes = "*"
-futures-preview = { version = "=0.3.0-alpha.19", features = ["async-await"] }
-#tokio = "0.2.0-alpha.6"
-tokio = { path = "../../tokio/tokio" }
+futures = { version = "0.3.0", features = ["async-await"] }
+tokio = { version = "0.2", features = ["full"] }
 serde = "*"
 serde_derive = "*"
 serde_json = "*"

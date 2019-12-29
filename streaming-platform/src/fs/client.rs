@@ -1,6 +1,6 @@
 use std::error::Error;
 use bytes::BufMut;
-use futures::{select, pin_mut};
+use futures::{select, pin_mut, future::FutureExt};
 use tokio::fs::File;                  
 use tokio::net::TcpStream;
 use tokio::prelude::*;

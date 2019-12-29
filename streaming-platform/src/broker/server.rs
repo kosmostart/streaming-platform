@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::io::{Cursor, BufReader, Read};
 use std::net::SocketAddr;
 use log::*;
-use futures::{select, pin_mut};
+use futures::{select, pin_mut, future::FutureExt};
 use tokio::runtime::Runtime;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc::{self, Sender};
@@ -41,7 +41,10 @@ pub async fn start_future(config: ServerConfig) -> Result<(), ProcessError> {
 
                     match clients.get_mut(&addr) {
                         Some(client) => {
-                            client.tx.send((n, buf)).await.expect("ServerMsg::SendBuf processing failed on tx send");
+                            match client.tx.send((n, buf)).await {
+                                Ok(()) => {}
+                                Err(_) => panic!("ServerMsg::SendBuf processing failed on tx send")
+                            }
                             //info!("send buf ok {} {}", addr, n);
                         }
                         None => {

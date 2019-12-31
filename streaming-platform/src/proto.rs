@@ -215,13 +215,13 @@ pub enum ServerMsg {
 /// Type for function called on data stream message processing
 pub type ProcessStreamMsg<T> = fn(ClientMsg) -> T;
 /// Type for function called on event processing with raw payload
-pub type ProcessEventRaw<T> = fn(HashMap<String, String>, MagicBall, MsgMeta, Vec<u8>, Vec<u8>) -> T;
+pub type ProcessEventRaw<T> = fn(HashMap<String, String>, MagicBall, MessageRaw) -> T;
 /// Type for function called on rpc processing with raw payload
-pub type ProcessRpcRaw<T> = fn(HashMap<String, String>, MagicBall, MsgMeta, Vec<u8>, Vec<u8>) -> T;
+pub type ProcessRpcRaw<T> = fn(HashMap<String, String>, MagicBall, MessageRaw) -> T;
 /// Type for function called on event processing with json payload
-pub type ProcessEvent<T> = fn(HashMap<String, String>, MagicBall, MsgMeta, Value, Vec<u8>) -> T;
+pub type ProcessEvent<T> = fn(HashMap<String, String>, MagicBall, Message) -> T;
 /// Type for function called on rpc processing with json payload
-pub type ProcessRpc<T> = fn(HashMap<String, String>, MagicBall, MsgMeta, Value, Vec<u8>) -> T;
+pub type ProcessRpc<T> = fn(HashMap<String, String>, MagicBall, Message) -> T;
 /// Type for function called on stream client starting
 pub type StreamStartup<T> = fn(HashMap<String, String>) -> T;
 /// Type for function called on client starting

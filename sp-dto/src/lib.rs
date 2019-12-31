@@ -2,7 +2,7 @@ use std::io::Cursor;
 use std::fmt::Debug;
 use bytes::{Buf, BufMut};
 use serde_derive::{Serialize, Deserialize};
-use serde_json::Error;
+use serde_json::{Value, Error};
 use uuid::Uuid;
 pub use bytes;
 pub use uuid;
@@ -60,6 +60,22 @@ pub struct Route {
     pub source: Participator,
     pub spec: RouteSpec,
     pub points: Vec<Participator>
+}
+
+/// The message itself
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Message {
+    pub meta: MsgMeta,
+    pub payload: Value,
+    pub attachments: Vec<u8>
+}
+
+/// The message itself with payload as raw bytes
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct MessageRaw {
+    pub meta: MsgMeta,
+    pub payload: Vec<u8>,
+    pub attachments: Vec<u8>
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

@@ -171,7 +171,7 @@ where
                     match msg_meta.kind {
                         MsgKind::Event => {
                             tokio::spawn(async move {
-                                if let Err(e) = process_event(config.clone(), mb.clone(), msg_meta, payload, attachments).await {
+                                if let Err(e) = process_event(config.clone(), mb.clone(), MessageRaw { meta: msg_meta, payload, attachments }).await {
                                     error!("process event error {} {:?}", mb.get_addr(), e);
                                 }
                             });
@@ -182,7 +182,7 @@ where
                                 let correlation_id = msg_meta.correlation_id;
                                 let tx = msg_meta.tx.clone();
                                 let key = msg_meta.key.clone();
-                                let (payload, attachments, attachments_data) = match process_rpc(config.clone(), mb.clone(), msg_meta, payload, attachments).await {
+                                let (payload, attachments, attachments_data) = match process_rpc(config.clone(), mb.clone(), MessageRaw { meta: msg_meta, payload, attachments }).await {
                                     Ok(res) => res,
                                     Err(e) => {
                                         error!("process rpc error {} {:?}", mb.get_addr(), e);
@@ -315,7 +315,7 @@ where
                         MsgKind::Event => {
                             tokio::spawn(async move {
                                 let payload: Value = from_slice(&payload).expect("failed to deserialize event payload");
-                                if let Err(e) = process_event(config, mb, msg_meta, payload, attachments).await {
+                                if let Err(e) = process_event(config, mb, Message { meta: msg_meta, payload, attachments }).await {
                                     error!("process event error {}", e);
                                 }
                             });                            
@@ -327,7 +327,7 @@ where
                                 let tx = msg_meta.tx.clone();
                                 let key = msg_meta.key.clone();
                                 let payload: Value = from_slice(&payload).expect("failed to deserialize rpc request payload");                            
-                                let res = match process_rpc(config.clone(), mb.clone(), msg_meta, payload, attachments).await {
+                                let res = match process_rpc(config.clone(), mb.clone(), Message { meta: msg_meta, payload, attachments }).await {
                                     Ok(res) => res,
                                     Err(e) =>  {
                                         error!("process rpc error {} {:?}", mb.get_addr(), e);

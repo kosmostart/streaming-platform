@@ -92,7 +92,7 @@ where
 pub fn full_message_raw_mode<T: 'static, Q: 'static, R: 'static>(host: &str, addr: &str, access_key: &str, process_event: ProcessEventRaw<T>, process_rpc: ProcessRpcRaw<Q>, startup: Startup<R>, config: HashMap<String, String>)
 where 
     T: Future<Output = Result<(), Box<dyn Error>>> + Send,
-    Q: Future<Output = Result<(Vec<u8>, Vec<(String, u64)>, Vec<u8>), Box<dyn Error>>> + Send,
+    Q: Future<Output = Result<ResponseRaw, Box<dyn Error>>> + Send,
     R: Future<Output = ()> + Send
 {
     let mut rt = Runtime::new().expect("failed to create runtime");    
@@ -167,11 +167,11 @@ where
             let config = config.clone();
             let mut write_tx3 = write_tx3.clone();
             match msg {
-                ClientMsg::Message(mut msg_meta, payload, attachments) => {
+                ClientMsg::Message(mut msg_meta, payload, attachments_data) => {
                     match msg_meta.kind {
                         MsgKind::Event => {
                             tokio::spawn(async move {
-                                if let Err(e) = process_event(config.clone(), mb.clone(), MessageRaw { meta: msg_meta, payload, attachments }).await {
+                                if let Err(e) = process_event(config.clone(), mb.clone(), MessageRaw { meta: msg_meta, payload, attachments_data }).await {
                                     error!("process event error {} {:?}", mb.get_addr(), e);
                                 }
                             });
@@ -182,8 +182,14 @@ where
                                 let correlation_id = msg_meta.correlation_id;
                                 let tx = msg_meta.tx.clone();
                                 let key = msg_meta.key.clone();
-                                let (payload, attachments, attachments_data) = match process_rpc(config.clone(), mb.clone(), MessageRaw { meta: msg_meta, payload, attachments }).await {
-                                    Ok(res) => res,
+                                let (payload, attachments, attachments_data) = match process_rpc(config.clone(), mb.clone(), MessageRaw { meta: msg_meta, payload, attachments_data }).await {
+                                    Ok(res) => {
+                                        let (payload, attachments, attachments_data) = match res {
+                                            ResponseRaw::Simple(payload) => (payload, vec![], vec![]),
+                                            ResponseRaw::Full(payload, attachments, attachments_data) => (payload, attachments, attachments_data)
+                                        };
+                                        (payload, attachments, attachments_data)
+                                    }
                                     Err(e) => {
                                         error!("process rpc error {} {:?}", mb.get_addr(), e);
                                         let payload = to_vec(&json!({
@@ -210,7 +216,7 @@ where
                                 RpcMsg::RpcDataResponse(received_correlation_id, rpc_tx) => {
                                     match received_correlation_id == msg_meta.correlation_id {
                                         true => {                                            
-                                            match rpc_tx.send((msg_meta, payload, attachments)) {
+                                            match rpc_tx.send((msg_meta, payload, attachments_data)) {
                                                 Ok(()) => {}
                                                 Err((msg_meta, _, _)) => error!("rpc_tx send failed on rpc response {:?}", msg_meta)
                                             }
@@ -231,11 +237,12 @@ where
     rt.block_on(connect_full_message_future(host, addr3, read_tx, write_rx));    
 }
 
-pub fn full_message_mode<T: 'static, Q: 'static, R: 'static>(host: &str, addr: &str, access_key: &str, process_event: ProcessEvent<T>, process_rpc: ProcessRpc<Q>, startup: Startup<R>, config: HashMap<String, String>)
+pub fn full_message_mode<P: 'static, T: 'static, Q: 'static, R: 'static>(host: &str, addr: &str, access_key: &str, process_event: ProcessEvent<T, P>, process_rpc: ProcessRpc<Q, P>, startup: Startup<R>, config: HashMap<String, String>)
 where 
     T: Future<Output = Result<(), Box<dyn Error>>> + Send,
-    Q: Future<Output = Result<Value, Box<dyn Error>>> + Send,
-    R: Future<Output = ()> + Send
+    Q: Future<Output = Result<Response<P>, Box<dyn Error>>> + Send,
+    R: Future<Output = ()> + Send,
+    P: serde::Serialize, for<'de> P: serde::Deserialize<'de> + Send
 {
     let mut rt = Runtime::new().expect("failed to create runtime");    
 
@@ -301,44 +308,47 @@ where
 
     rt.spawn(async move {
         let mut mb = MagicBall::new(addr2, write_tx2, rpc_inbound_tx);        
-
         tokio::spawn(startup(config.clone(), mb.clone()));
-
         loop {                        
             let msg = read_rx.recv().await.expect("connection issues acquired");
             let mut mb = mb.clone();
             let config = config.clone();
             let mut write_tx3 = write_tx3.clone();
             match msg {
-                ClientMsg::Message(mut msg_meta, payload, attachments) => {
+                ClientMsg::Message(mut msg_meta, payload, attachments_data) => {
                     match msg_meta.kind {
-                        MsgKind::Event => {
+                        MsgKind::Event => {                            
                             tokio::spawn(async move {
-                                let payload: Value = from_slice(&payload).expect("failed to deserialize event payload");
-                                if let Err(e) = process_event(config, mb, Message { meta: msg_meta, payload, attachments }).await {
+                                let payload: P = from_slice(&payload).expect("failed to deserialize event payload");                                
+                                if let Err(e) = process_event(config, mb, Message { meta: msg_meta, payload, attachments_data }).await {
                                     error!("process event error {}", e);
-                                }
+                                }                                
                             });                            
                         }
-                        MsgKind::RpcRequest => {
+                        MsgKind::RpcRequest => {                            
                             tokio::spawn(async move {                                
                                 let mut route = msg_meta.route.clone();
                                 let correlation_id = msg_meta.correlation_id;
                                 let tx = msg_meta.tx.clone();
                                 let key = msg_meta.key.clone();
-                                let payload: Value = from_slice(&payload).expect("failed to deserialize rpc request payload");                            
-                                let res = match process_rpc(config.clone(), mb.clone(), Message { meta: msg_meta, payload, attachments }).await {
-                                    Ok(res) => res,
+                                let payload: P = from_slice(&payload).expect("failed to deserialize rpc request payload");                            
+                                let (payload, attachments, attachments_data) = match process_rpc(config.clone(), mb.clone(), Message { meta: msg_meta, payload, attachments_data }).await {
+                                    Ok(res) => {
+                                        let (res, attachments, attachments_data) = match res {
+                                            Response::Simple(payload) => (payload, vec![], vec![]),
+                                            Response::Full(payload, attachments, attachments_data) => (payload, attachments, attachments_data)
+                                        };
+                                        (to_vec(&res).expect("failed to serialize rpc process result"), attachments, attachments_data)
+                                    }
                                     Err(e) =>  {
                                         error!("process rpc error {} {:?}", mb.get_addr(), e);
-                                        json!({ "err": e.to_string() })
+                                        (to_vec(&json!({ "err": e.to_string() })).expect("failed to serialize rpc process error result"), vec![], vec![])
                                     }
-                                };
-                                let payload = to_vec(&res).expect("failed to serialize rpc process result");
+                                };                                
                                 route.points.push(Participator::Service(mb.get_addr()));
-                                let res = reply_to_rpc_dto2(mb.get_addr(), tx, key, correlation_id, payload, vec![], vec![], route).expect("failed to create rpc reply");
+                                let res = reply_to_rpc_dto2(mb.get_addr(), tx, key, correlation_id, payload, attachments, attachments_data, route).expect("failed to create rpc reply");
                                 write(res, &mut write_tx3).await.expect("failed to write rpc response");                                
-                            });                                                        
+                            });                            
                         }
                         MsgKind::RpcResponse => {                                                        
                             match rpc_inbound_tx2.send(RpcMsg::RpcDataRequest(msg_meta.correlation_id)).await {
@@ -351,7 +361,7 @@ where
                                 RpcMsg::RpcDataResponse(received_correlation_id, rpc_tx) => {
                                     match received_correlation_id == msg_meta.correlation_id {
                                         true => {                                            
-                                            match rpc_tx.send((msg_meta, payload, attachments)) {
+                                            match rpc_tx.send((msg_meta, payload, attachments_data)) {
                                                 Ok(()) => {}
                                                 Err((msg_meta, _, _)) => error!("rpc_tx send failed on rpc response {:?}", msg_meta)
                                             }

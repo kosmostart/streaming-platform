@@ -7,7 +7,6 @@ use std::io::Cursor;
 use std::net::SocketAddr;
 use log::*;
 use bytes::{Buf, BufMut};
-//use tokio::io::Take;
 use tokio::io::Take;
 use tokio::net::tcp::ReadHalf;
 use tokio::sync::{mpsc::{Sender, error::SendError}, oneshot};
@@ -219,9 +218,9 @@ pub type ProcessEventRaw<T> = fn(HashMap<String, String>, MagicBall, MessageRaw)
 /// Type for function called on rpc processing with raw payload
 pub type ProcessRpcRaw<T> = fn(HashMap<String, String>, MagicBall, MessageRaw) -> T;
 /// Type for function called on event processing with json payload
-pub type ProcessEvent<T> = fn(HashMap<String, String>, MagicBall, Message) -> T;
+pub type ProcessEvent<T, R> = fn(HashMap<String, String>, MagicBall, Message<R>) -> T;
 /// Type for function called on rpc processing with json payload
-pub type ProcessRpc<T> = fn(HashMap<String, String>, MagicBall, Message) -> T;
+pub type ProcessRpc<T, R> = fn(HashMap<String, String>, MagicBall, Message<R>) -> T;
 /// Type for function called on stream client starting
 pub type StreamStartup<T> = fn(HashMap<String, String>) -> T;
 /// Type for function called on client starting

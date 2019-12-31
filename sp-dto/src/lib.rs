@@ -63,19 +63,33 @@ pub struct Route {
 }
 
 /// The message itself
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Message {
+#[derive(Debug, Deserialize, Clone)]
+pub struct Message<T> {
     pub meta: MsgMeta,
-    pub payload: Value,
-    pub attachments: Vec<u8>
+    pub payload: T,
+    pub attachments_data: Vec<u8>
 }
 
 /// The message itself with payload as raw bytes
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct MessageRaw {
     pub meta: MsgMeta,
     pub payload: Vec<u8>,
-    pub attachments: Vec<u8>
+    pub attachments_data: Vec<u8>
+}
+
+/// Enum used for returning from processing rpc functions in full message mode
+#[derive(Debug, Serialize, Clone)]
+pub enum Response<T> {
+    Simple(T),
+    Full(T, Vec<(String, u64)>, Vec<u8>)
+}
+
+/// Enum used for returning from processing rpc functions in raw mode
+#[derive(Debug, Serialize, Clone)]
+pub enum ResponseRaw {
+    Simple(Vec<u8>),
+    Full(Vec<u8>, Vec<(String, u64)>, Vec<u8>)
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

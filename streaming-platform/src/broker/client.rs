@@ -383,7 +383,7 @@ where
 }
 
 pub async fn connect_stream_future(host: &str, addr: String, mut read_tx: Sender<ClientMsg>, mut write_rx: Receiver<(usize, [u8; DATA_BUF_SIZE])>) {    
-    let mut stream = TcpStream::connect(host).await.unwrap();        
+    let mut stream = TcpStream::connect(host).await.expect("onnection to host failed");
 
     let res = process_stream(addr, stream, read_tx, write_rx).await;
 
@@ -391,7 +391,7 @@ pub async fn connect_stream_future(host: &str, addr: String, mut read_tx: Sender
 }
 
 pub async fn connect_full_message_future(host: &str, addr: String, mut read_tx: Sender<ClientMsg>, mut write_rx: Receiver<(usize, [u8; DATA_BUF_SIZE])>) {    
-    let mut stream = TcpStream::connect(host).await.unwrap();        
+    let mut stream = TcpStream::connect(host).await.expect("onnection to host failed");
 
     let res = process_full_message(addr, stream, read_tx, write_rx).await;
 

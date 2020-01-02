@@ -236,7 +236,7 @@ pub enum ClientMsg {
     PayloadData(usize, [u8; DATA_BUF_SIZE]),
     /// This is sent in Stream mode without fs future
     PayloadFinished,
-    /// This is sent in Stream mode without fs future
+    /// This is sent in Stream mode without fs future. First field is index, second is number of bytes read, last is data itself.
     AttachmentData(usize, usize, [u8; DATA_BUF_SIZE]),
     /// This is sent in Stream mode without fs future
     AttachmentFinished(usize),
@@ -337,7 +337,7 @@ impl MagicBall {
         
         Ok(())
     }    
-    pub async fn rpc<T, R>(&mut self, addr: &str, key: &str, payload: T) -> Result<(MsgMeta, R, Vec<u8>), ProcessError> where T: serde::Serialize, T: Debug, for<'de> R: serde::Deserialize<'de>, R: Debug {
+    pub async fn rpc<T, R>(&mut self, addr: &str, key: &str, payload: T) -> Result<Message<R>, ProcessError> where T: serde::Serialize, T: Debug, for<'de> R: serde::Deserialize<'de>, R: Debug {
         let route = Route {
             source: Participator::Service(self.addr.clone()),
             spec: RouteSpec::Simple,
@@ -352,12 +352,16 @@ impl MagicBall {
         self.rpc_inbound_tx.send(RpcMsg::AddRpc(correlation_id, rpc_tx)).await?;        
         write(dto, &mut self.write_tx).await?;        
 
-        let (msg_meta, payload, attachments) = rpc_rx.await?;
+        let (msg_meta, payload, attachments_data) = rpc_rx.await?;
         let payload: R = from_slice(&payload)?;        
 
-        Ok((msg_meta, payload, attachments))
+        Ok(Message {
+            meta: msg_meta, 
+            payload, 
+            attachments_data
+        })
     }
-    pub async fn rpc_with_route<T, R>(&mut self, addr: &str, key: &str, payload: T, mut route: Route) -> Result<(MsgMeta, R, Vec<u8>), ProcessError> where T: serde::Serialize, T: Debug, for<'de> R: serde::Deserialize<'de>, R: Debug {
+    pub async fn rpc_with_route<T, R>(&mut self, addr: &str, key: &str, payload: T, mut route: Route) -> Result<Message<R>, ProcessError> where T: serde::Serialize, T: Debug, for<'de> R: serde::Deserialize<'de>, R: Debug {
 		//info!("send_rpc, route {:?}, target addr {}, key {}, payload {:?}, ", route, addr, key, payload);
 
         route.points.push(Participator::Service(self.addr.to_owned()));
@@ -368,10 +372,14 @@ impl MagicBall {
         self.rpc_inbound_tx.send(RpcMsg::AddRpc(correlation_id, rpc_tx)).await?;
         write(dto, &mut self.write_tx).await?;
 
-        let (msg_meta, payload, attachments) = rpc_rx.await?;
+        let (msg_meta, payload, attachments_data) = rpc_rx.await?;
         let payload: R = from_slice(&payload)?;        
 
-        Ok((msg_meta, payload, attachments))
+        Ok(Message {
+            meta: msg_meta, 
+            payload, 
+            attachments_data
+        })
     }
     pub async fn proxy_event(&mut self, tx: String, mut data: Vec<u8>) -> Result<(), ProcessError> {
         let (res, len) = {

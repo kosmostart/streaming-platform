@@ -161,45 +161,4 @@ async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut 
             }
         };
     }
-
-    /*
-    println!("{:?}", payload);
-
-    server_tx.send(ServerMsg::AddClient(msg_meta.tx.clone(), client_net_addr, client_tx))?;             
-
-    loop {
-        let route = select! {
-            recv(state.rx) -> msg => BufRoute::Broker(msg?),
-            recv(client_rx) -> msg => BufRoute::Socket(msg?)
-        };
-
-        match route {
-            BufRoute::Broker(buf) => {
-                server_tx.send(ServerMsg::SendBuf(msg_meta.tx.clone(), buf))?;
-            }
-            BufRoute::Socket(buf) => {
-                socket_write.write_all(&buf).await?;
-            }
-        }
-    }
-    */
-    
-    /*
-    match state.read_msg(&mut socket_read).await {
-        Ok(_) => {
-            loop {
-                if state.read_msg(&mut socket_read).await.is_err() {
-                    break;
-                }
-
-                // remove client because we have stopped reading from socket
-                //server_tx.send(ServerMsg::RemoveClient(client_addr));
-            }
-        }
-        Err(err) => {
-
-        }
-    }
-    */ 
-
 }

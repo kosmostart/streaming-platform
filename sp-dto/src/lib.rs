@@ -108,6 +108,8 @@ pub enum ResponseRaw {
     Full(Vec<u8>, Vec<(String, u64)>, Vec<u8>)
 }
 
+
+/// Message meta data. Message passing protocol is build around this structure.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MsgMeta {
     /// Addr of message sender

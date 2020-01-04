@@ -11,27 +11,20 @@ use serde_json::{json, Value, from_slice, to_vec};
 use sp_dto::*;
 use crate::proto::*;
 
-pub fn stream_mode<T: 'static, Q: 'static>(host: &str, addr: &str, access_key: &str, process_stream_msg: ProcessStreamMsg<T>, startup: StreamStartup<Q>, config: HashMap<String, String>)
+pub fn stream_mode<T: 'static>(host: &str, addr: &str, access_key: &str, process_stream: ProcessStream<T>, config: HashMap<String, String>)
 where 
-    T: Future<Output = ()> + Send,
-    Q: Future<Output = ()> + Send
+    T: Future<Output = ()> + Send    
 {
     let mut rt = Runtime::new().expect("failed to create runtime");    
-
     let (mut read_tx, mut read_rx) = mpsc::channel(MPSC_CLIENT_BUF_SIZE);
     let (mut write_tx, mut write_rx) = mpsc::channel(MPSC_CLIENT_BUF_SIZE);
     let (mut rpc_inbound_tx, mut rpc_inbound_rx) = mpsc::channel(MPSC_RPC_BUF_SIZE);
     let (mut rpc_outbound_tx, mut rpc_outbound_rx) = mpsc::channel(MPSC_RPC_BUF_SIZE);
-
     let addr = addr.to_owned();
-    let addr2 = addr.to_owned();
+    let addr2 = addr.to_owned();   
     let addr3 = addr.to_owned();
-    let access_key = access_key.to_owned();
-    let mut rpc_inbound_tx2 = rpc_inbound_tx.clone();
-    
-    let mut write_tx2 = write_tx.clone();
-    let mut write_tx3 = write_tx.clone();
-
+    let access_key = access_key.to_owned();        
+    let mut write_tx2 = write_tx.clone();    
     rt.spawn(async move {
         let mut rpcs = HashMap::new();        
 
@@ -59,7 +52,6 @@ where
             }
         }
     });
-
     rt.spawn(async move {        
         let target = "SvcHub";
 
@@ -76,16 +68,8 @@ where
         let res = write(dto, &mut write_tx).await;
         println!("{:?}", res);        
     });
-
-    rt.spawn(async move {
-        tokio::spawn(startup(config.clone()));
-
-        loop {
-            let msg = read_rx.recv().await.expect("connection issues acquired");
-            tokio::spawn(process_stream_msg(msg));
-        }    
-    });
-
+    let mut mb = MagicBall::new(addr2, write_tx2, rpc_inbound_tx);
+    rt.spawn(process_stream(config, mb, read_rx));
     rt.block_on(connect_stream_future(host, addr3, read_tx, write_rx));    
 }
 
@@ -385,7 +369,7 @@ where
 pub async fn connect_stream_future(host: &str, addr: String, mut read_tx: Sender<ClientMsg>, mut write_rx: Receiver<(usize, [u8; DATA_BUF_SIZE])>) {    
     let mut stream = TcpStream::connect(host).await.expect("onnection to host failed");
 
-    let res = process_stream(addr, stream, read_tx, write_rx).await;
+    let res = process_message_stream(addr, stream, read_tx, write_rx).await;
 
     println!("{:?}", res);
 }
@@ -398,7 +382,7 @@ pub async fn connect_full_message_future(host: &str, addr: String, mut read_tx: 
     println!("{:?}", res);
 }
 
-async fn process_stream(addr: String, mut stream: TcpStream, mut read_tx: Sender<ClientMsg>, mut write_rx: Receiver<(usize, [u8; DATA_BUF_SIZE])>) -> Result<(), ProcessError> {
+async fn process_message_stream(addr: String, mut stream: TcpStream, mut read_tx: Sender<ClientMsg>, mut write_rx: Receiver<(usize, [u8; DATA_BUF_SIZE])>) -> Result<(), ProcessError> {
     let (mut socket_read, mut socket_write) = stream.split();
 
     //let (auth_msg_meta, auth_payload, auth_attachments) = read_full(&mut socket_read).await?;

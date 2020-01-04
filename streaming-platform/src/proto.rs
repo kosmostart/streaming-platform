@@ -9,7 +9,7 @@ use log::*;
 use bytes::{Buf, BufMut};
 use tokio::io::Take;
 use tokio::net::tcp::ReadHalf;
-use tokio::sync::{mpsc::{Sender, error::SendError}, oneshot};
+use tokio::sync::{mpsc::{Sender, Receiver, error::SendError}, oneshot};
 use tokio::prelude::*;
 use serde_json::{from_slice, Value, to_vec};
 use serde_derive::{Deserialize};
@@ -211,8 +211,8 @@ pub enum ServerMsg {
     RemoveClient(String)
 }
 
-/// Type for function called on data stream message processing
-pub type ProcessStreamMsg<T> = fn(ClientMsg) -> T;
+/// Type for function called on data stream processing
+pub type ProcessStream<T> = fn(HashMap<String, String>, MagicBall, Receiver<ClientMsg>) -> T;
 /// Type for function called on event processing with raw payload
 pub type ProcessEventRaw<T> = fn(HashMap<String, String>, MagicBall, MessageRaw) -> T;
 /// Type for function called on rpc processing with raw payload
@@ -288,7 +288,7 @@ pub enum RpcMsg {
 #[derive(Clone)]
 pub struct MagicBall {
     addr: String,
-    write_tx: Sender<(usize, [u8; DATA_BUF_SIZE])>,
+    pub write_tx: Sender<(usize, [u8; DATA_BUF_SIZE])>,
     rpc_inbound_tx: Sender<RpcMsg>
 }
 
@@ -302,17 +302,22 @@ impl MagicBall {
     }
     pub fn get_addr(&self) -> String {
 		self.addr.clone()
-	}
-    /*
-    pub async fn send_event(&mut self, dto: Vec<u8>) -> Result<(), ProcessError> {
-        write(dto, &mut self.write_tx).await
     }
-    pub async fn send_rpc(&mut self, dto: Vec<u8>) -> Result<(), ProcessError> {
-        write(dto, &mut self.write_tx).await?;
-
+    pub async fn write_vec(&mut self, data: Vec<u8>) -> Result<(), ProcessError> {
+        let mut source = &data[..];
+    
+        loop {
+            let mut data_buf = [0; DATA_BUF_SIZE];
+            let n = source.read(&mut data_buf).await?;        
+    
+            match n {
+                0 => break,
+                _ => self.write_tx.send((n, data_buf)).await?
+            }
+        }
+    
         Ok(())
     }
-    */
     pub async fn send_event<T>(&mut self, addr: &str, key: &str, payload: T) -> Result<(), ProcessError> where T: serde::Serialize, for<'de> T: serde::Deserialize<'de>, T: Debug {
         let route = Route {
             source: Participator::Service(self.addr.clone()),

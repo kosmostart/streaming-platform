@@ -3,7 +3,7 @@
 pub use futures;
 pub use tokio;
 pub use sp_dto;
-pub use proto::{ServerConfig, ClientMsg, ProcessStreamMsg, ProcessEventRaw, ProcessRpcRaw, ProcessEvent, ProcessRpc, StreamStartup, Startup, MagicBall, ProcessError};
+pub use proto::{ServerConfig, ClientMsg, ProcessStream, ProcessEventRaw, ProcessRpcRaw, ProcessEvent, ProcessRpc, StreamStartup, Startup, MagicBall, ProcessError};
 #[cfg(not(feature = "fs"))]
 pub use broker::server::{start, start_future};
 #[cfg(feature = "fs")]

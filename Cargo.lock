@@ -598,9 +598,9 @@ dependencies = [
 
 [[package]]
 name = "hermit-abi"
-version = "0.1.5"
+version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f629dc602392d3ec14bfc8a09b5e644d7ffd725102b48b81e59f90f2633621d7"
+checksum = "eff2656d88f158ce120947499e971d743c05dbcbed62e5bd2f38f1698bbc3772"
 dependencies = [
  "libc",
 ]
@@ -1097,9 +1097,9 @@ checksum = "369a6ed065f249a159e06c45752c780bda2fb53c995718f9e484d08daa9eb42e"
 
 [[package]]
 name = "proc-macro2"
-version = "1.0.6"
+version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9c9e470a8dc4aeae2dee2f335e8f533e2d4b347e1434e5671afc49b054592f27"
+checksum = "0319972dcae462681daf4da1adeeaa066e3ebd29c69be96c6abb1259d2ee2bcc"
 dependencies = [
  "unicode-xid",
 ]
@@ -1115,9 +1115,9 @@ dependencies = [
 
 [[package]]
 name = "quick-error"
-version = "1.2.2"
+version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9274b940887ce9addde99c4eee6b5c44cc494b182b97e73dc8ffdcb3397fd3f0"
+checksum = "a1d01941d82fa2ab50be1e79e6714289dd7cde78eba4c074bc5a4374f650dfe0"
 
 [[package]]
 name = "quote"
@@ -1741,9 +1741,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "1.0.11"
+version = "1.0.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dff0acdb207ae2fe6d5976617f887eb1e35a2ba52c13c7234c790960cdad9238"
+checksum = "1e4ff033220a41d1a57d8125eab57bf5263783dfdcc18688b1dacc6ce9651ef8"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2067,7 +2067,7 @@ dependencies = [
 [[package]]
 name = "warp"
 version = "0.2.0-alpha.0"
-source = "git+https://github.com/seanmonstar/warp#cbc8f472a663f30dcf92c149a43a1ee81e1f38b5"
+source = "git+https://github.com/seanmonstar/warp#e94309e274872efed34e2a80f1e4553a45963510"
 dependencies = [
  "bytes 0.5.3",
  "futures",
@@ -2286,7 +2286,7 @@ dependencies = [
 [[package]]
 name = "yew"
 version = "0.10.1"
-source = "git+https://github.com/DenisKolodin/yew#a900fbee496d1140b424bcb2f1c91402d20eca2b"
+source = "git+https://github.com/DenisKolodin/yew#eaf51250184da54e743d0aea4d51226c3bd1d51e"
 dependencies = [
  "anymap",
  "bincode",
@@ -2309,7 +2309,7 @@ dependencies = [
 [[package]]
 name = "yew-macro"
 version = "0.10.1"
-source = "git+https://github.com/DenisKolodin/yew#a900fbee496d1140b424bcb2f1c91402d20eca2b"
+source = "git+https://github.com/DenisKolodin/yew#eaf51250184da54e743d0aea4d51226c3bd1d51e"
 dependencies = [
  "autocfg",
  "boolinator",

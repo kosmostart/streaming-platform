@@ -134,7 +134,13 @@ pub struct MsgMeta {
 pub enum MsgKind {
     Event,
     RpcRequest,
-    RpcResponse
+    RpcResponse(RpcResult)
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum RpcResult {
+    Ok,
+    Err
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -293,14 +299,14 @@ pub fn event_dto<T>(tx: String, rx: String, key: String, payload: T, route: Rout
     Ok(buf)
 }
 
-pub fn reply_to_rpc_dto<T>(tx: String, rx: String, key: String, correlation_id: Uuid, payload: T, route: Route) -> Result<Vec<u8>, Error> where T: Debug, T: serde::Serialize {
+pub fn reply_to_rpc_dto<T>(tx: String, rx: String, key: String, correlation_id: Uuid, payload: T, result: RpcResult, route: Route) -> Result<Vec<u8>, Error> where T: Debug, T: serde::Serialize {
     let mut payload = serde_json::to_vec(&payload)?;
 
     let msg_meta = MsgMeta {
         tx,
         rx,
         key,
-        kind: MsgKind::RpcResponse,
+        kind: MsgKind::RpcResponse(result),
         correlation_id,
         route,
         payload_size: payload.len() as u64,
@@ -502,7 +508,7 @@ pub fn event_dto2(tx: String, rx: String, key: String, mut payload: Vec<u8>, rou
     Ok(buf)
 }
 
-pub fn reply_to_rpc_dto2(tx: String, rx: String, key: String, correlation_id: Uuid, mut payload: Vec<u8>, attachments: Vec<(String, u64)>, mut attachments_data: Vec<u8>, route: Route) -> Result<Vec<u8>, Error> {
+pub fn reply_to_rpc_dto2(tx: String, rx: String, key: String, correlation_id: Uuid, mut payload: Vec<u8>, attachments: Vec<(String, u64)>, mut attachments_data: Vec<u8>, result: RpcResult, route: Route) -> Result<Vec<u8>, Error> {
     let mut attachments_meta = vec![];
 
     for (attachment_name,attachment_size) in attachments {
@@ -516,7 +522,7 @@ pub fn reply_to_rpc_dto2(tx: String, rx: String, key: String, correlation_id: Uu
         tx,
         rx,
         key,
-        kind: MsgKind::RpcResponse,
+        kind: MsgKind::RpcResponse(result),
         correlation_id,
         route,
         payload_size: payload.len() as u64,
@@ -536,7 +542,7 @@ pub fn reply_to_rpc_dto2(tx: String, rx: String, key: String, correlation_id: Uu
     Ok(buf)
 }
 
-pub fn reply_to_rpc_dto_with_later_attachments2(tx: String, rx: String, key: String, correlation_id: Uuid, mut payload: Vec<u8>, attachments: Vec<(String, u64)>, route: Route) -> Result<Vec<u8>, Error> {
+pub fn reply_to_rpc_dto_with_later_attachments2(tx: String, rx: String, key: String, correlation_id: Uuid, mut payload: Vec<u8>, attachments: Vec<(String, u64)>, result: RpcResult, route: Route) -> Result<Vec<u8>, Error> {
     let mut attachments_meta = vec![];
 
     for (attachment_name,attachment_size) in attachments {
@@ -550,7 +556,7 @@ pub fn reply_to_rpc_dto_with_later_attachments2(tx: String, rx: String, key: Str
         tx,
         rx,
         key,
-        kind: MsgKind::RpcResponse,
+        kind: MsgKind::RpcResponse(result),
         correlation_id,
         route,
         payload_size: payload.len() as u64,
@@ -735,6 +741,20 @@ pub fn get_msg<T>(data: &[u8]) -> Result<(MsgMeta, T, Vec<(String, Vec<u8>)>), E
     }
 
     Ok((msg_meta, payload, attachments))
+}
+
+pub fn get_msg_meta_and_payload<T>(data: &[u8]) -> Result<(MsgMeta, T), Error> where T: Debug, T: serde::Serialize, for<'de> T: serde::Deserialize<'de> {
+    let mut buf = Cursor::new(data);    
+    let len = buf.get_u32();
+    let msg_meta_offset = (len + 4) as usize;
+
+    let msg_meta = serde_json::from_slice::<MsgMeta>(&data[4..msg_meta_offset as usize])?;
+
+    let payload_offset = msg_meta_offset + msg_meta.payload_size as usize;
+
+    let payload = serde_json::from_slice::<T>(&data[msg_meta_offset..payload_offset])?;    
+
+    Ok((msg_meta, payload))
 }
 
 pub fn get_payload<T>(msg_meta: &MsgMeta, data: &[u8]) -> Result<T, Error> where T: Debug, T: serde::Serialize, for<'de> T: serde::Deserialize<'de> {

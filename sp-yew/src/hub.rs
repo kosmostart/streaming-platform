@@ -266,14 +266,14 @@ impl Agent for Worker {
     }
     // Handle inner messages (of services of `send_back` callbacks)
     fn update(&mut self, msg: Self::Message) { /* ... */ 
-        self.console.log("hub: got update");
+        //self.console.log("hub: got update");
         match msg {
             Msg::FetchReady(data) => {
                 let (msg_meta, payload, _) = get_msg::<Value>(&data).expect("failed to get msg on FetchReady");
                 self.fetch_tasks.remove(&msg_meta.correlation_id);
                 //self.console.log(&msg_meta.display());
                 match msg_meta.kind {
-                    MsgKind::RpcResponse => {
+                    MsgKind::RpcResponse(_) => {
                         match msg_meta.route.spec {
                             RouteSpec::Simple => {
                                 match msg_meta.source_cmp_addr() {

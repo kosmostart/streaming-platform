@@ -166,13 +166,13 @@ where
                                 let correlation_id = msg_meta.correlation_id;
                                 let tx = msg_meta.tx.clone();
                                 let key = msg_meta.key.clone();
-                                let (payload, attachments, attachments_data) = match process_rpc(config.clone(), mb.clone(), MessageRaw { meta: msg_meta, payload, attachments_data }).await {
+                                let (payload, attachments, attachments_data, rpc_result) = match process_rpc(config.clone(), mb.clone(), MessageRaw { meta: msg_meta, payload, attachments_data }).await {
                                     Ok(res) => {
                                         let (payload, attachments, attachments_data) = match res {
                                             ResponseRaw::Simple(payload) => (payload, vec![], vec![]),
                                             ResponseRaw::Full(payload, attachments, attachments_data) => (payload, attachments, attachments_data)
                                         };
-                                        (payload, attachments, attachments_data)
+                                        (payload, attachments, attachments_data, RpcResult::Ok)
                                     }
                                     Err(e) => {
                                         error!("process rpc error {} {:?}", mb.get_addr(), e);
@@ -180,15 +180,15 @@ where
                                             "e": e.to_string()
                                         })).expect("failed to serialize rpc process error");
 
-                                        (payload, vec![], vec![])
+                                        (payload, vec![], vec![], RpcResult::Err)
                                     }
                                 };
                                 route.points.push(Participator::Service(mb.get_addr()));
-                                let res = reply_to_rpc_dto2(mb.get_addr(), tx, key, correlation_id, payload, attachments, attachments_data, route).expect("failed to create rpc reply");
+                                let res = reply_to_rpc_dto2(mb.get_addr(), tx, key, correlation_id, payload, attachments, attachments_data, rpc_result, route).expect("failed to create rpc reply");
                                 write(res, &mut write_tx3).await.expect("failed to write rpc response");
                             });                            
                         }
-                        MsgKind::RpcResponse => {
+                        MsgKind::RpcResponse(_) => {
                             match rpc_inbound_tx2.send(RpcMsg::RpcDataRequest(msg_meta.correlation_id)).await {
                                 Ok(()) => {}
                                 Err(_) => panic!("rpc inbound tx2 send failed")
@@ -316,25 +316,25 @@ where
                                 let tx = msg_meta.tx.clone();
                                 let key = msg_meta.key.clone();
                                 let payload: P = from_slice(&payload).expect("failed to deserialize rpc request payload");                            
-                                let (payload, attachments, attachments_data) = match process_rpc(config.clone(), mb.clone(), Message { meta: msg_meta, payload, attachments_data }).await {
+                                let (payload, attachments, attachments_data, rpc_result) = match process_rpc(config.clone(), mb.clone(), Message { meta: msg_meta, payload, attachments_data }).await {
                                     Ok(res) => {
                                         let (res, attachments, attachments_data) = match res {
                                             Response::Simple(payload) => (payload, vec![], vec![]),
                                             Response::Full(payload, attachments, attachments_data) => (payload, attachments, attachments_data)
                                         };
-                                        (to_vec(&res).expect("failed to serialize rpc process result"), attachments, attachments_data)
+                                        (to_vec(&res).expect("failed to serialize rpc process result"), attachments, attachments_data, RpcResult::Ok)
                                     }
                                     Err(e) =>  {
                                         error!("process rpc error {} {:?}", mb.get_addr(), e);
-                                        (to_vec(&json!({ "err": e.to_string() })).expect("failed to serialize rpc process error result"), vec![], vec![])
+                                        (to_vec(&json!({ "err": e.to_string() })).expect("failed to serialize rpc process error result"), vec![], vec![], RpcResult::Err)
                                     }
                                 };                                
                                 route.points.push(Participator::Service(mb.get_addr()));
-                                let res = reply_to_rpc_dto2(mb.get_addr(), tx, key, correlation_id, payload, attachments, attachments_data, route).expect("failed to create rpc reply");
+                                let res = reply_to_rpc_dto2(mb.get_addr(), tx, key, correlation_id, payload, attachments, attachments_data, rpc_result, route).expect("failed to create rpc reply");
                                 write(res, &mut write_tx3).await.expect("failed to write rpc response");                                
                             });                            
                         }
-                        MsgKind::RpcResponse => {                                                        
+                        MsgKind::RpcResponse(_) => {                                                        
                             match rpc_inbound_tx2.send(RpcMsg::RpcDataRequest(msg_meta.correlation_id)).await {
                                 Ok(()) => {}
                                 Err(_) => panic!("rpc inbound tx2 msg send failed on rpc response")

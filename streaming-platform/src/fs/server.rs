@@ -213,7 +213,7 @@ async fn process_msg(msg_meta: &MsgMeta, payload: &Value, socket_write: &mut Wri
                         .ok_or(ProcessError::GetFile(GetFileError::FileNameIsEmpty))?
                         .to_owned()
                     , size)
-                ], msg_meta.route.clone())?;
+                ], RpcResult::Ok, msg_meta.route.clone())?;
 
                 socket_write.write_all(&reply_dto).await?;                
 

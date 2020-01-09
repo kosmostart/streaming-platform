@@ -212,7 +212,7 @@ pub enum ServerMsg {
 }
 
 /// Type for function called on data stream processing
-pub type ProcessStream<T> = fn(HashMap<String, String>, MagicBall, Receiver<ClientMsg>) -> T;
+pub type ProcessStream<T> = fn(HashMap<String, String>, MagicBall, Receiver<ClientMsg>, Option<Receiver<RestreamMsg>>) -> T;
 /// Type for function called on event processing with raw payload
 pub type ProcessEventRaw<T> = fn(HashMap<String, String>, MagicBall, MessageRaw) -> T;
 /// Type for function called on rpc processing with raw payload
@@ -244,6 +244,17 @@ pub enum ClientMsg {
     MessageFinished,
     /// This is sent in FullMessage mode without fs future
     Message(MsgMeta, Vec<u8>, Vec<u8>)
+}
+
+pub enum RestreamMsg {
+    StartSimple,
+    #[cfg(feature = "http")]
+    StartHttp(hyper::body::Sender, oneshot::Sender<StreamCompletion>)
+}
+
+pub enum StreamCompletion {
+    Ok,
+    Err
 }
 
 pub async fn write(data: Vec<u8>, write_tx: &mut Sender<(usize, [u8; DATA_BUF_SIZE])>) -> Result<(), ProcessError> {

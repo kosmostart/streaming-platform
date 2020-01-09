@@ -10,7 +10,7 @@ use serde_json::{json, Value, from_slice, to_vec};
 use sp_dto::*;
 use crate::proto::*;
 
-pub async fn stream_mode<T: 'static>(host: &str, addr: &str, access_key: &str, process_stream: ProcessStream<T>, config: HashMap<String, String>)
+pub async fn stream_mode<T: 'static>(host: &str, addr: &str, access_key: &str, process_stream: ProcessStream<T>, config: HashMap<String, String>, restream_rx: Option<Receiver<RestreamMsg>>)
 where 
     T: Future<Output = ()> + Send    
 {    
@@ -67,7 +67,7 @@ where
         println!("{:?}", res);        
     });
     let mut mb = MagicBall::new(addr2, write_tx2, rpc_inbound_tx);
-    tokio::spawn(process_stream(config, mb, read_rx));
+    tokio::spawn(process_stream(config, mb, read_rx, restream_rx));
     connect_stream_future(host, addr3, read_tx, write_rx).await;
 }
 

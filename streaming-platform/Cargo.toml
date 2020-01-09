@@ -11,14 +11,16 @@ edition = "2018"
 log = "*"
 bytes = "*"
 futures = { version = "0.3.0", features = ["async-await"] }
-tokio = { version = "0.2", features = ["full"] }
 serde = "*"
 serde_derive = "*"
 serde_json = "*"
 toml = "*"
+tokio = { version = "0.2", features = ["full"] }
+hyper = { version = "*", optional = true }
 sp-dto = { path = "../sp-dto" }
 
 [features]
 
 default = []
+http = ["hyper"]
 fs = []

@@ -310,14 +310,18 @@ pub struct Dir {
 
 pub struct Client {
     pub net_addr: SocketAddr,
-    pub tx: Sender<(u32, usize, [u8; DATA_BUF_SIZE])>
+    pub tx: Sender<StreamUnit>
 }
 
 pub enum ServerMsg {
-    AddClient(String, SocketAddr, Sender<(u32, usize, [u8; DATA_BUF_SIZE])>),
-    SendArray(String, u32, usize, [u8; DATA_BUF_SIZE]),
-    SendVec(String, u32, Vec<u8>),
+    AddClient(String, SocketAddr, Sender<StreamUnit>),
+    SendUnit(String, StreamUnit),
     RemoveClient(String)
+}
+
+pub enum StreamUnit {
+    Array(u32, usize, [u8; DATA_BUF_SIZE]),
+    Vector(u32, Vec<u8>)
 }
 
 /// Type for function called on data stream processing

@@ -3,6 +3,7 @@ use std::pin::Pin;
 use std::error::Error;
 use std::fmt::{Debug, Display};
 use std::option;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::io::Cursor;
 use std::net::SocketAddr;
 use log::*;
@@ -20,6 +21,15 @@ pub const DATA_BUF_SIZE: usize = 1024;
 pub const MPSC_SERVER_BUF_SIZE: usize = 1000;
 pub const MPSC_CLIENT_BUF_SIZE: usize = 100;
 pub const MPSC_RPC_BUF_SIZE: usize = 10000;
+
+static COUNTER: AtomicU32 = AtomicU32::new(1);
+
+pub fn get_stream_id() -> u32 { 
+    if COUNTER.load(Ordering::Relaxed) == std::u32::MAX {
+        COUNTER.store(1, Ordering::Relaxed);
+    }    
+    COUNTER.fetch_add(1, Ordering::Relaxed) 
+}
 
 #[derive(Debug, Clone)]
 pub enum ClientKind {
@@ -82,13 +92,15 @@ pub enum ReadResult {
 #[derive(Debug)]
 pub enum Step {
     Len,
-    MsgMeta(u32),
+    // len of message meta struct
+    MsgMeta(u32),    
     Payload,
+    // current attachment index
     Attachment(usize),
     Finish
 }
 
-/// Data structure used for convenience when streaming data from source
+// Data structure used for convenience when streaming data from source
 pub struct State {
     pub step: Step,
     pub attachments: Option<Vec<u64>>    
@@ -135,7 +147,7 @@ pub async fn read(state: &mut State, adapter: &mut Take<ReadHalf<'_>>) -> Result
             Ok(ReadResult::MsgMeta(msg_meta, buf))
         }
         Step::Payload => {
-            let mut data_buf = [0; DATA_BUF_SIZE];                       
+            let mut data_buf = [0; DATA_BUF_SIZE];
 
             match adapter.read(&mut data_buf).await? {
                 0 => {
@@ -257,7 +269,7 @@ pub enum StreamCompletion {
     Err
 }
 
-pub async fn write(data: Vec<u8>, write_tx: &mut Sender<(usize, [u8; DATA_BUF_SIZE])>) -> Result<(), ProcessError> {
+pub async fn write(stream_id: u32, data: Vec<u8>, write_tx: &mut Sender<(u32, usize, [u8; DATA_BUF_SIZE])>) -> Result<(), ProcessError> {
     let mut source = &data[..];
 
     loop {
@@ -266,7 +278,7 @@ pub async fn write(data: Vec<u8>, write_tx: &mut Sender<(usize, [u8; DATA_BUF_SI
 
         match n {
             0 => break,
-            _ => write_tx.send((n, data_buf)).await?
+            _ => write_tx.send((stream_id, n, data_buf)).await?
         }
     }
 
@@ -297,24 +309,29 @@ pub enum RpcMsg {
 }
 
 #[derive(Clone)]
-pub struct MagicBall {
+pub struct MagicBall {    
     addr: String,
-    pub write_tx: Sender<(usize, [u8; DATA_BUF_SIZE])>,
+    pub write_tx: Sender<(u32, usize, [u8; DATA_BUF_SIZE])>,
     rpc_inbound_tx: Sender<RpcMsg>
 }
 
+
 impl MagicBall {
-    pub fn new(addr: String, write_tx: Sender<(usize, [u8; DATA_BUF_SIZE])>, rpc_inbound_tx: Sender<RpcMsg>) -> MagicBall {
-        MagicBall {
+    pub fn new(addr: String, write_tx: Sender<(u32, usize, [u8; DATA_BUF_SIZE])>, rpc_inbound_tx: Sender<RpcMsg>) -> MagicBall {
+        MagicBall {            
             addr,
             write_tx,
             rpc_inbound_tx
         }
-    }
+    }    
     pub fn get_addr(&self) -> String {
 		self.addr.clone()
     }
-    pub async fn write_vec(&mut self, data: Vec<u8>) -> Result<(), ProcessError> {
+    /// Please note, stream_id value MUST ONLY BE ACQUIRED with get_stream_id() function. 
+    /// This value MUST BE UNIQUE FOR EACH MESSAGE IN TRANSFER AT CURRENT MOMENT OF TIME (that is what get_stream_id() function does).
+    /// stream_id generation made explicit on purpose to point out RESPONSIBILITY OF THE USER OF THIS FUNCTION.
+    /// Ofcourse, stream_id generation can be implicit - this, however, will lead to less flexible API (if for example you need to call this function multiple times to write parts of one message).
+    pub async fn write_vec(&mut self, stream_id: u32, data: Vec<u8>) -> Result<(), ProcessError> {
         let mut source = &data[..];
     
         loop {
@@ -323,7 +340,7 @@ impl MagicBall {
     
             match n {
                 0 => break,
-                _ => self.write_tx.send((n, data_buf)).await?
+                _ => self.write_tx.send((stream_id, n, data_buf)).await?
             }
         }
     
@@ -338,7 +355,7 @@ impl MagicBall {
 
         let dto = event_dto(self.addr.clone(), addr.to_owned(), key.to_owned(), payload, route)?;
 
-        write(dto, &mut self.write_tx).await?;
+        write(get_stream_id(), dto, &mut self.write_tx).await?;
         
         Ok(())
     }
@@ -349,7 +366,7 @@ impl MagicBall {
 
         let dto = event_dto(self.get_addr(), addr.to_owned(), key.to_owned(), payload, route)?;
 
-        write(dto, &mut self.write_tx).await?;
+        write(get_stream_id(), dto, &mut self.write_tx).await?;
         
         Ok(())
     }    
@@ -366,7 +383,7 @@ impl MagicBall {
         let (rpc_tx, rpc_rx) = oneshot::channel();
         
         self.rpc_inbound_tx.send(RpcMsg::AddRpc(correlation_id, rpc_tx)).await?;        
-        write(dto, &mut self.write_tx).await?;        
+        write(get_stream_id(), dto, &mut self.write_tx).await?;        
 
         let (msg_meta, payload, attachments_data) = rpc_rx.await?;
         let payload: R = from_slice(&payload)?;        
@@ -386,7 +403,7 @@ impl MagicBall {
         let (rpc_tx, rpc_rx) = oneshot::channel();
         
         self.rpc_inbound_tx.send(RpcMsg::AddRpc(correlation_id, rpc_tx)).await?;
-        write(dto, &mut self.write_tx).await?;
+        write(get_stream_id(), dto, &mut self.write_tx).await?;
 
         let (msg_meta, payload, attachments_data) = rpc_rx.await?;
         let payload: R = from_slice(&payload)?;        
@@ -426,7 +443,7 @@ impl MagicBall {
         buf.append(&mut msg_meta);
         buf.append(&mut payload_with_attachments);
 
-        write(buf, &mut self.write_tx).await?;
+        write(get_stream_id(), buf, &mut self.write_tx).await?;
         
         Ok(())
     }    
@@ -464,7 +481,7 @@ impl MagicBall {
         let (rpc_tx, rpc_rx) = oneshot::channel();
                 
         self.rpc_inbound_tx.send(RpcMsg::AddRpc(correlation_id, rpc_tx)).await?;
-        write(buf, &mut self.write_tx).await?;
+        write(get_stream_id(), buf, &mut self.write_tx).await?;
 
         let (msg_meta, mut payload, mut attachments) = rpc_rx.await?;
 
@@ -564,8 +581,8 @@ impl From<option::NoneError> for ProcessError {
 	}
 }
 
-impl From<SendError<(usize, [u8; DATA_BUF_SIZE])>> for ProcessError {
-	fn from(err: SendError<(usize, [u8; DATA_BUF_SIZE])>) -> ProcessError {
+impl From<SendError<(u32, usize, [u8; DATA_BUF_SIZE])>> for ProcessError {
+	fn from(err: SendError<(u32, usize, [u8; DATA_BUF_SIZE])>) -> ProcessError {
 		ProcessError::SendBufError
 	}
 }

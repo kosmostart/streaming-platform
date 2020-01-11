@@ -3,6 +3,7 @@ use std::io::{Cursor, BufReader, Read};
 use std::net::SocketAddr;
 use log::*;
 use futures::{select, pin_mut, future::FutureExt};
+use bytes::{BytesMut, BufMut};
 use tokio::runtime::Runtime;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc::{self, Sender};
@@ -83,12 +84,13 @@ async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut 
     
     let (mut client_tx, mut client_rx) = mpsc::channel(MPSC_CLIENT_BUF_SIZE);
 
-    server_tx.send(ServerMsg::AddClient(auth_msg_meta.tx.clone(), client_net_addr, client_tx)).await?;
+    server_tx.send(ServerMsg::AddClient("".to_owned(), client_net_addr, client_tx)).await?;
+    //server_tx.send(ServerMsg::AddClient(auth_msg_meta.tx.clone(), client_net_addr, client_tx)).await?;
 
     let mut adapter = socket_read.take(LENS_BUF_SIZE as u64);
     let mut state = State::new();
-    
-    let mut client_addrs: HashMap::new();
+    let mut buf_u32 = BytesMut::with_capacity(4);
+    let mut client_addrs = HashMap::new();
 
     loop {
         let f1 = read(&mut state, &mut adapter).fuse();
@@ -101,46 +103,29 @@ async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut 
 
                 match res? {
                     
-                    ReadResult::MsgMeta(new_msg_meta, buf) => {
-                        //info!("msg meta");
-                        info!("{:?}", new_msg_meta);
-                        server_tx.send(ServerMsg::SendBuf(new_msg_meta.rx.clone(), LEN_BUF_SIZE, len_buf.ok_or(ProcessError::NoneError)?)).await?;
-                        len_buf = None;
-                        //info!("server new_msg_meta len {}", buf.len());
-                        server_write(&new_msg_meta.rx, stream_id, buf, &mut server_tx).await?;
-                        msg_meta = Some(new_msg_meta);                        
+                    ReadResult::MsgMeta(stream_id, msg_meta, buf) => {
+                        info!("{:?}", msg_meta);
+                        client_addrs.insert(stream_id, msg_meta.rx.clone());
+                        server_tx.send(ServerMsg::SendVec(msg_meta.rx.clone(), stream_id, buf)).await?;
                     }
-                    ReadResult::PayloadData(n, buf) => {
-                        //info!("payload data");
-                        match msg_meta {
-                            Some(ref msg_meta) => {
-                                server_tx.send(ServerMsg::SendBuf(msg_meta.rx.clone(), n, buf)).await?;
-                            }
-                            None => {
-
-                            }
-                        }
+                    ReadResult::PayloadData(stream_id, n, buf) => {                        
+                        let client_addr = client_addrs.get(&stream_id).ok_or(ProcessError::ClientAddrNotFound)?;
+                        server_tx.send(ServerMsg::SendArray(client_addr.clone(), stream_id, n, buf)).await?;
                     }
-                    ReadResult::PayloadFinished => {
-                        //info!("payload finished");
+                    ReadResult::PayloadFinished(stream_id, n, buf) => {
+                        let client_addr = client_addrs.get(&stream_id).ok_or(ProcessError::ClientAddrNotFound)?;
+                        server_tx.send(ServerMsg::SendArray(client_addr.clone(), stream_id, n, buf)).await?;
                     }
-                    ReadResult::AttachmentData(index, n, buf) => {
-                        //info!("attachment data");
-                        match msg_meta {
-                            Some(ref msg_meta) => {
-                                server_tx.send(ServerMsg::SendBuf(msg_meta.rx.clone(), n, buf)).await?;
-                            }
-                            None => {
-
-                            }
-                        }
+                    ReadResult::AttachmentData(stream_id, _, n, buf) => {
+                        let client_addr = client_addrs.get(&stream_id).ok_or(ProcessError::ClientAddrNotFound)?;
+                        server_tx.send(ServerMsg::SendArray(client_addr.clone(), stream_id, n, buf)).await?;
                     }
-                    ReadResult::AttachmentFinished(index) => {
-                        //info!("attachment finished");
+                    ReadResult::AttachmentFinished(stream_id, _, n, buf) => {
+                        let client_addr = client_addrs.get(&stream_id).ok_or(ProcessError::ClientAddrNotFound)?;
+                        server_tx.send(ServerMsg::SendArray(client_addr.clone(), stream_id, n, buf)).await?;
                     }
-                    ReadResult::MessageFinished => {                        
-                        //info!("message finished");
-                        msg_meta = None;
+                    ReadResult::MessageFinished(stream_id) => {                        
+                        let _ = client_addrs.remove(&stream_id).ok_or(ProcessError::ClientAddrNotFound)?;
                     }
                 };                            
             }

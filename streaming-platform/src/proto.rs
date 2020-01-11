@@ -315,7 +315,8 @@ pub struct Client {
 
 pub enum ServerMsg {
     AddClient(String, SocketAddr, Sender<(u32, usize, [u8; DATA_BUF_SIZE])>),
-    SendBuf(String, u32, usize, [u8; DATA_BUF_SIZE]),
+    SendArray(String, u32, usize, [u8; DATA_BUF_SIZE]),
+    SendVec(String, u32, Vec<u8>),
     RemoveClient(String)
 }
 
@@ -373,22 +374,6 @@ pub async fn write(stream_id: u32, data: Vec<u8>, write_tx: &mut Sender<(u32, us
         match n {
             0 => break,
             _ => write_tx.send((stream_id, n, data_buf)).await?
-        }
-    }
-
-    Ok(())
-}
-
-pub async fn server_write(rx: &str, stream_id: u32, data: Vec<u8>, write_tx: &mut Sender<ServerMsg>) -> Result<(), ProcessError> {
-    let mut source = &data[..];
-
-    loop {
-        let mut data_buf = [0; DATA_BUF_SIZE];
-        let n = source.read(&mut data_buf).await?;        
-
-        match n {
-            0 => break,
-            _ => write_tx.send(ServerMsg::SendBuf(rx.to_owned(), stream_id, n, data_buf)).await?
         }
     }
 
@@ -595,6 +580,7 @@ impl MagicBall {
 pub enum ProcessError {
     StreamNotFoundInState,
     StreamLayoutNotFound,
+    ClientAddrNotFound,
     BytesReadAmountExceededPayloadSize,
     PayloadSizeChecksFailed,
     BytesReadAmountExceededAttachmentSize,

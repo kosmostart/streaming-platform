@@ -88,11 +88,11 @@ pub async fn start_future() -> Result<(), ProcessError> {
 async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut server_tx: Sender<ServerMsg>, config: &ServerConfig) -> Result<(), ProcessError> {
     let (mut socket_read, mut socket_write) = stream.split();
 
-    let (auth_msg_meta, auth_payload, auth_attachments) = read_full(&mut socket_read).await?;
-    let auth_payload: Value = from_slice(&auth_payload)?;    
+    //let (auth_msg_meta, auth_payload, auth_attachments) = read_full(&mut socket_read).await?;
+    //let auth_payload: Value = from_slice(&auth_payload)?;    
 
-    println!("auth {:?}", auth_msg_meta);
-    println!("auth {:?}", auth_payload);
+    //println!("auth {:?}", auth_msg_meta);
+    //println!("auth {:?}", auth_payload);
     
     let (mut client_tx, mut client_rx) = mpsc::channel(MPSC_CLIENT_BUF_SIZE);
 

@@ -127,6 +127,13 @@ impl StreamState {
     }    
 }
 
+pub struct StreamLayout {
+    pub id: u32,
+    pub msg_meta: MsgMeta,
+    pub payload: Vec<u8>,
+    pub attachments_data: Vec<u8>
+}
+
 pub async fn read(state: &mut State, adapter: &mut Take<ReadHalf<'_>>) -> Result<ReadResult, ProcessError> {    
     let mut len_buf = [0; LEN_BUF_SIZE];
 
@@ -192,98 +199,14 @@ pub async fn read(state: &mut State, adapter: &mut Take<ReadHalf<'_>>) -> Result
             }
         }
         Step::Finish => {
-            stream_state.step = Step::MsgMeta;
+            let _ = state.stream_states.remove(&stream_id);
             Ok(ReadResult::MessageFinished(stream_id))
         }
     };
 
     adapter.set_limit(LENS_BUF_SIZE as u64);
 
-    res
-
-    /*
-    match stream_state.step {        
-        Step::Len => {
-            //info!("step len");
-            let mut len_buf = [0; DATA_BUF_SIZE];
-            adapter.read(&mut len_buf).await?;
-
-            let mut buf = Cursor::new(&len_buf[..LEN_BUF_SIZE]);
-            let len = buf.get_u32();
-
-            state.step = Step::MsgMeta(len);
-
-            //info!("step len ok");
-
-            Ok(ReadResult::LenFinished(len_buf))
-        }
-        Step::MsgMeta(len) => {
-            adapter.set_limit(len as u64);
-            let mut buf = vec![];
-            let n = adapter.read_to_end(&mut buf).await?;
-
-            let msg_meta: MsgMeta = from_slice(&buf)?;
-            adapter.set_limit(msg_meta.payload_size as u64);
-
-            state.attachments = Some(msg_meta.attachments.iter().map(|x| x.size).collect());
-
-            state.step = Step::Payload;
-
-            Ok(ReadResult::MsgMeta(msg_meta, buf))
-        }
-        Step::Payload => {
-            let mut data_buf = [0; DATA_BUF_SIZE];
-
-            match adapter.read(&mut data_buf).await? {
-                0 => {
-                    let attachments = state.attachments.as_ref().ok_or(ProcessError::AttachmentFieldIsEmpty)?;
-
-                    match attachments.len() {
-                        0 => {
-                            adapter.set_limit(LEN_BUF_SIZE as u64);
-                            state.step = Step::Finish;
-                        }
-                        _ => {                      
-                            adapter.set_limit(attachments[0] as u64);
-                            state.step = Step::Attachment(0);
-                        }                            
-                    };
-
-                    Ok(ReadResult::PayloadFinished)
-                }
-                n => Ok(ReadResult::PayloadData(n, data_buf))
-            }                                
-        }
-        Step::Attachment(index) => {
-            let mut data_buf = [0; DATA_BUF_SIZE];                       
-
-            match adapter.read(&mut data_buf).await? {
-                0 => {
-                    let attachments = state.attachments.as_ref().ok_or(ProcessError::AttachmentFieldIsEmpty)?;
-
-                    match index < attachments.len() - 1 {
-                        true => {
-                            let new_index = index + 1;
-                            adapter.set_limit(attachments[new_index] as u64);
-                            state.step = Step::Attachment(new_index);
-                        }
-                        false => {
-                            adapter.set_limit(LEN_BUF_SIZE as u64);
-                            state.step = Step::Finish;
-                        }
-                    };
-
-                    Ok(ReadResult::AttachmentFinished(index))
-                }
-                n => Ok(ReadResult::AttachmentData(index, n, data_buf))
-            }
-        }
-        Step::Finish => {
-            state.step = Step::Len;
-            Ok(ReadResult::MessageFinished)
-        }
-    }
-    */
+    res    
 }
 
 /*
@@ -387,12 +310,12 @@ pub struct Dir {
 
 pub struct Client {
     pub net_addr: SocketAddr,
-    pub tx: Sender<(usize, [u8; DATA_BUF_SIZE])>
+    pub tx: Sender<(u32, usize, [u8; DATA_BUF_SIZE])>
 }
 
 pub enum ServerMsg {
-    AddClient(String, SocketAddr, Sender<(usize, [u8; DATA_BUF_SIZE])>),
-    SendBuf(String, usize, [u8; DATA_BUF_SIZE]),
+    AddClient(String, SocketAddr, Sender<(u32, usize, [u8; DATA_BUF_SIZE])>),
+    SendBuf(String, u32, usize, [u8; DATA_BUF_SIZE]),
     RemoveClient(String)
 }
 
@@ -412,21 +335,19 @@ pub type StreamStartup<T> = fn(HashMap<String, String>) -> T;
 pub type Startup<T> = fn(HashMap<String, String>, MagicBall) -> T;
 
 /// Messages received from client
-pub enum ClientMsg {
-    /// This is sent with fs future
-    FileReceiveComplete(String),
+pub enum ClientMsg {    
     /// This is sent in Stream mode without fs future
-    MsgMeta(MsgMeta),
+    MsgMeta(u32, MsgMeta),
     /// This is sent in Stream mode without fs future
-    PayloadData(usize, [u8; DATA_BUF_SIZE]),
+    PayloadData(u32, usize, [u8; DATA_BUF_SIZE]),
     /// This is sent in Stream mode without fs future
-    PayloadFinished,
+    PayloadFinished(u32, usize, [u8; DATA_BUF_SIZE]),
     /// This is sent in Stream mode without fs future. First field is index, second is number of bytes read, last is data itself.
-    AttachmentData(usize, usize, [u8; DATA_BUF_SIZE]),
+    AttachmentData(u32, usize, usize, [u8; DATA_BUF_SIZE]),
     /// This is sent in Stream mode without fs future
-    AttachmentFinished(usize),
+    AttachmentFinished(u32, usize, usize, [u8; DATA_BUF_SIZE]),
     /// This is sent in Stream mode without fs future
-    MessageFinished,
+    MessageFinished(u32),
     /// This is sent in FullMessage mode without fs future
     Message(MsgMeta, Vec<u8>, Vec<u8>)
 }
@@ -458,7 +379,7 @@ pub async fn write(stream_id: u32, data: Vec<u8>, write_tx: &mut Sender<(u32, us
     Ok(())
 }
 
-pub async fn server_write(data: Vec<u8>, rx: &str, write_tx: &mut Sender<ServerMsg>) -> Result<(), ProcessError> {
+pub async fn server_write(rx: &str, stream_id: u32, data: Vec<u8>, write_tx: &mut Sender<ServerMsg>) -> Result<(), ProcessError> {
     let mut source = &data[..];
 
     loop {
@@ -467,7 +388,7 @@ pub async fn server_write(data: Vec<u8>, rx: &str, write_tx: &mut Sender<ServerM
 
         match n {
             0 => break,
-            _ => write_tx.send(ServerMsg::SendBuf(rx.to_owned(), n, data_buf)).await?
+            _ => write_tx.send(ServerMsg::SendBuf(rx.to_owned(), stream_id, n, data_buf)).await?
         }
     }
 
@@ -667,39 +588,13 @@ impl MagicBall {
         buf.append(&mut attachments);
         
         Ok((msg_meta, buf))
-    }
-    /*
-    pub fn reply_to_rpc(&self, addr: String, key: String, correlation_id: Uuid, payload: R, mut route: Route) -> Result<(), Error> {
-        route.points.push(Participator::Service(self.addr.to_owned()));
-
-        let dto = reply_to_rpc_dto(self.addr.clone(), addr, key, correlation_id, payload, route)?;
-
-        self.sender.send(Message::Binary(dto));
-        
-        Ok(())
-    }
-    */
-    /*
-    pub fn recv_event(&self) -> Result<(MsgMeta, R), Error> {
-        let (msg_meta, len, data) = self.rx.recv()?;            
-
-        let payload = serde_json::from_slice::<R>(&data[len + 4..])?;        
-
-        Ok((msg_meta, payload))
-    }
-    pub fn recv_rpc_request(&self) -> Result<(MsgMeta, T), Error> {
-        let (msg_meta, len, data) = self.rpc_request_rx.recv()?;            
-
-        let payload = serde_json::from_slice::<T>(&data[len + 4..])?;        
-
-        Ok((msg_meta, payload))
-    }
-    */
+    }    
 }
 
 #[derive(Debug)]
 pub enum ProcessError {
     StreamNotFoundInState,
+    StreamLayoutNotFound,
     BytesReadAmountExceededPayloadSize,
     PayloadSizeChecksFailed,
     BytesReadAmountExceededAttachmentSize,

@@ -10,7 +10,7 @@ use tokio::prelude::*;
 use serde_json::{Value, from_slice};
 use sp_dto::MsgMeta;    
 use crate::proto::*;
-
+/*
 pub fn start(config: ServerConfig) {
     let mut rt = Runtime::new().expect("failed to create runtime"); 
     rt.block_on(start_future(config));
@@ -59,41 +59,36 @@ pub async fn start_future(config: ServerConfig) -> Result<(), ProcessError> {
         }
     });    
 
-    println!("ok");
-
     loop {        
         let (mut stream, client_net_addr) = listener.accept().await?;
         let config = config.clone();
         let server_tx = server_tx.clone();
 
-        println!("connected");  
+        info!("connected");  
 
         tokio::spawn(async move {
             let res = process_stream(stream, client_net_addr, server_tx, &config).await;
 
-            println!("{:?}", res);
+            info!("{:?}", res);
         });        
     }
 }
+*/
 
 async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut server_tx: Sender<ServerMsg>, config: &ServerConfig) -> Result<(), ProcessError> {
     let (mut socket_read, mut socket_write) = stream.split();
 
-    let (auth_msg_meta, auth_payload, auth_attachments) = read_full(&mut socket_read).await?;
-    let auth_payload: Value = from_slice(&auth_payload)?;    
-
-    println!("auth {:?}", auth_msg_meta);
-    println!("auth {:?}", auth_payload);
+    //let (auth_msg_meta, auth_payload, auth_attachments) = read_full(&mut socket_read).await?;
+    //let auth_payload: Value = from_slice(&auth_payload)?;        
     
     let (mut client_tx, mut client_rx) = mpsc::channel(MPSC_CLIENT_BUF_SIZE);
 
     server_tx.send(ServerMsg::AddClient(auth_msg_meta.tx.clone(), client_net_addr, client_tx)).await?;
 
-    let mut adapter = socket_read.take(LEN_BUF_SIZE as u64);
+    let mut adapter = socket_read.take(LENS_BUF_SIZE as u64);
     let mut state = State::new();
-
-    let mut len_buf: Option<[u8; DATA_BUF_SIZE]> = None;
-    let mut msg_meta: Option<MsgMeta> = None;
+    
+    let mut client_addrs: HashMap::new();
 
     loop {
         let f1 = read(&mut state, &mut adapter).fuse();
@@ -102,21 +97,17 @@ async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut 
         pin_mut!(f1, f2);
 
         let res = select! {
-            res = f1 => {                
-                let res = res?;                
+            res = f1 => {
 
-                match res {
-                    ReadResult::LenFinished(buf) => {
-                        //info!("len finished");
-                        len_buf = Some(buf);                 
-                    }
+                match res? {
+                    
                     ReadResult::MsgMeta(new_msg_meta, buf) => {
                         //info!("msg meta");
                         info!("{:?}", new_msg_meta);
                         server_tx.send(ServerMsg::SendBuf(new_msg_meta.rx.clone(), LEN_BUF_SIZE, len_buf.ok_or(ProcessError::NoneError)?)).await?;
                         len_buf = None;
                         //info!("server new_msg_meta len {}", buf.len());
-                        server_write(buf, &new_msg_meta.rx, &mut server_tx).await?;
+                        server_write(&new_msg_meta.rx, stream_id, buf, &mut server_tx).await?;
                         msg_meta = Some(new_msg_meta);                        
                     }
                     ReadResult::PayloadData(n, buf) => {
@@ -154,8 +145,12 @@ async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut 
                 };                            
             }
             res = f2 => {
-                //info!("f2 {}", auth_msg_meta.tx);
-                let (n, buf) = res?;
+                //info!("f2 {}", auth_msg_meta.tx);                
+                let (stream_id, n, buf) = res?;
+                buf_u32.put_u32(stream_id);
+                socket_write.write_all(&buf_u32[..]).await?;
+                buf_u32.put_u32(n as u32);
+                socket_write.write_all(&buf_u32[..]).await?;
                 socket_write.write_all(&buf[..n]).await?;
                 //info!("f2 ok {} {}", auth_msg_meta.tx, n);
             }

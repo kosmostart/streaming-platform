@@ -1598,13 +1598,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sp-file-hub"
-version = "0.1.0"
-dependencies = [
- "streaming-platform",
-]
-
-[[package]]
 name = "sp-manager"
 version = "0.1.0"
 dependencies = [
@@ -1660,18 +1653,6 @@ name = "spin"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
-
-[[package]]
-name = "spup"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_derive",
- "serde_json",
- "sp-pack-core",
- "streaming-platform",
- "toml",
-]
 
 [[package]]
 name = "stdweb"

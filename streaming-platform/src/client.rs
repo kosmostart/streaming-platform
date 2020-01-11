@@ -384,7 +384,7 @@ async fn process_message_stream(addr: String, mut stream: TcpStream, mut read_tx
     //println!("auth {:?}", auth_msg_meta);
     //println!("auth {:?}", auth_payload);        
 
-    let mut adapter = socket_read.take(LEN_BUF_SIZE as u64);
+    let mut adapter = socket_read.take(LENS_BUF_SIZE as u64);
     let mut state = State::new();
     let mut buf_u32 = BytesMut::with_capacity(4);
 
@@ -395,18 +395,15 @@ async fn process_message_stream(addr: String, mut stream: TcpStream, mut read_tx
         pin_mut!(f1, f2);
 
         let res = select! {
-            res = f1 => {                
-                let res = res?;                
-
-                match res {
-                    ReadResult::LenFinished(_) => {}
-                    ReadResult::MsgMeta(new_msg_meta, _) => read_tx.send(ClientMsg::MsgMeta(new_msg_meta)).await?,
-                    ReadResult::PayloadData(n, buf) => read_tx.send(ClientMsg::PayloadData(n, buf)).await?,
-                    ReadResult::PayloadFinished => read_tx.send(ClientMsg::PayloadFinished).await?,
-                    ReadResult::AttachmentData(index, n, buf) => read_tx.send(ClientMsg::AttachmentData(index, n, buf)).await?,
-                    ReadResult::AttachmentFinished(index) => read_tx.send(ClientMsg::AttachmentFinished(index)).await?,
-                    ReadResult::MessageFinished => read_tx.send(ClientMsg::MessageFinished).await?
-                };                            
+            res = f1 => {                                
+                match res? {                    
+                    ReadResult::MsgMeta(stream_id, msg_meta, _) => read_tx.send(ClientMsg::MsgMeta(stream_id, msg_meta)).await?,
+                    ReadResult::PayloadData(stream_id, n, buf) => read_tx.send(ClientMsg::PayloadData(stream_id, n, buf)).await?,
+                    ReadResult::PayloadFinished(stream_id, n, buf) => read_tx.send(ClientMsg::PayloadFinished(stream_id, n, buf)).await?,
+                    ReadResult::AttachmentData(stream_id, index, n, buf) => read_tx.send(ClientMsg::AttachmentData(stream_id, index, n, buf)).await?,
+                    ReadResult::AttachmentFinished(stream_id, index, n, buf) => read_tx.send(ClientMsg::AttachmentFinished(stream_id, index, n, buf)).await?,
+                    ReadResult::MessageFinished(stream_id) => read_tx.send(ClientMsg::MessageFinished(stream_id)).await?
+                };
             }
             res = f2 => {                
                 let (stream_id, n, buf) = res?;
@@ -429,22 +426,51 @@ async fn process_full_message(addr: String, mut stream: TcpStream, mut read_tx: 
     //println!("auth {:?}", auth_msg_meta);
     //println!("auth {:?}", auth_payload);
 
+    let mut adapter = socket_read.take(LENS_BUF_SIZE as u64);
     let mut state = State::new();
     let mut buf_u32 = BytesMut::with_capacity(4);
+    let mut stream_layouts = HashMap::new();
 
     loop {
-        let f1 = read_full(&mut socket_read).fuse();
+        let f1 = read(&mut state, &mut adapter).fuse();
         let f2 = write_rx.recv().fuse();
 
         pin_mut!(f1, f2);
 
         let res = select! {
-            res = f1 => {  
-                //info!("client fm f1 {}", addr);
-                let (msg_meta, payload, attachments) = res?;
-                //info!("client fm f1 {} {:?}", addr, msg_meta);
-                read_tx.send(ClientMsg::Message(msg_meta, payload, attachments)).await?;
-                //info!("client fm f1 ok");
+            res = f1 => {
+
+                match res? {                    
+                    ReadResult::MsgMeta(stream_id, msg_meta, _) => {
+                        stream_layouts.insert(stream_id, StreamLayout {
+                            id: stream_id,
+                            msg_meta,
+                            payload: vec![],
+                            attachments_data: vec![]
+                        });
+                    }
+                    ReadResult::PayloadData(stream_id, n, buf) => {
+                        let stream_layout = stream_layouts.get_mut(&stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
+                        stream_layout.payload.extend_from_slice(&buf[..n]);
+
+                    }
+                    ReadResult::PayloadFinished(stream_id, n, buf) => {
+                        let stream_layout = stream_layouts.get_mut(&stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
+                        stream_layout.payload.extend_from_slice(&buf[..n]);
+                    }
+                    ReadResult::AttachmentData(stream_id, _, n, buf) => {
+                        let stream_layout = stream_layouts.get_mut(&stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
+                        stream_layout.attachments_data.extend_from_slice(&buf[..n]);
+                    }
+                    ReadResult::AttachmentFinished(stream_id, _, n, buf) => {
+                        let stream_layout = stream_layouts.get_mut(&stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
+                        stream_layout.attachments_data.extend_from_slice(&buf[..n]);
+                    }
+                    ReadResult::MessageFinished(stream_id) => {
+                        let stream_layout = stream_layouts.remove(&stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
+                        read_tx.send(ClientMsg::Message(stream_layout.msg_meta, stream_layout.payload, stream_layout.attachments_data)).await?;
+                    }
+                };
             }
             res = f2 => {             
                 //info!("client fm f2 {}", addr);   
@@ -457,5 +483,5 @@ async fn process_full_message(addr: String, mut stream: TcpStream, mut read_tx: 
                 //info!("client fm f2 ok {} {}", n, addr);   
             }
         };
-    }    
+    }
 }

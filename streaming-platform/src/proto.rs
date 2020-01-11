@@ -135,14 +135,14 @@ pub struct StreamLayout {
 }
 
 pub async fn read(state: &mut State, adapter: &mut Take<ReadHalf<'_>>) -> Result<ReadResult, ProcessError> {    
-    let mut len_buf = [0; LEN_BUF_SIZE];
+    let mut u32_buf = [0; LEN_BUF_SIZE];
 
     adapter.read(&mut len_buf).await?;
-    let mut buf = Cursor::new(&len_buf[..]);
+    let mut buf = Cursor::new(&u32_buf[..]);
     let stream_id = buf.get_u32();
 
     adapter.read(&mut len_buf).await?;
-    let mut buf = Cursor::new(&len_buf[..]);
+    let mut buf = Cursor::new(&u32_buf[..]);
     let len = buf.get_u32();
 
     let stream_state = state.stream_states.get_mut(&stream_id).ok_or(ProcessError::StreamNotFoundInState)?;
@@ -368,17 +368,46 @@ pub enum StreamCompletion {
     Err
 }
 
-pub async fn write(stream_id: u32, data: Vec<u8>, write_tx: &mut Sender<(u32, usize, [u8; DATA_BUF_SIZE])>) -> Result<(), ProcessError> {
-    let mut source = &data[..];
+pub async fn write(stream_id: u32, data: Vec<u8>, msg_meta_size: u64, payload_size: u64, attachments_sizes: Vec<u64>, write_tx: &mut Sender<StreamUnit>) -> Result<(), ProcessError> {    
+    let msg_meta_offset = LEN_BUF_SIZE + msg_meta_size;
+    let payload_offset = msg_meta_offset + payload_size;
+    let mut data_buf = [0; DATA_BUF_SIZE];
 
-    loop {
-        let mut data_buf = [0; DATA_BUF_SIZE];
+    let mut source = &data[LEN_BUF_SIZE..msg_meta_offset];    
+
+    loop {        
         let n = source.read(&mut data_buf).await?;        
-
         match n {
             0 => break,
             _ => write_tx.send((stream_id, n, data_buf)).await?
         }
+    }
+
+    let mut source = &data[msg_meta_offset..payload_offset];
+
+    loop {        
+        let n = source.read(&mut data_buf).await?;        
+        match n {
+            0 => break,
+            _ => write_tx.send((stream_id, n, data_buf)).await?
+        }
+    }
+
+    let mut prev = payload_offset;
+
+    for attachment_size in attachments_sizes {
+        let attachment_offset = prev + attachment_size;
+        let mut source = &data[prev..attachment_offset];
+
+        loop {        
+            let n = source.read(&mut data_buf).await?;        
+            match n {
+                0 => break,
+                _ => write_tx.send((stream_id, n, data_buf)).await?
+            }
+        }
+
+        prev = attachment_offset;
     }
 
     Ok(())
@@ -436,7 +465,7 @@ impl MagicBall {
             points: vec![Participator::Service(self.addr.to_owned())]
         };
 
-        let dto = event_dto(self.addr.clone(), addr.to_owned(), key.to_owned(), payload, route)?;
+        let (dto, payload_size, attachments_sizes) = event_dto(self.addr.clone(), addr.to_owned(), key.to_owned(), payload, route)?;
 
         write(get_stream_id(), dto, &mut self.write_tx).await?;
         

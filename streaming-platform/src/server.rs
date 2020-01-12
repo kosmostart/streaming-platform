@@ -73,6 +73,7 @@ async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut 
     loop {
         match read(&mut state, &mut adapter).await? {
             ReadResult::MsgMeta(stream_id, msg_meta, _) => {
+                info!("{} {:?}", stream_id, msg_meta);
                 stream_layouts.insert(stream_id, StreamLayout {
                     id: stream_id,
                     msg_meta,
@@ -81,11 +82,13 @@ async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut 
                 });
             }
             ReadResult::PayloadData(stream_id, n, buf) => {
+                info!("payload data {} {}", stream_id, n);
                 let stream_layout = stream_layouts.get_mut(&stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
                 stream_layout.payload.extend_from_slice(&buf[..n]);
 
             }
             ReadResult::PayloadFinished(stream_id, n, buf) => {
+                info!("payload finished {} {}", stream_id, n);
                 let stream_layout = stream_layouts.get_mut(&stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
                 stream_layout.payload.extend_from_slice(&buf[..n]);
             }
@@ -98,6 +101,7 @@ async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut 
                 stream_layout.attachments_data.extend_from_slice(&buf[..n]);
             }
             ReadResult::MessageFinished(stream_id) => {
+                info!("message finished {}", stream_id);
                 auth_stream_layout = stream_layouts.remove(&stream_id);
                 //read_tx.send(ClientMsg::Message(stream_layout.msg_meta, stream_layout.payload, stream_layout.attachments_data)).await?;
                 break;
@@ -147,15 +151,19 @@ async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut 
                 //info!("f2 {}", auth_msg_meta.tx);                
                 match res? {
                     StreamUnit::Array(stream_id, n, buf) => {
+                        buf_u32.clear();
                         buf_u32.put_u32(stream_id);
                         socket_write.write_all(&buf_u32[..]).await?;
+                        buf_u32.clear();
                         buf_u32.put_u32(n as u32);
                         socket_write.write_all(&buf_u32[..]).await?;
                         socket_write.write_all(&buf[..n]).await?;
                     }
                     StreamUnit::Vector(stream_id, buf) => {
+                        buf_u32.clear();
                         buf_u32.put_u32(stream_id);
                         socket_write.write_all(&buf_u32[..]).await?;
+                        buf_u32.clear();
                         buf_u32.put_u32(buf.len() as u32);
                         socket_write.write_all(&buf_u32[..]).await?;
                         socket_write.write_all(&buf).await?;

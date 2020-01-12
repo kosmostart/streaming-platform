@@ -141,9 +141,13 @@ pub async fn read(state: &mut State, adapter: &mut Take<ReadHalf<'_>>) -> Result
     let mut buf = Cursor::new(&u32_buf[..]);
     let stream_id = buf.get_u32();
 
+    info!("read stream_id {}", stream_id);
+
     adapter.read(&mut u32_buf).await?;
     let mut buf = Cursor::new(&u32_buf[..]);
     let unit_size = buf.get_u32();
+
+    info!("read unit_size {}", unit_size);
 
     if !state.stream_states.contains_key(&stream_id) {
         state.stream_states.insert(stream_id, StreamState::new());
@@ -157,6 +161,7 @@ pub async fn read(state: &mut State, adapter: &mut Take<ReadHalf<'_>>) -> Result
         Step::MsgMeta => {
             let mut buf = vec![];
             let n = adapter.read_to_end(&mut buf).await?;
+            info!("read step msg meta, n {}", unit_size);
             let msg_meta: MsgMeta = from_slice(&buf)?;
             for attachment in msg_meta.attachments.iter() {
                 stream_state.attachments.push(attachment.size);
@@ -375,17 +380,11 @@ pub enum StreamCompletion {
 pub async fn write(stream_id: u32, data: Vec<u8>, msg_meta_size: u64, payload_size: u64, attachments_sizes: Vec<u64>, write_tx: &mut Sender<StreamUnit>) -> Result<(), ProcessError> {    
     let msg_meta_offset = LEN_BUF_SIZE + msg_meta_size as usize;
     let payload_offset = msg_meta_offset + payload_size as usize;
-    let mut data_buf = [0; DATA_BUF_SIZE];
+    info!("msg_meta_offset {}", msg_meta_offset);
+    info!("payload_offset {}", payload_offset);
+    let mut data_buf = [0; DATA_BUF_SIZE];    
 
-    let mut source = &data[LEN_BUF_SIZE..msg_meta_offset];    
-
-    loop {        
-        let n = source.read(&mut data_buf).await?;        
-        match n {
-            0 => break,
-            _ => write_tx.send(StreamUnit::Array(stream_id, n, data_buf)).await?
-        }
-    }
+    write_tx.send(StreamUnit::Vector(stream_id, data[LEN_BUF_SIZE..msg_meta_offset].to_vec())).await?;
 
     let mut source = &data[msg_meta_offset..payload_offset];
 

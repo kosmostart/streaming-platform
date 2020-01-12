@@ -276,11 +276,11 @@ where
             points: vec![Participator::Service(addr.clone())]
         };  
 
-        let (dto, msg_meta_size, payload_size, attacchments_size) = rpc_dto_with_sizes(addr.clone(), target.to_owned(), "Auth".to_owned(), json!({
+        let (dto, msg_meta_size, payload_size, attachments_size) = rpc_dto_with_sizes(addr.clone(), target.to_owned(), "Auth".to_owned(), json!({
             "access_key": access_key
         }), route).unwrap();
 
-        let res = write(get_stream_id(), dto, msg_meta_size, payload_size, attacchments_size, &mut write_tx).await;
+        let res = write(get_stream_id(), dto, msg_meta_size, payload_size, attachments_size, &mut write_tx).await;
         println!("{:?}", res);        
     });
 
@@ -408,15 +408,19 @@ async fn process_message_stream(addr: String, mut stream: TcpStream, mut read_tx
             res = f2 => {                
                 match res? {
                     StreamUnit::Array(stream_id, n, buf) => {
+                        buf_u32.clear();
                         buf_u32.put_u32(stream_id);
                         socket_write.write_all(&buf_u32[..]).await?;
+                        buf_u32.clear();
                         buf_u32.put_u32(n as u32);
                         socket_write.write_all(&buf_u32[..]).await?;
                         socket_write.write_all(&buf[..n]).await?;
                     }
                     StreamUnit::Vector(stream_id, buf) => {
+                        buf_u32.clear();
                         buf_u32.put_u32(stream_id);
                         socket_write.write_all(&buf_u32[..]).await?;
+                        buf_u32.clear();
                         buf_u32.put_u32(buf.len() as u32);
                         socket_write.write_all(&buf_u32[..]).await?;
                         socket_write.write_all(&buf).await?;
@@ -438,7 +442,7 @@ async fn process_full_message(addr: String, mut stream: TcpStream, mut read_tx: 
 
     let mut adapter = socket_read.take(LENS_BUF_SIZE as u64);
     let mut state = State::new();
-    let mut buf_u32 = BytesMut::with_capacity(4);
+    let mut buf_u32 = BytesMut::with_capacity(4);    
     let mut stream_layouts = HashMap::new();
 
     loop {
@@ -486,15 +490,19 @@ async fn process_full_message(addr: String, mut stream: TcpStream, mut read_tx: 
                 //info!("client fm f2 {}", addr);   
                 match res? {
                     StreamUnit::Array(stream_id, n, buf) => {
+                        buf_u32.clear();
                         buf_u32.put_u32(stream_id);
                         socket_write.write_all(&buf_u32[..]).await?;
-                        buf_u32.put_u32(n as u32);
+                        buf_u32.clear();
+                        buf_u32.put_u32(n as u32);                        
                         socket_write.write_all(&buf_u32[..]).await?;
                         socket_write.write_all(&buf[..n]).await?;
                     }
                     StreamUnit::Vector(stream_id, buf) => {
+                        buf_u32.clear();
                         buf_u32.put_u32(stream_id);
-                        socket_write.write_all(&buf_u32[..]).await?;
+                        socket_write.write_all(&buf_u32[..]).await?; 
+                        buf_u32.clear();
                         buf_u32.put_u32(buf.len() as u32);
                         socket_write.write_all(&buf_u32[..]).await?;
                         socket_write.write_all(&buf).await?;

@@ -222,7 +222,7 @@ async fn process_msg(msg_meta: &MsgMeta, payload: &Value, socket_write: &mut Wri
                         0 => break,
                         n => socket_write.write_all(&file_buf[..n]).await?
                     }
-                }                
+                }
             } else {
                 println!("not a file my friends");
             }

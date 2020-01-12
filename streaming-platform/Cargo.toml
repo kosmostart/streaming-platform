@@ -16,7 +16,7 @@ serde_derive = "*"
 serde_json = "*"
 toml = "*"
 tokio = { version = "0.2", features = ["full"] }
-hyper = { version = "*", optional = true }
+hyper = { version = "0.13", optional = true }
 sp-dto = { path = "../sp-dto" }
 
 [features]

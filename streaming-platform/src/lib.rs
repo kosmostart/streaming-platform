@@ -1,4 +1,4 @@
-#![recursion_limit="512"]
+#![recursion_limit="1024"]
 #![feature(try_trait)]
 pub use futures;
 pub use tokio;

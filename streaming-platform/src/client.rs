@@ -402,7 +402,7 @@ async fn process_message_stream(addr: String, mut stream: TcpStream, mut read_tx
                     ReadResult::PayloadFinished(stream_id, n, buf) => read_tx.send(ClientMsg::PayloadFinished(stream_id, n, buf)).await?,
                     ReadResult::AttachmentData(stream_id, index, n, buf) => read_tx.send(ClientMsg::AttachmentData(stream_id, index, n, buf)).await?,
                     ReadResult::AttachmentFinished(stream_id, index, n, buf) => read_tx.send(ClientMsg::AttachmentFinished(stream_id, index, n, buf)).await?,
-                    ReadResult::MessageFinished(stream_id) => read_tx.send(ClientMsg::MessageFinished(stream_id)).await?
+                    ReadResult::MessageFinished(stream_id, finish_bytes) => read_tx.send(ClientMsg::MessageFinished(stream_id, finish_bytes)).await?
                 };
             }
             res = f2 => {                
@@ -480,7 +480,16 @@ async fn process_full_message(addr: String, mut stream: TcpStream, mut read_tx: 
                         let stream_layout = stream_layouts.get_mut(&stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
                         stream_layout.attachments_data.extend_from_slice(&buf[..n]);
                     }
-                    ReadResult::MessageFinished(stream_id) => {
+                    ReadResult::MessageFinished(stream_id, finish_bytes) => {
+                        let stream_layout = stream_layouts.get_mut(&stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
+                        match finish_bytes {
+                            MessageFinishBytes::Payload(n, buf) => {
+                                stream_layout.payload.extend_from_slice(&buf[..n]);
+                            }
+                            MessageFinishBytes::Attachment(_, n, buf) => {
+                                stream_layout.attachments_data.extend_from_slice(&buf[..n]);
+                            }
+                        }
                         let stream_layout = stream_layouts.remove(&stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
                         read_tx.send(ClientMsg::Message(stream_layout.msg_meta, stream_layout.payload, stream_layout.attachments_data)).await?;
                     }

@@ -87,7 +87,15 @@ pub enum ReadResult {
     /// This one indicates attachment data stream by index finished
     AttachmentFinished(u32, usize, usize, [u8; DATA_BUF_SIZE]),
     /// Message stream finished, simple as that
-    MessageFinished(u32)
+    MessageFinished(u32, MessageFinishBytes)
+}
+
+/// Part of result of reading function for message finish
+pub enum MessageFinishBytes {
+    /// This indicates message was finished with payload
+    Payload(usize, [u8; DATA_BUF_SIZE]),
+    /// This indicates message was finished with attachment
+    Attachment(usize, usize, [u8; DATA_BUF_SIZE])
 }
 
 #[derive(Debug)]
@@ -95,8 +103,7 @@ pub enum Step {
     MsgMeta,
     Payload(u64, u64),
     // current attachment index
-    Attachment(usize, u64, u64),
-    Finish
+    Attachment(usize, u64, u64)    
 }
 
 // Data structure used for convenience when streaming data from source
@@ -170,18 +177,25 @@ pub async fn read(state: &mut State, adapter: &mut Take<ReadHalf<'_>>) -> Result
             Ok(ReadResult::MsgMeta(stream_id, msg_meta, buf))            
         }
         Step::Payload(payload_size, bytes_read) => {
+            info!("step payload, payload_size {}, bytes_read {}", payload_size, bytes_read);
             let mut data_buf = [0; DATA_BUF_SIZE];
             let n = adapter.read(&mut data_buf).await?;
             let bytes_read = bytes_read + n as u64;
+            info!("step payload, n {}, payload_size {}, bytes_read {}", n, payload_size, bytes_read);
             if bytes_read < payload_size {
                 stream_state.step = Step::Payload(payload_size, bytes_read);
                 Ok(ReadResult::PayloadData(stream_id, n, data_buf))
             } else if bytes_read == payload_size {                
                 match stream_state.attachments.len() {
-                    0 => stream_state.step = Step::Finish,
-                    _ => stream_state.step = Step::Attachment(0, stream_state.attachments[0], 0)
-                };
-                Ok(ReadResult::PayloadFinished(stream_id, n, data_buf))
+                    0 => {
+                        let _ = state.stream_states.remove(&stream_id);
+                        Ok(ReadResult::MessageFinished(stream_id, MessageFinishBytes::Payload(n, data_buf)))
+                    }
+                    _ => {
+                        stream_state.step = Step::Attachment(0, stream_state.attachments[0], 0);
+                        Ok(ReadResult::PayloadFinished(stream_id, n, data_buf))
+                    }
+                }               
             } else if bytes_read > payload_size {
                 Err(ProcessError::BytesReadAmountExceededPayloadSize)
             } else {
@@ -197,20 +211,21 @@ pub async fn read(state: &mut State, adapter: &mut Take<ReadHalf<'_>>) -> Result
                 Ok(ReadResult::AttachmentData(stream_id, index, n, data_buf))
             } else if bytes_read == attachment_size {                
                 match stream_state.attachments.len() {
-                    index => stream_state.step = Step::Finish,
-                    _ => stream_state.step = Step::Attachment(index + 1, stream_state.attachments[index + 1], 0)
-                };
-                Ok(ReadResult::AttachmentFinished(stream_id, index, n, data_buf))
+                    index => {                        
+                        let _ = state.stream_states.remove(&stream_id);
+                        Ok(ReadResult::MessageFinished(stream_id, MessageFinishBytes::Attachment(index, n, data_buf)))
+                    }
+                    _ => {
+                        stream_state.step = Step::Attachment(index + 1, stream_state.attachments[index + 1], 0);
+                        Ok(ReadResult::AttachmentFinished(stream_id, index, n, data_buf))
+                    }
+                }              
             } else if bytes_read > attachment_size {
                 Err(ProcessError::BytesReadAmountExceededAttachmentSize)
             } else {
                 Err(ProcessError::AttachmentSizeChecksFailed)
             }
-        }
-        Step::Finish => {
-            let _ = state.stream_states.remove(&stream_id);
-            Ok(ReadResult::MessageFinished(stream_id))
-        }
+        }        
     };
 
     adapter.set_limit(LENS_BUF_SIZE as u64);
@@ -361,7 +376,7 @@ pub enum ClientMsg {
     /// This is sent in Stream mode without fs future
     AttachmentFinished(u32, usize, usize, [u8; DATA_BUF_SIZE]),
     /// This is sent in Stream mode without fs future
-    MessageFinished(u32),
+    MessageFinished(u32, MessageFinishBytes),
     /// This is sent in FullMessage mode without fs future
     Message(MsgMeta, Vec<u8>, Vec<u8>)
 }

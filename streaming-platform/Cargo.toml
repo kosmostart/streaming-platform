@@ -23,4 +23,3 @@ sp-dto = { path = "../sp-dto" }
 
 default = []
 http = ["hyper"]
-fs = []

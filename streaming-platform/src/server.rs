@@ -124,7 +124,7 @@ async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut 
                         socket_write.write_all(&buf_u32[..]).await?;
                         socket_write.write_all(&buf).await?;
                     }
-                }                
+                }
                 //info!("f2 ok {} {}", auth_msg_meta.tx, n);
             }
         };

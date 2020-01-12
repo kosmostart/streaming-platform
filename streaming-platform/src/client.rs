@@ -406,12 +406,22 @@ async fn process_message_stream(addr: String, mut stream: TcpStream, mut read_tx
                 };
             }
             res = f2 => {                
-                let (stream_id, n, buf) = res?;
-                buf_u32.put_u32(stream_id);
-                socket_write.write_all(&buf_u32[..]).await?;
-                buf_u32.put_u32(n as u32);
-                socket_write.write_all(&buf_u32[..]).await?;
-                socket_write.write_all(&buf[..n]).await?;
+                match res? {
+                    StreamUnit::Array(stream_id, n, buf) => {
+                        buf_u32.put_u32(stream_id);
+                        socket_write.write_all(&buf_u32[..]).await?;
+                        buf_u32.put_u32(n as u32);
+                        socket_write.write_all(&buf_u32[..]).await?;
+                        socket_write.write_all(&buf[..n]).await?;
+                    }
+                    StreamUnit::Vector(stream_id, buf) => {
+                        buf_u32.put_u32(stream_id);
+                        socket_write.write_all(&buf_u32[..]).await?;
+                        buf_u32.put_u32(buf.len() as u32);
+                        socket_write.write_all(&buf_u32[..]).await?;
+                        socket_write.write_all(&buf).await?;
+                    }
+                }
             }
         };
     }
@@ -474,12 +484,22 @@ async fn process_full_message(addr: String, mut stream: TcpStream, mut read_tx: 
             }
             res = f2 => {             
                 //info!("client fm f2 {}", addr);   
-                let (stream_id, n, buf) = res?;
-                buf_u32.put_u32(stream_id);
-                socket_write.write_all(&buf_u32[..]).await?;
-                buf_u32.put_u32(n as u32);
-                socket_write.write_all(&buf_u32[..]).await?;
-                socket_write.write_all(&buf[..n]).await?;
+                match res? {
+                    StreamUnit::Array(stream_id, n, buf) => {
+                        buf_u32.put_u32(stream_id);
+                        socket_write.write_all(&buf_u32[..]).await?;
+                        buf_u32.put_u32(n as u32);
+                        socket_write.write_all(&buf_u32[..]).await?;
+                        socket_write.write_all(&buf[..n]).await?;
+                    }
+                    StreamUnit::Vector(stream_id, buf) => {
+                        buf_u32.put_u32(stream_id);
+                        socket_write.write_all(&buf_u32[..]).await?;
+                        buf_u32.put_u32(buf.len() as u32);
+                        socket_write.write_all(&buf_u32[..]).await?;
+                        socket_write.write_all(&buf).await?;
+                    }
+                }
                 //info!("client fm f2 ok {} {}", n, addr);   
             }
         };

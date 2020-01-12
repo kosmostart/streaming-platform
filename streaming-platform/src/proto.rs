@@ -143,11 +143,15 @@ pub async fn read(state: &mut State, adapter: &mut Take<ReadHalf<'_>>) -> Result
 
     adapter.read(&mut u32_buf).await?;
     let mut buf = Cursor::new(&u32_buf[..]);
-    let len = buf.get_u32();
+    let unit_size = buf.get_u32();
+
+    if !state.stream_states.contains_key(&stream_id) {
+        state.stream_states.insert(stream_id, StreamState::new());
+    }
 
     let stream_state = state.stream_states.get_mut(&stream_id).ok_or(ProcessError::StreamNotFoundInState)?;
 
-    adapter.set_limit(len as u64);
+    adapter.set_limit(unit_size as u64);
 
     let res = match stream_state.step {
         Step::MsgMeta => {

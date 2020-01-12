@@ -650,6 +650,7 @@ impl MagicBall {
 pub enum ProcessError {
     StreamNotFoundInState,
     StreamLayoutNotFound,
+    AuthStreamLayoutIsEmpty,
     ClientAddrNotFound,
     BytesReadAmountExceededPayloadSize,
     PayloadSizeChecksFailed,

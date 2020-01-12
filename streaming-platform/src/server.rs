@@ -65,18 +65,50 @@ pub async fn start_future(config: ServerConfig) -> Result<(), ProcessError> {
 
 async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut server_tx: Sender<ServerMsg>, config: &ServerConfig) -> Result<(), ProcessError> {
     let (mut socket_read, mut socket_write) = stream.split();
-
-    //let (auth_msg_meta, auth_payload, auth_attachments) = read_full(&mut socket_read).await?;
-    //let auth_payload: Value = from_slice(&auth_payload)?;        
-    
-    let (mut client_tx, mut client_rx) = mpsc::channel(MPSC_CLIENT_BUF_SIZE);
-
-    server_tx.send(ServerMsg::AddClient("".to_owned(), client_net_addr, client_tx)).await?;
-    //server_tx.send(ServerMsg::AddClient(auth_msg_meta.tx.clone(), client_net_addr, client_tx)).await?;
-
     let mut adapter = socket_read.take(LENS_BUF_SIZE as u64);
     let mut state = State::new();
     let mut buf_u32 = BytesMut::with_capacity(4);
+    let mut stream_layouts = HashMap::new();
+    let mut auth_stream_layout = None;
+    loop {
+        match read(&mut state, &mut adapter).await? {
+            ReadResult::MsgMeta(stream_id, msg_meta, _) => {
+                stream_layouts.insert(stream_id, StreamLayout {
+                    id: stream_id,
+                    msg_meta,
+                    payload: vec![],
+                    attachments_data: vec![]
+                });
+            }
+            ReadResult::PayloadData(stream_id, n, buf) => {
+                let stream_layout = stream_layouts.get_mut(&stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
+                stream_layout.payload.extend_from_slice(&buf[..n]);
+
+            }
+            ReadResult::PayloadFinished(stream_id, n, buf) => {
+                let stream_layout = stream_layouts.get_mut(&stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
+                stream_layout.payload.extend_from_slice(&buf[..n]);
+            }
+            ReadResult::AttachmentData(stream_id, _, n, buf) => {
+                let stream_layout = stream_layouts.get_mut(&stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
+                stream_layout.attachments_data.extend_from_slice(&buf[..n]);
+            }
+            ReadResult::AttachmentFinished(stream_id, _, n, buf) => {
+                let stream_layout = stream_layouts.get_mut(&stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
+                stream_layout.attachments_data.extend_from_slice(&buf[..n]);
+            }
+            ReadResult::MessageFinished(stream_id) => {
+                auth_stream_layout = stream_layouts.remove(&stream_id);
+                //read_tx.send(ClientMsg::Message(stream_layout.msg_meta, stream_layout.payload, stream_layout.attachments_data)).await?;
+                break;
+            }
+        }
+    }
+    let auth_stream_layout = auth_stream_layout.ok_or(ProcessError::AuthStreamLayoutIsEmpty)?;    
+    let auth_payload: Value = from_slice(&auth_stream_layout.payload)?;
+    info!("{:?}", auth_stream_layout.msg_meta);
+    let (mut client_tx, mut client_rx) = mpsc::channel(MPSC_CLIENT_BUF_SIZE);
+    server_tx.send(ServerMsg::AddClient(auth_stream_layout.msg_meta.tx, client_net_addr, client_tx)).await?;    
     let mut client_addrs = HashMap::new();
     loop {
         let f1 = read(&mut state, &mut adapter).fuse();

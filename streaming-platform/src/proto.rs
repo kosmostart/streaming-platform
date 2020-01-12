@@ -137,11 +137,11 @@ pub struct StreamLayout {
 pub async fn read(state: &mut State, adapter: &mut Take<ReadHalf<'_>>) -> Result<ReadResult, ProcessError> {    
     let mut u32_buf = [0; LEN_BUF_SIZE];
 
-    adapter.read(&mut len_buf).await?;
+    adapter.read(&mut u32_buf).await?;
     let mut buf = Cursor::new(&u32_buf[..]);
     let stream_id = buf.get_u32();
 
-    adapter.read(&mut len_buf).await?;
+    adapter.read(&mut u32_buf).await?;
     let mut buf = Cursor::new(&u32_buf[..]);
     let len = buf.get_u32();
 
@@ -369,8 +369,8 @@ pub enum StreamCompletion {
 }
 
 pub async fn write(stream_id: u32, data: Vec<u8>, msg_meta_size: u64, payload_size: u64, attachments_sizes: Vec<u64>, write_tx: &mut Sender<StreamUnit>) -> Result<(), ProcessError> {    
-    let msg_meta_offset = LEN_BUF_SIZE + msg_meta_size;
-    let payload_offset = msg_meta_offset + payload_size;
+    let msg_meta_offset = LEN_BUF_SIZE + msg_meta_size as usize;
+    let payload_offset = msg_meta_offset + payload_size as usize;
     let mut data_buf = [0; DATA_BUF_SIZE];
 
     let mut source = &data[LEN_BUF_SIZE..msg_meta_offset];    
@@ -379,7 +379,7 @@ pub async fn write(stream_id: u32, data: Vec<u8>, msg_meta_size: u64, payload_si
         let n = source.read(&mut data_buf).await?;        
         match n {
             0 => break,
-            _ => write_tx.send((stream_id, n, data_buf)).await?
+            _ => write_tx.send(StreamUnit::Array(stream_id, n, data_buf)).await?
         }
     }
 
@@ -389,21 +389,21 @@ pub async fn write(stream_id: u32, data: Vec<u8>, msg_meta_size: u64, payload_si
         let n = source.read(&mut data_buf).await?;        
         match n {
             0 => break,
-            _ => write_tx.send((stream_id, n, data_buf)).await?
+            _ => write_tx.send(StreamUnit::Array(stream_id, n, data_buf)).await?
         }
     }
 
-    let mut prev = payload_offset;
+    let mut prev = payload_offset as usize;
 
     for attachment_size in attachments_sizes {
-        let attachment_offset = prev + attachment_size;
+        let attachment_offset = prev + attachment_size as usize;
         let mut source = &data[prev..attachment_offset];
 
         loop {        
             let n = source.read(&mut data_buf).await?;        
             match n {
                 0 => break,
-                _ => write_tx.send((stream_id, n, data_buf)).await?
+                _ => write_tx.send(StreamUnit::Array(stream_id, n, data_buf)).await?
             }
         }
 
@@ -423,13 +423,13 @@ pub enum RpcMsg {
 #[derive(Clone)]
 pub struct MagicBall {    
     addr: String,
-    pub write_tx: Sender<(u32, usize, [u8; DATA_BUF_SIZE])>,
+    pub write_tx: Sender<StreamUnit>,
     rpc_inbound_tx: Sender<RpcMsg>
 }
 
 
 impl MagicBall {
-    pub fn new(addr: String, write_tx: Sender<(u32, usize, [u8; DATA_BUF_SIZE])>, rpc_inbound_tx: Sender<RpcMsg>) -> MagicBall {
+    pub fn new(addr: String, write_tx: Sender<StreamUnit>, rpc_inbound_tx: Sender<RpcMsg>) -> MagicBall {
         MagicBall {            
             addr,
             write_tx,
@@ -443,19 +443,48 @@ impl MagicBall {
     /// This value MUST BE UNIQUE FOR EACH MESSAGE IN TRANSFER AT CURRENT MOMENT OF TIME (that is what get_stream_id() function does).
     /// stream_id generation made explicit on purpose to point out RESPONSIBILITY OF THE USER OF THIS FUNCTION.
     /// Ofcourse, stream_id generation can be implicit - this, however, will lead to less flexible API (if for example you need to call this function multiple times to write parts of one message).
-    pub async fn write_vec(&mut self, stream_id: u32, data: Vec<u8>) -> Result<(), ProcessError> {
-        let mut source = &data[..];
-    
-        loop {
-            let mut data_buf = [0; DATA_BUF_SIZE];
+    pub async fn write_vec(&mut self, stream_id: u32, data: Vec<u8>, msg_meta_size: u64, payload_size: u64, attachments_sizes: Vec<u64>) -> Result<(), ProcessError> {
+        let msg_meta_offset = LEN_BUF_SIZE + msg_meta_size as usize;
+        let payload_offset = msg_meta_offset + payload_size as usize;
+        let mut data_buf = [0; DATA_BUF_SIZE];
+
+        let mut source = &data[LEN_BUF_SIZE..msg_meta_offset];    
+
+        loop {        
             let n = source.read(&mut data_buf).await?;        
-    
             match n {
                 0 => break,
-                _ => self.write_tx.send((stream_id, n, data_buf)).await?
+                _ => self.write_tx.send(StreamUnit::Array(stream_id, n, data_buf)).await?
             }
         }
-    
+
+        let mut source = &data[msg_meta_offset..payload_offset];
+
+        loop {        
+            let n = source.read(&mut data_buf).await?;        
+            match n {
+                0 => break,
+                _ => self.write_tx.send(StreamUnit::Array(stream_id, n, data_buf)).await?
+            }
+        }
+
+        let mut prev = payload_offset as usize;
+
+        for attachment_size in attachments_sizes {
+            let attachment_offset = prev + attachment_size as usize;
+            let mut source = &data[prev..attachment_offset];
+
+            loop {        
+                let n = source.read(&mut data_buf).await?;        
+                match n {
+                    0 => break,
+                    _ => self.write_tx.send(StreamUnit::Array(stream_id, n, data_buf)).await?
+                }
+            }
+
+            prev = attachment_offset;
+        }
+
         Ok(())
     }
     pub async fn send_event<T>(&mut self, addr: &str, key: &str, payload: T) -> Result<(), ProcessError> where T: serde::Serialize, for<'de> T: serde::Deserialize<'de>, T: Debug {
@@ -465,9 +494,9 @@ impl MagicBall {
             points: vec![Participator::Service(self.addr.to_owned())]
         };
 
-        let (dto, payload_size, attachments_sizes) = event_dto(self.addr.clone(), addr.to_owned(), key.to_owned(), payload, route)?;
+        let (dto, msg_meta_size, payload_size, attachments_sizes) = event_dto_with_sizes(self.addr.clone(), addr.to_owned(), key.to_owned(), payload, route)?;
 
-        write(get_stream_id(), dto, &mut self.write_tx).await?;
+        write(get_stream_id(), dto, msg_meta_size, payload_size, attachments_sizes, &mut self.write_tx).await?;
         
         Ok(())
     }
@@ -476,9 +505,9 @@ impl MagicBall {
 
         route.points.push(Participator::Service(self.get_addr()));
 
-        let dto = event_dto(self.get_addr(), addr.to_owned(), key.to_owned(), payload, route)?;
+        let (dto, msg_meta_size, payload_size, attachments_sizes) = event_dto_with_sizes(self.get_addr(), addr.to_owned(), key.to_owned(), payload, route)?;
 
-        write(get_stream_id(), dto, &mut self.write_tx).await?;
+        write(get_stream_id(), dto, msg_meta_size, payload_size, attachments_sizes, &mut self.write_tx).await?;
         
         Ok(())
     }    
@@ -491,11 +520,11 @@ impl MagicBall {
 
 		//info!("send_rpc, route {:?}, target addr {}, key {}, payload {:?}, ", route, addr, key, payload);
 		
-        let (correlation_id, dto) = rpc_dto_with_correlation_id(self.addr.clone(), addr.to_owned(), key.to_owned(), payload, route)?;
+        let (correlation_id, dto, msg_meta_size, payload_size, attachments_sizes) = rpc_dto_with_correlation_id_sizes(self.addr.clone(), addr.to_owned(), key.to_owned(), payload, route)?;
         let (rpc_tx, rpc_rx) = oneshot::channel();
         
         self.rpc_inbound_tx.send(RpcMsg::AddRpc(correlation_id, rpc_tx)).await?;        
-        write(get_stream_id(), dto, &mut self.write_tx).await?;        
+        write(get_stream_id(), dto, msg_meta_size, payload_size, attachments_sizes, &mut self.write_tx).await?;        
 
         let (msg_meta, payload, attachments_data) = rpc_rx.await?;
         let payload: R = from_slice(&payload)?;        
@@ -511,11 +540,11 @@ impl MagicBall {
 
         route.points.push(Participator::Service(self.addr.to_owned()));
 		
-        let (correlation_id, dto) = rpc_dto_with_correlation_id(self.addr.clone(), addr.to_owned(), key.to_owned(), payload, route)?;
+        let (correlation_id, dto, msg_meta_size, payload_size, attachments_sizes) = rpc_dto_with_correlation_id_sizes(self.addr.clone(), addr.to_owned(), key.to_owned(), payload, route)?;
         let (rpc_tx, rpc_rx) = oneshot::channel();
         
         self.rpc_inbound_tx.send(RpcMsg::AddRpc(correlation_id, rpc_tx)).await?;
-        write(get_stream_id(), dto, &mut self.write_tx).await?;
+        write(get_stream_id(), dto, msg_meta_size, payload_size, attachments_sizes, &mut self.write_tx).await?;
 
         let (msg_meta, payload, attachments_data) = rpc_rx.await?;
         let payload: R = from_slice(&payload)?;        
@@ -545,7 +574,11 @@ impl MagicBall {
         msg_meta.tx = tx;        
         msg_meta.route.points.push(Participator::Service(self.addr.to_owned()));
 
+        let payload_size = msg_meta.payload_size;
+        let attachments_sizes = msg_meta.attachments_sizes();
+
         let mut msg_meta = serde_json::to_vec(&msg_meta)?;
+        let msg_meta_size = msg_meta.len() as u64;
                                                       
         let mut payload_with_attachments: Vec<_> = data.drain(4 + len..).collect();
         let mut buf = vec![];
@@ -555,7 +588,7 @@ impl MagicBall {
         buf.append(&mut msg_meta);
         buf.append(&mut payload_with_attachments);
 
-        write(get_stream_id(), buf, &mut self.write_tx).await?;
+        write(get_stream_id(), buf, msg_meta_size, payload_size, attachments_sizes,  &mut self.write_tx).await?;
         
         Ok(())
     }    
@@ -580,7 +613,11 @@ impl MagicBall {
         msg_meta.tx = tx;
         msg_meta.route.points.push(Participator::Service(self.addr.to_owned()));
 
+        let payload_size = msg_meta.payload_size;
+        let attachments_sizes = msg_meta.attachments_sizes();
+
         let mut msg_meta = to_vec(&msg_meta)?;
+        let msg_meta_size = msg_meta.len() as u64;
                                                       
         let mut payload_with_attachments: Vec<_> = data.drain(4 + len..).collect();
         let mut buf = vec![];
@@ -593,7 +630,7 @@ impl MagicBall {
         let (rpc_tx, rpc_rx) = oneshot::channel();
                 
         self.rpc_inbound_tx.send(RpcMsg::AddRpc(correlation_id, rpc_tx)).await?;
-        write(get_stream_id(), buf, &mut self.write_tx).await?;
+        write(get_stream_id(), buf, msg_meta_size, payload_size, attachments_sizes, &mut self.write_tx).await?;
 
         let (msg_meta, mut payload, mut attachments) = rpc_rx.await?;
 
@@ -672,8 +709,8 @@ impl From<option::NoneError> for ProcessError {
 	}
 }
 
-impl From<SendError<(u32, usize, [u8; DATA_BUF_SIZE])>> for ProcessError {
-	fn from(err: SendError<(u32, usize, [u8; DATA_BUF_SIZE])>) -> ProcessError {
+impl From<SendError<StreamUnit>> for ProcessError {
+	fn from(err: SendError<StreamUnit>) -> ProcessError {
 		ProcessError::SendBufError
 	}
 }

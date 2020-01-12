@@ -60,11 +60,11 @@ where
             points: vec![Participator::Service(addr.clone())]
         };  
 
-        let dto = rpc_dto(addr.clone(), target.to_owned(), "Auth".to_owned(), json!({
+        let (dto, msg_meta_size, payload_size, attachments_sizes) = rpc_dto_with_sizes(addr.clone(), target.to_owned(), "Auth".to_owned(), json!({
             "access_key": access_key
         }), route).unwrap();
 
-        let res = write(get_stream_id(), dto, &mut write_tx).await;
+        let res = write(get_stream_id(), dto, msg_meta_size, payload_size, attachments_sizes, &mut write_tx).await;
         println!("{:?}", res);        
     });
     let mut mb = MagicBall::new(addr2, write_tx2, rpc_inbound_tx);
@@ -129,11 +129,11 @@ where
             points: vec![Participator::Service(addr.clone())]
         };  
 
-        let dto = rpc_dto(addr.clone(), target.to_owned(), "Auth".to_owned(), json!({
+        let (dto, msg_meta_size, payload_size, attachments_sizes) = rpc_dto_with_sizes(addr.clone(), target.to_owned(), "Auth".to_owned(), json!({
             "access_key": access_key
         }), route).unwrap();
 
-        let res = write(get_stream_id(), dto, &mut write_tx).await;
+        let res = write(get_stream_id(), dto, msg_meta_size, payload_size, attachments_sizes, &mut write_tx).await;
         println!("{:?}", res);        
     });
 
@@ -181,8 +181,8 @@ where
                                     }
                                 };
                                 route.points.push(Participator::Service(mb.get_addr()));
-                                let res = reply_to_rpc_dto2(mb.get_addr(), tx, key, correlation_id, payload, attachments, attachments_data, rpc_result, route).expect("failed to create rpc reply");
-                                write(get_stream_id(), res, &mut write_tx3).await.expect("failed to write rpc response");
+                                let (res, msg_meta_size, payload_size, attacchments_size) = reply_to_rpc_dto2_sizes(mb.get_addr(), tx, key, correlation_id, payload, attachments, attachments_data, rpc_result, route).expect("failed to create rpc reply");
+                                write(get_stream_id(), res, msg_meta_size, payload_size, attacchments_size, &mut write_tx3).await.expect("failed to write rpc response");
                             });                            
                         }
                         MsgKind::RpcResponse(_) => {
@@ -276,11 +276,11 @@ where
             points: vec![Participator::Service(addr.clone())]
         };  
 
-        let dto = rpc_dto(addr.clone(), target.to_owned(), "Auth".to_owned(), json!({
+        let (dto, msg_meta_size, payload_size, attacchments_size) = rpc_dto_with_sizes(addr.clone(), target.to_owned(), "Auth".to_owned(), json!({
             "access_key": access_key
         }), route).unwrap();
 
-        let res = write(get_stream_id(), dto, &mut write_tx).await;
+        let res = write(get_stream_id(), dto, msg_meta_size, payload_size, attacchments_size, &mut write_tx).await;
         println!("{:?}", res);        
     });
 
@@ -324,8 +324,8 @@ where
                                     }
                                 };                                
                                 route.points.push(Participator::Service(mb.get_addr()));
-                                let res = reply_to_rpc_dto2(mb.get_addr(), tx, key, correlation_id, payload, attachments, attachments_data, rpc_result, route).expect("failed to create rpc reply");
-                                write(get_stream_id(), res, &mut write_tx3).await.expect("failed to write rpc response");                                
+                                let (res, msg_meta_size, payload_size, attacchments_size) = reply_to_rpc_dto2_sizes(mb.get_addr(), tx, key, correlation_id, payload, attachments, attachments_data, rpc_result, route).expect("failed to create rpc reply");
+                                write(get_stream_id(), res, msg_meta_size, payload_size, attacchments_size, &mut write_tx3).await.expect("failed to write rpc response");                                
                             });                            
                         }
                         MsgKind::RpcResponse(_) => {                                                        
@@ -359,7 +359,7 @@ where
     connect_full_message_future(host, addr3, read_tx, write_rx).await;
 }
 
-async fn connect_stream_future(host: &str, addr: String, mut read_tx: Sender<ClientMsg>, mut write_rx: Receiver<(u32, usize, [u8; DATA_BUF_SIZE])>) {    
+async fn connect_stream_future(host: &str, addr: String, mut read_tx: Sender<ClientMsg>, mut write_rx: Receiver<StreamUnit>) {    
     let mut stream = TcpStream::connect(host).await.expect("onnection to host failed");
 
     let res = process_message_stream(addr, stream, read_tx, write_rx).await;
@@ -367,7 +367,7 @@ async fn connect_stream_future(host: &str, addr: String, mut read_tx: Sender<Cli
     println!("{:?}", res);
 }
 
-async fn connect_full_message_future(host: &str, addr: String, mut read_tx: Sender<ClientMsg>, mut write_rx: Receiver<(u32, usize, [u8; DATA_BUF_SIZE])>) {    
+async fn connect_full_message_future(host: &str, addr: String, mut read_tx: Sender<ClientMsg>, mut write_rx: Receiver<StreamUnit>) {    
     let mut stream = TcpStream::connect(host).await.expect("onnection to host failed");
 
     let res = process_full_message(addr, stream, read_tx, write_rx).await;
@@ -375,7 +375,7 @@ async fn connect_full_message_future(host: &str, addr: String, mut read_tx: Send
     println!("{:?}", res);
 }
 
-async fn process_message_stream(addr: String, mut stream: TcpStream, mut read_tx: Sender<ClientMsg>, mut write_rx: Receiver<(u32, usize, [u8; DATA_BUF_SIZE])>) -> Result<(), ProcessError> {
+async fn process_message_stream(addr: String, mut stream: TcpStream, mut read_tx: Sender<ClientMsg>, mut write_rx: Receiver<StreamUnit>) -> Result<(), ProcessError> {
     let (mut socket_read, mut socket_write) = stream.split();
 
     //let (auth_msg_meta, auth_payload, auth_attachments) = read_full(&mut socket_read).await?;
@@ -417,7 +417,7 @@ async fn process_message_stream(addr: String, mut stream: TcpStream, mut read_tx
     }
 }
 
-async fn process_full_message(addr: String, mut stream: TcpStream, mut read_tx: Sender<ClientMsg>, mut write_rx: Receiver<(u32, usize, [u8; DATA_BUF_SIZE])>) -> Result<(), ProcessError> {
+async fn process_full_message(addr: String, mut stream: TcpStream, mut read_tx: Sender<ClientMsg>, mut write_rx: Receiver<StreamUnit>) -> Result<(), ProcessError> {
     let (mut socket_read, mut socket_write) = stream.split();
 
     //let (auth_msg_meta, auth_payload, auth_attachments) = read_full(&mut socket_read).await?;

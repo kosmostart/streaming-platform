@@ -376,7 +376,7 @@ pub enum ClientMsg {
     /// This is sent in Stream mode without fs future
     AttachmentFinished(u32, usize, usize, [u8; DATA_BUF_SIZE]),
     /// This is sent in Stream mode without fs future
-    MessageFinished(u32, MessageFinishBytes),
+    MessageFinished(u32),
     /// This is sent in FullMessage mode without fs future
     Message(MsgMeta, Vec<u8>, Vec<u8>)
 }

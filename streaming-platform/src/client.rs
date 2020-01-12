@@ -402,7 +402,17 @@ async fn process_message_stream(addr: String, mut stream: TcpStream, mut read_tx
                     ReadResult::PayloadFinished(stream_id, n, buf) => read_tx.send(ClientMsg::PayloadFinished(stream_id, n, buf)).await?,
                     ReadResult::AttachmentData(stream_id, index, n, buf) => read_tx.send(ClientMsg::AttachmentData(stream_id, index, n, buf)).await?,
                     ReadResult::AttachmentFinished(stream_id, index, n, buf) => read_tx.send(ClientMsg::AttachmentFinished(stream_id, index, n, buf)).await?,
-                    ReadResult::MessageFinished(stream_id, finish_bytes) => read_tx.send(ClientMsg::MessageFinished(stream_id, finish_bytes)).await?
+                    ReadResult::MessageFinished(stream_id, finish_bytes) => {
+                        match finish_bytes {
+                            MessageFinishBytes::Payload(n, buf) => {
+                                read_tx.send(ClientMsg::PayloadFinished(stream_id, n, buf)).await?;
+                            }
+                            MessageFinishBytes::Attachment(index, n, buf) => {
+                                read_tx.send(ClientMsg::AttachmentFinished(stream_id, index, n, buf)).await?;
+                            }
+                        }
+                        read_tx.send(ClientMsg::MessageFinished(stream_id)).await?;
+                    }
                 };
             }
             res = f2 => {                

@@ -384,7 +384,7 @@ pub enum ClientMsg {
 pub enum RestreamMsg {
     StartSimple,
     #[cfg(feature = "http")]
-    StartHttp(hyper::body::Sender, oneshot::Sender<StreamCompletion>)
+    StartHttp(Value, hyper::body::Sender, oneshot::Sender<StreamCompletion>)
 }
 
 pub enum StreamCompletion {

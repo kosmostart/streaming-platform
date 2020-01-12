@@ -33,16 +33,16 @@ pub async fn start_future(config: ServerConfig) -> Result<(), ProcessError> {
                     clients.insert(addr, client);
                 }
                 ServerMsg::SendUnit(addr, stream_unit) => {
-                    info!("sending unit to client {}", addr);
+                    //info!("sending stream unit to client {}", addr);
                     match clients.get_mut(&addr) {
                         Some(client) => {
                             match client.tx.send(stream_unit).await {
                                 Ok(()) => {}
                                 Err(_) => panic!("ServerMsg::SendArray processing failed on tx send")
                             }
-                            info!("sent unit to client {}", addr);
+                            //info!("sent unit to client {}", addr);
                         }
-                        None => info!("no client for send array {}", addr)
+                        None => error!("no client for send stream unit {}", addr)
                     }
                 }                
                 ServerMsg::RemoveClient(addr) => {
@@ -73,7 +73,7 @@ async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut 
     loop {
         match read(&mut state, &mut adapter).await? {
             ReadResult::MsgMeta(stream_id, msg_meta, _) => {
-                info!("{} {:?}", stream_id, msg_meta);
+                //info!("{} {:?}", stream_id, msg_meta);
                 stream_layouts.insert(stream_id, StreamLayout {
                     id: stream_id,
                     msg_meta,
@@ -82,13 +82,13 @@ async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut 
                 });
             }
             ReadResult::PayloadData(stream_id, n, buf) => {
-                info!("payload data {} {}", stream_id, n);
+                //info!("payload data {} {}", stream_id, n);
                 let stream_layout = stream_layouts.get_mut(&stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
                 stream_layout.payload.extend_from_slice(&buf[..n]);
 
             }
             ReadResult::PayloadFinished(stream_id, n, buf) => {
-                info!("payload finished {} {}", stream_id, n);
+                //info!("payload finished {} {}", stream_id, n);
                 let stream_layout = stream_layouts.get_mut(&stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
                 stream_layout.payload.extend_from_slice(&buf[..n]);
             }
@@ -101,7 +101,7 @@ async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut 
                 stream_layout.attachments_data.extend_from_slice(&buf[..n]);
             }
             ReadResult::MessageFinished(stream_id, finish_bytes) => {
-                info!("message finished {}", stream_id);
+                //info!("message finished {}", stream_id);
                 let stream_layout = stream_layouts.get_mut(&stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
                 match finish_bytes {
                     MessageFinishBytes::Payload(n, buf) => {
@@ -128,33 +128,32 @@ async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut 
         let f2 = client_rx.recv().fuse();
         pin_mut!(f1, f2);
         let res = select! {
-            res = f1 => {
-                info!("server loop");
+            res = f1 => {                
                 match res? {                    
                     ReadResult::MsgMeta(stream_id, msg_meta, buf) => {
-                        info!("{:?}", msg_meta);
+                        //info!("{:?}", msg_meta);
                         client_addrs.insert(stream_id, msg_meta.rx.clone());
-                        info!("sending msg meta");
+                        //info!("sending msg meta");
                         server_tx.send(ServerMsg::SendUnit(msg_meta.rx.clone(), StreamUnit::Vector(stream_id, buf))).await?;
                     }
                     ReadResult::PayloadData(stream_id, n, buf) => {                        
                         let client_addr = client_addrs.get(&stream_id).ok_or(ProcessError::ClientAddrNotFound)?;
-                        info!("sending payload data");
+                        //info!("sending payload data");
                         server_tx.send(ServerMsg::SendUnit(client_addr.clone(), StreamUnit::Array(stream_id, n, buf))).await?;
                     }
                     ReadResult::PayloadFinished(stream_id, n, buf) => {
                         let client_addr = client_addrs.get(&stream_id).ok_or(ProcessError::ClientAddrNotFound)?;
-                        info!("sending payload finished");
+                        //info!("sending payload finished");
                         server_tx.send(ServerMsg::SendUnit(client_addr.clone(), StreamUnit::Array(stream_id, n, buf))).await?;
                     }
                     ReadResult::AttachmentData(stream_id, _, n, buf) => {
                         let client_addr = client_addrs.get(&stream_id).ok_or(ProcessError::ClientAddrNotFound)?;
-                        info!("sending attachment");
+                        //info!("sending attachment");
                         server_tx.send(ServerMsg::SendUnit(client_addr.clone(), StreamUnit::Array(stream_id, n, buf))).await?;
                     }
                     ReadResult::AttachmentFinished(stream_id, _, n, buf) => {
                         let client_addr = client_addrs.get(&stream_id).ok_or(ProcessError::ClientAddrNotFound)?;
-                        info!("sending attachment finished");
+                        //info!("sending attachment finished");
                         server_tx.send(ServerMsg::SendUnit(client_addr.clone(), StreamUnit::Array(stream_id, n, buf))).await?;
                     }
                     ReadResult::MessageFinished(stream_id, finish_bytes) => {

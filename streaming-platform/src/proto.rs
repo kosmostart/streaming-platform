@@ -148,13 +148,13 @@ pub async fn read(state: &mut State, adapter: &mut Take<ReadHalf<'_>>) -> Result
     let mut buf = Cursor::new(&u32_buf[..]);
     let stream_id = buf.get_u32();
 
-    info!("read stream_id {}", stream_id);
+    //info!("read stream_id {}", stream_id);
 
     adapter.read(&mut u32_buf).await?;
     let mut buf = Cursor::new(&u32_buf[..]);
     let unit_size = buf.get_u32();
 
-    info!("read unit_size {}", unit_size);
+    //info!("read unit_size {}", unit_size);
 
     if !state.stream_states.contains_key(&stream_id) {
         state.stream_states.insert(stream_id, StreamState::new());
@@ -168,7 +168,7 @@ pub async fn read(state: &mut State, adapter: &mut Take<ReadHalf<'_>>) -> Result
         Step::MsgMeta => {
             let mut buf = vec![];
             let n = adapter.read_to_end(&mut buf).await?;
-            info!("read step msg meta, n {}", unit_size);
+            //info!("read step msg meta, n {}", unit_size);
             let msg_meta: MsgMeta = from_slice(&buf)?;
             for attachment in msg_meta.attachments.iter() {
                 stream_state.attachments.push(attachment.size);
@@ -177,11 +177,11 @@ pub async fn read(state: &mut State, adapter: &mut Take<ReadHalf<'_>>) -> Result
             Ok(ReadResult::MsgMeta(stream_id, msg_meta, buf))            
         }
         Step::Payload(payload_size, bytes_read) => {
-            info!("step payload, payload_size {}, bytes_read {}", payload_size, bytes_read);
+            //info!("step payload, payload_size {}, bytes_read {}", payload_size, bytes_read);
             let mut data_buf = [0; DATA_BUF_SIZE];
             let n = adapter.read(&mut data_buf).await?;
             let bytes_read = bytes_read + n as u64;
-            info!("step payload, n {}, payload_size {}, bytes_read {}", n, payload_size, bytes_read);
+            //info!("step payload, n {}, payload_size {}, bytes_read {}", n, payload_size, bytes_read);
             if bytes_read < payload_size {
                 stream_state.step = Step::Payload(payload_size, bytes_read);
                 Ok(ReadResult::PayloadData(stream_id, n, data_buf))
@@ -395,8 +395,8 @@ pub enum StreamCompletion {
 pub async fn write(stream_id: u32, data: Vec<u8>, msg_meta_size: u64, payload_size: u64, attachments_sizes: Vec<u64>, write_tx: &mut Sender<StreamUnit>) -> Result<(), ProcessError> {    
     let msg_meta_offset = LEN_BUF_SIZE + msg_meta_size as usize;
     let payload_offset = msg_meta_offset + payload_size as usize;
-    info!("msg_meta_offset {}", msg_meta_offset);
-    info!("payload_offset {}", payload_offset);
+    //info!("msg_meta_offset {}", msg_meta_offset);
+    //info!("payload_offset {}", payload_offset);
     let mut data_buf = [0; DATA_BUF_SIZE];    
 
     write_tx.send(StreamUnit::Vector(stream_id, data[LEN_BUF_SIZE..msg_meta_offset].to_vec())).await?;

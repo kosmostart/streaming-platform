@@ -378,7 +378,21 @@ pub enum ClientMsg {
     /// This is sent in Stream mode without fs future
     MessageFinished(u32),
     /// This is sent in FullMessage mode without fs future
-    Message(MsgMeta, Vec<u8>, Vec<u8>)
+    Message(u32, MsgMeta, Vec<u8>, Vec<u8>)
+}
+
+impl ClientMsg {
+    pub fn get_stream_id(&self) -> u32 {
+        match self {
+            ClientMsg::MsgMeta(stream_id, _) |
+            ClientMsg::PayloadData(stream_id, _, _) |
+            ClientMsg::PayloadFinished(stream_id, _, _) |
+            ClientMsg::AttachmentData(stream_id, _, _, _) |
+            ClientMsg::AttachmentFinished(stream_id, _, _, _) |
+            ClientMsg::MessageFinished(stream_id) |
+            ClientMsg::Message(stream_id, _, _, _) => *stream_id
+        }
+    }
 }
 
 pub enum RestreamMsg {

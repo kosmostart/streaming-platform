@@ -148,7 +148,7 @@ where
             let config = config.clone();
             let mut write_tx3 = write_tx3.clone();
             match msg {
-                ClientMsg::Message(mut msg_meta, payload, attachments_data) => {
+                ClientMsg::Message(_, mut msg_meta, payload, attachments_data) => {
                     match msg_meta.kind {
                         MsgKind::Event => {
                             tokio::spawn(async move {
@@ -293,7 +293,7 @@ where
             let config = config.clone();
             let mut write_tx3 = write_tx3.clone();
             match msg {
-                ClientMsg::Message(mut msg_meta, payload, attachments_data) => {
+                ClientMsg::Message(_, mut msg_meta, payload, attachments_data) => {
                     match msg_meta.kind {
                         MsgKind::Event => {                            
                             tokio::spawn(async move {
@@ -501,7 +501,7 @@ async fn process_full_message(addr: String, mut stream: TcpStream, mut read_tx: 
                             }
                         }
                         let stream_layout = stream_layouts.remove(&stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
-                        read_tx.send(ClientMsg::Message(stream_layout.msg_meta, stream_layout.payload, stream_layout.attachments_data)).await?;
+                        read_tx.send(ClientMsg::Message(stream_id, stream_layout.msg_meta, stream_layout.payload, stream_layout.attachments_data)).await?;
                     }
                 };
             }

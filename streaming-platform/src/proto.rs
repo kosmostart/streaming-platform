@@ -345,7 +345,8 @@ pub enum ServerMsg {
 
 pub enum StreamUnit {
     Array(u32, usize, [u8; DATA_BUF_SIZE]),
-    Vector(u32, Vec<u8>)
+    Vector(u32, Vec<u8>),
+    Empty(u32)
 }
 
 /// Type for function called on data stream processing
@@ -398,7 +399,7 @@ impl ClientMsg {
 pub enum RestreamMsg {
     StartSimple,
     #[cfg(feature = "http")]
-    StartHttp(Value, hyper::body::Sender, oneshot::Sender<StreamCompletion>)
+    StartHttp(Value, hyper::body::Sender, Option<oneshot::Sender<StreamCompletion>>)
 }
 
 pub enum StreamCompletion {
@@ -415,29 +416,45 @@ pub async fn write(stream_id: u32, data: Vec<u8>, msg_meta_size: u64, payload_si
 
     write_tx.send(StreamUnit::Vector(stream_id, data[LEN_BUF_SIZE..msg_meta_offset].to_vec())).await?;
 
-    let mut source = &data[msg_meta_offset..payload_offset];
 
-    loop {        
-        let n = source.read(&mut data_buf).await?;        
-        match n {
-            0 => break,
-            _ => write_tx.send(StreamUnit::Array(stream_id, n, data_buf)).await?
+    match payload_size {
+        0 => {
+            write_tx.send(StreamUnit::Empty(stream_id)).await?;
         }
-    }
+        _ => {
+            let mut source = &data[msg_meta_offset..payload_offset];
+
+            loop {        
+                let n = source.read(&mut data_buf).await?;        
+                match n {
+                    0 => break,
+                    _ => write_tx.send(StreamUnit::Array(stream_id, n, data_buf)).await?
+                }
+            }
+        }
+    }    
 
     let mut prev = payload_offset as usize;
 
     for attachment_size in attachments_sizes {
         let attachment_offset = prev + attachment_size as usize;
-        let mut source = &data[prev..attachment_offset];
 
-        loop {        
-            let n = source.read(&mut data_buf).await?;        
-            match n {
-                0 => break,
-                _ => write_tx.send(StreamUnit::Array(stream_id, n, data_buf)).await?
+        match attachment_size {
+            0 => {
+                write_tx.send(StreamUnit::Empty(stream_id)).await?;
             }
-        }
+            _ => {
+                let mut source = &data[prev..attachment_offset];
+
+                loop {        
+                    let n = source.read(&mut data_buf).await?;        
+                    match n {
+                        0 => break,
+                        _ => write_tx.send(StreamUnit::Array(stream_id, n, data_buf)).await?
+                    }
+                }
+            }
+        }        
 
         prev = attachment_offset;
     }
@@ -472,9 +489,10 @@ impl MagicBall {
 		self.addr.clone()
     }
     /// Please note, stream_id value MUST ONLY BE ACQUIRED with get_stream_id() function. 
-    /// This value MUST BE UNIQUE FOR EACH MESSAGE IN TRANSFER AT CURRENT MOMENT OF TIME (that is what get_stream_id() function does).
+    /// This value MUST BE UNIQUE PER EACH MESSAGE IN TRANSFER AT CURRENT MOMENT OF TIME (that is what get_stream_id() function does).
+    /// Function is called write_vec for convenience, actually it is write message or message parts function.
     /// stream_id generation made explicit on purpose to point out RESPONSIBILITY OF THE USER OF THIS FUNCTION.
-    /// Ofcourse, stream_id generation can be implicit - this, however, will lead to less flexible API (if for example you need to call this function multiple times to write parts of one message).
+    /// Ofcourse, stream_id generation can be implicit - this, however, will lead to less flexible API (if for example you need stream payload or attachments data (not pull payload and/or attachments in memory)).
     pub async fn write_vec(&mut self, stream_id: u32, data: Vec<u8>, msg_meta_size: u64, payload_size: u64, attachments_sizes: Vec<u64>) -> Result<(), ProcessError> {
         let msg_meta_offset = LEN_BUF_SIZE + msg_meta_size as usize;
         let payload_offset = msg_meta_offset + payload_size as usize;
@@ -490,29 +508,44 @@ impl MagicBall {
             }
         }
 
-        let mut source = &data[msg_meta_offset..payload_offset];
+        match payload_size {
+            0 => {
+                self.write_tx.send(StreamUnit::Empty(stream_id)).await?
+            }
+            _ => {            
+                let mut source = &data[msg_meta_offset..payload_offset];
 
-        loop {        
-            let n = source.read(&mut data_buf).await?;        
-            match n {
-                0 => break,
-                _ => self.write_tx.send(StreamUnit::Array(stream_id, n, data_buf)).await?
+                loop {        
+                    let n = source.read(&mut data_buf).await?;        
+                    match n {
+                        0 => break,
+                        _ => self.write_tx.send(StreamUnit::Array(stream_id, n, data_buf)).await?
+                    }
+                }
             }
         }
 
         let mut prev = payload_offset as usize;
 
         for attachment_size in attachments_sizes {
-            let attachment_offset = prev + attachment_size as usize;
-            let mut source = &data[prev..attachment_offset];
+            let attachment_offset = prev + attachment_size as usize;            
 
-            loop {        
-                let n = source.read(&mut data_buf).await?;        
-                match n {
-                    0 => break,
-                    _ => self.write_tx.send(StreamUnit::Array(stream_id, n, data_buf)).await?
+            match attachment_size {
+                0 => {
+                    self.write_tx.send(StreamUnit::Empty(stream_id)).await?
                 }
-            }
+                _ => {
+                    let mut source = &data[prev..attachment_offset];
+
+                    loop {        
+                        let n = source.read(&mut data_buf).await?;        
+                        match n {
+                            0 => break,
+                            _ => self.write_tx.send(StreamUnit::Array(stream_id, n, data_buf)).await?
+                        }
+                    }                    
+                }
+            }            
 
             prev = attachment_offset;
         }
@@ -694,7 +727,7 @@ pub enum ProcessError {
     Io(std::io::Error),
     SerdeJson(serde_json::Error),
     GetFile(GetFileError),
-    SendBufError,
+    SendStreamUnitError,
     SendServerMsgError,
     SendClientMsgError,
     SendRpcMsgError,
@@ -744,7 +777,7 @@ impl From<option::NoneError> for ProcessError {
 
 impl From<SendError<StreamUnit>> for ProcessError {
 	fn from(err: SendError<StreamUnit>) -> ProcessError {
-		ProcessError::SendBufError
+		ProcessError::SendStreamUnitError
 	}
 }
 

@@ -191,6 +191,14 @@ async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut 
                         socket_write.write_all(&buf_u32[..]).await?;
                         socket_write.write_all(&buf).await?;
                     }
+                    StreamUnit::Empty(stream_id) => {
+                        buf_u32.clear();
+                        buf_u32.put_u32(stream_id);
+                        socket_write.write_all(&buf_u32[..]).await?;
+                        buf_u32.clear();
+                        buf_u32.put_u32(0);
+                        socket_write.write_all(&buf_u32[..]).await?;
+                    }
                 }
                 //info!("f2 ok {} {}", auth_msg_meta.tx, n);
             }

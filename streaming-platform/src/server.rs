@@ -67,7 +67,8 @@ async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut 
     let (mut socket_read, mut socket_write) = stream.split();
     let mut adapter = socket_read.take(LENS_BUF_SIZE as u64);
     let mut state = State::new();
-    let mut buf_u32 = BytesMut::with_capacity(4);
+    let mut buf_u64 = BytesMut::with_capacity(8);
+    let mut buf_u32 = BytesMut::with_capacity(4);    
     let mut stream_layouts = HashMap::new();
     let mut auth_stream_layout = None;
     loop {
@@ -174,27 +175,27 @@ async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut 
                 //info!("f2 {}", auth_msg_meta.tx);                
                 match res? {
                     StreamUnit::Array(stream_id, n, buf) => {
-                        buf_u32.clear();
-                        buf_u32.put_u32(stream_id);
-                        socket_write.write_all(&buf_u32[..]).await?;
+                        buf_u64.clear();
+                        buf_u64.put_u64(stream_id);
+                        socket_write.write_all(&buf_u64[..]).await?;
                         buf_u32.clear();
                         buf_u32.put_u32(n as u32);
                         socket_write.write_all(&buf_u32[..]).await?;
                         socket_write.write_all(&buf[..n]).await?;
                     }
                     StreamUnit::Vector(stream_id, buf) => {
-                        buf_u32.clear();
-                        buf_u32.put_u32(stream_id);
-                        socket_write.write_all(&buf_u32[..]).await?;
+                        buf_u64.clear();
+                        buf_u64.put_u64(stream_id);
+                        socket_write.write_all(&buf_u64[..]).await?;
                         buf_u32.clear();
                         buf_u32.put_u32(buf.len() as u32);
                         socket_write.write_all(&buf_u32[..]).await?;
                         socket_write.write_all(&buf).await?;
                     }
                     StreamUnit::Empty(stream_id) => {
-                        buf_u32.clear();
-                        buf_u32.put_u32(stream_id);
-                        socket_write.write_all(&buf_u32[..]).await?;
+                        buf_u64.clear();
+                        buf_u64.put_u64(stream_id);
+                        socket_write.write_all(&buf_u64[..]).await?;
                         buf_u32.clear();
                         buf_u32.put_u32(0);
                         socket_write.write_all(&buf_u32[..]).await?;

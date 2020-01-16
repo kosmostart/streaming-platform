@@ -64,7 +64,7 @@ where
             "access_key": access_key
         }), route).unwrap();
 
-        let res = write(get_stream_id(), dto, msg_meta_size, payload_size, attachments_sizes, &mut write_tx).await;
+        let res = write(get_stream_id_onetime(&addr), dto, msg_meta_size, payload_size, attachments_sizes, &mut write_tx).await;
         println!("{:?}", res);        
     });
     let mut mb = MagicBall::new(addr2, write_tx2, rpc_inbound_tx);
@@ -133,7 +133,7 @@ where
             "access_key": access_key
         }), route).unwrap();
 
-        let res = write(get_stream_id(), dto, msg_meta_size, payload_size, attachments_sizes, &mut write_tx).await;
+        let res = write(get_stream_id_onetime(&addr), dto, msg_meta_size, payload_size, attachments_sizes, &mut write_tx).await;
         println!("{:?}", res);        
     });
 
@@ -182,7 +182,7 @@ where
                                 };
                                 route.points.push(Participator::Service(mb.get_addr()));
                                 let (res, msg_meta_size, payload_size, attacchments_size) = reply_to_rpc_dto2_sizes(mb.get_addr(), tx, key, correlation_id, payload, attachments, attachments_data, rpc_result, route).expect("failed to create rpc reply");
-                                write(get_stream_id(), res, msg_meta_size, payload_size, attacchments_size, &mut write_tx3).await.expect("failed to write rpc response");
+                                write(mb.get_stream_id(), res, msg_meta_size, payload_size, attacchments_size, &mut write_tx3).await.expect("failed to write rpc response");
                             });                            
                         }
                         MsgKind::RpcResponse(_) => {
@@ -280,7 +280,7 @@ where
             "access_key": access_key
         }), route).unwrap();
 
-        let res = write(get_stream_id(), dto, msg_meta_size, payload_size, attachments_size, &mut write_tx).await;
+        let res = write(get_stream_id_onetime(&addr), dto, msg_meta_size, payload_size, attachments_size, &mut write_tx).await;
         println!("{:?}", res);        
     });
 
@@ -325,7 +325,7 @@ where
                                 };                                
                                 route.points.push(Participator::Service(mb.get_addr()));
                                 let (res, msg_meta_size, payload_size, attacchments_size) = reply_to_rpc_dto2_sizes(mb.get_addr(), tx, key, correlation_id, payload, attachments, attachments_data, rpc_result, route).expect("failed to create rpc reply");
-                                write(get_stream_id(), res, msg_meta_size, payload_size, attacchments_size, &mut write_tx3).await.expect("failed to write rpc response");                                
+                                write(mb.get_stream_id(), res, msg_meta_size, payload_size, attacchments_size, &mut write_tx3).await.expect("failed to write rpc response");                                
                             });                            
                         }
                         MsgKind::RpcResponse(_) => {                                                        
@@ -386,6 +386,7 @@ async fn process_message_stream(addr: String, mut stream: TcpStream, mut read_tx
 
     let mut adapter = socket_read.take(LENS_BUF_SIZE as u64);
     let mut state = State::new();
+    let mut buf_u64 = BytesMut::with_capacity(8);
     let mut buf_u32 = BytesMut::with_capacity(4);
 
     loop {
@@ -418,27 +419,27 @@ async fn process_message_stream(addr: String, mut stream: TcpStream, mut read_tx
             res = f2 => {                
                 match res? {
                     StreamUnit::Array(stream_id, n, buf) => {
-                        buf_u32.clear();
-                        buf_u32.put_u32(stream_id);
-                        socket_write.write_all(&buf_u32[..]).await?;
+                        buf_u64.clear();
+                        buf_u64.put_u64(stream_id);
+                        socket_write.write_all(&buf_u64[..]).await?;
                         buf_u32.clear();
                         buf_u32.put_u32(n as u32);
                         socket_write.write_all(&buf_u32[..]).await?;
                         socket_write.write_all(&buf[..n]).await?;
                     }
                     StreamUnit::Vector(stream_id, buf) => {
-                        buf_u32.clear();
-                        buf_u32.put_u32(stream_id);
-                        socket_write.write_all(&buf_u32[..]).await?;
+                        buf_u64.clear();
+                        buf_u64.put_u64(stream_id);
+                        socket_write.write_all(&buf_u64[..]).await?;
                         buf_u32.clear();
                         buf_u32.put_u32(buf.len() as u32);
                         socket_write.write_all(&buf_u32[..]).await?;
                         socket_write.write_all(&buf).await?;
                     }
                     StreamUnit::Empty(stream_id) => {
-                        buf_u32.clear();
-                        buf_u32.put_u32(stream_id);
-                        socket_write.write_all(&buf_u32[..]).await?;
+                        buf_u64.clear();
+                        buf_u64.put_u64(stream_id);
+                        socket_write.write_all(&buf_u64[..]).await?;
                         buf_u32.clear();
                         buf_u32.put_u32(0);
                         socket_write.write_all(&buf_u32[..]).await?;
@@ -460,6 +461,7 @@ async fn process_full_message(addr: String, mut stream: TcpStream, mut read_tx: 
 
     let mut adapter = socket_read.take(LENS_BUF_SIZE as u64);
     let mut state = State::new();
+    let mut buf_u64 = BytesMut::with_capacity(8);
     let mut buf_u32 = BytesMut::with_capacity(4);    
     let mut stream_layouts = HashMap::new();
 
@@ -517,27 +519,27 @@ async fn process_full_message(addr: String, mut stream: TcpStream, mut read_tx: 
                 //info!("client fm f2 {}", addr);   
                 match res? {
                     StreamUnit::Array(stream_id, n, buf) => {
-                        buf_u32.clear();
-                        buf_u32.put_u32(stream_id);
-                        socket_write.write_all(&buf_u32[..]).await?;
+                        buf_u64.clear();
+                        buf_u64.put_u64(stream_id);
+                        socket_write.write_all(&buf_u64[..]).await?;
                         buf_u32.clear();
                         buf_u32.put_u32(n as u32);                        
                         socket_write.write_all(&buf_u32[..]).await?;
                         socket_write.write_all(&buf[..n]).await?;
                     }
                     StreamUnit::Vector(stream_id, buf) => {
-                        buf_u32.clear();
-                        buf_u32.put_u32(stream_id);
-                        socket_write.write_all(&buf_u32[..]).await?; 
+                        buf_u64.clear();
+                        buf_u64.put_u64(stream_id);
+                        socket_write.write_all(&buf_u64[..]).await?;
                         buf_u32.clear();
                         buf_u32.put_u32(buf.len() as u32);
                         socket_write.write_all(&buf_u32[..]).await?;
                         socket_write.write_all(&buf).await?;
                     }
                     StreamUnit::Empty(stream_id) => {
-                        buf_u32.clear();
-                        buf_u32.put_u32(stream_id);
-                        socket_write.write_all(&buf_u32[..]).await?;
+                        buf_u64.clear();
+                        buf_u64.put_u64(stream_id);
+                        socket_write.write_all(&buf_u64[..]).await?;
                         buf_u32.clear();
                         buf_u32.put_u32(0);
                         socket_write.write_all(&buf_u32[..]).await?;

@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use failure::Error;
+use anyhow::Error;
 use serde_derive::{Serialize, Deserialize};
 use serde_json::Value;
 use yew::callback::Callback;

@@ -10,7 +10,7 @@ edition = "2018"
 
 log = "*"
 bytes = "*"
-futures = { version = "0.3.0", features = ["async-await"] }
+futures = { version = "0.3", features = ["async-await"] }
 rand = "*"
 siphasher = "*"
 serde = "*"

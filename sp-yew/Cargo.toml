@@ -8,7 +8,7 @@ edition = "2018"
 
 [dependencies]
 
-failure = "*"
+anyhow = "*"
 serde = "*"
 serde_json = "*"
 serde_derive = "*"

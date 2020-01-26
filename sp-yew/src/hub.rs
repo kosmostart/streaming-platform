@@ -293,7 +293,7 @@ impl Agent for Worker {
                                     Some(addr) => {
                                         match self.clients.get(&addr) {
                                             Some(client_id) => self.link.respond(*client_id, Response::Msg(msg_meta, payload)),
-                                            None => self.console.log(&format!("hub: missing client {}", msg_meta.rx))
+                                            None => self.console.log(&format!("hub: missing client {}", addr))
                                         }
                                     }
                                     None => {

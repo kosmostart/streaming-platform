@@ -143,7 +143,13 @@ where
         tokio::spawn(startup(config.clone(), mb.clone()));
 
         loop {
-            let msg = read_rx.recv().await.expect("connection issues acquired");
+            let msg = match read_rx.recv().await {
+                Some(msg) => msg,
+                None => {
+                    info!("client connection dropped");
+                    break;
+                }
+            };
             let mut mb = mb.clone();
             let config = config.clone();
             let mut write_tx3 = write_tx3.clone();
@@ -288,7 +294,13 @@ where
         let mut mb = MagicBall::new(addr2, write_tx2, rpc_inbound_tx);        
         tokio::spawn(startup(config.clone(), mb.clone()));
         loop {                        
-            let msg = read_rx.recv().await.expect("connection issues acquired");
+            let msg = match read_rx.recv().await {
+                Some(msg) => msg,
+                None => {
+                    info!("client connection dropped");
+                    break;
+                }
+            };
             let mut mb = mb.clone();
             let config = config.clone();
             let mut write_tx3 = write_tx3.clone();
@@ -385,7 +397,7 @@ async fn process_message_stream(addr: String, mut stream: TcpStream, mut read_tx
     //println!("auth {:?}", auth_payload);        
 
     let mut adapter = socket_read.take(LENS_BUF_SIZE as u64);
-    let mut state = State::new();
+    let mut state = State::new(addr.clone());
     let mut buf_u64 = BytesMut::with_capacity(8);
     let mut buf_u32 = BytesMut::with_capacity(4);
 
@@ -460,7 +472,7 @@ async fn process_full_message(addr: String, mut stream: TcpStream, mut read_tx: 
     //println!("auth {:?}", auth_payload);
 
     let mut adapter = socket_read.take(LENS_BUF_SIZE as u64);
-    let mut state = State::new();
+    let mut state = State::new(addr.clone());
     let mut buf_u64 = BytesMut::with_capacity(8);
     let mut buf_u32 = BytesMut::with_capacity(4);    
     let mut stream_layouts = HashMap::new();

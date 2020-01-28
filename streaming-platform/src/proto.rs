@@ -32,8 +32,8 @@ static COUNTER: AtomicU32 = AtomicU32::new(1);
 pub fn get_counter_value() -> u32 {
     if COUNTER.load(Ordering::Relaxed) == std::u32::MAX {
         COUNTER.store(1, Ordering::Relaxed);
-    }    
-    COUNTER.fetch_add(1, Ordering::Relaxed) 
+    }
+    COUNTER.fetch_add(1, Ordering::Relaxed)
 }
 
 pub fn get_hasher() -> SipHasher24 {    
@@ -126,12 +126,14 @@ pub enum Step {
 // Data structure used for convenience when streaming data from source
 
 pub struct State {
+    pub addr: String,
     pub stream_states: HashMap<u64, StreamState>
 }
 
 impl State {
-    pub fn new() -> State {
+    pub fn new(addr: String) -> State {
         State {
+            addr,
             stream_states: HashMap::new()
         }
     }
@@ -186,8 +188,9 @@ pub async fn read(state: &mut State, adapter: &mut Take<ReadHalf<'_>>) -> Result
         Step::MsgMeta => {
             let mut buf = vec![];
             let n = adapter.read_to_end(&mut buf).await?;
-            //info!("read step msg meta, n {}", unit_size);
+            //info!("{} read step msg meta, n {}", state.addr, unit_size);
             let msg_meta: MsgMeta = from_slice(&buf)?;
+            //info!("{} read step msg meta success", state.addr);
             for attachment in msg_meta.attachments.iter() {
                 stream_state.attachments.push(attachment.size);
             }             

@@ -36,9 +36,15 @@ pub async fn start_future(config: ServerConfig) -> Result<(), ProcessError> {
                     //info!("sending stream unit to client {}", addr);
                     match clients.get_mut(&addr) {
                         Some(client) => {
-                            match client.tx.send(stream_unit).await {
+                            //match client.tx.send(stream_unit).await {
+                            match client.tx.try_send(stream_unit) {
                                 Ok(()) => {}
-                                Err(_) => panic!("ServerMsg::SendArray processing failed on tx send")
+                                Err(e) => { 
+                                    match e {
+                                        tokio::sync::mpsc::error::TrySendError::Full(_) => panic!("ServerMsg::SendArray processing failed - buffer full"),
+                                        tokio::sync::mpsc::error::TrySendError::Closed(_) => panic!("ServerMsg::SendArray processing failed - client channgel closed")
+                                    }                                    
+                                }
                             }
                             //info!("sent unit to client {}", addr);
                         }
@@ -66,7 +72,7 @@ pub async fn start_future(config: ServerConfig) -> Result<(), ProcessError> {
 async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut server_tx: Sender<ServerMsg>, config: &ServerConfig) -> Result<(), ProcessError> {
     let (mut socket_read, mut socket_write) = stream.split();
     let mut adapter = socket_read.take(LENS_BUF_SIZE as u64);
-    let mut state = State::new();
+    let mut state = State::new("Server".to_owned());
     let mut buf_u64 = BytesMut::with_capacity(8);
     let mut buf_u32 = BytesMut::with_capacity(4);    
     let mut stream_layouts = HashMap::new();
@@ -120,7 +126,7 @@ async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut 
     }
     let auth_stream_layout = auth_stream_layout.ok_or(ProcessError::AuthStreamLayoutIsEmpty)?;    
     let auth_payload: Value = from_slice(&auth_stream_layout.payload)?;
-    info!("{:?}", auth_stream_layout.msg_meta);
+    //info!("{:?}", auth_stream_layout.msg_meta);
     let (mut client_tx, mut client_rx) = mpsc::channel(MPSC_CLIENT_BUF_SIZE);
     server_tx.send(ServerMsg::AddClient(auth_stream_layout.msg_meta.tx, client_net_addr, client_tx)).await?;    
     let mut client_addrs = HashMap::new();
@@ -132,7 +138,7 @@ async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut 
             res = f1 => {                
                 match res? {                    
                     ReadResult::MsgMeta(stream_id, msg_meta, buf) => {
-                        //info!("{:?}", msg_meta);
+                        //info!("{} {:?}", stream_id, msg_meta);
                         client_addrs.insert(stream_id, msg_meta.rx.clone());
                         //info!("sending msg meta");
                         server_tx.send(ServerMsg::SendUnit(msg_meta.rx.clone(), StreamUnit::Vector(stream_id, buf))).await?;
@@ -172,9 +178,10 @@ async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut 
                 };                            
             }
             res = f2 => {
-                //info!("f2 {}", auth_msg_meta.tx);                
+                //info!("{:?}", auth_stream_layout.msg_meta);
                 match res? {
                     StreamUnit::Array(stream_id, n, buf) => {
+                        //info!("f2 stream id {}", stream_id);
                         buf_u64.clear();
                         buf_u64.put_u64(stream_id);
                         socket_write.write_all(&buf_u64[..]).await?;
@@ -184,6 +191,7 @@ async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut 
                         socket_write.write_all(&buf[..n]).await?;
                     }
                     StreamUnit::Vector(stream_id, buf) => {
+                        //info!("f2 stream id {}", stream_id);
                         buf_u64.clear();
                         buf_u64.put_u64(stream_id);
                         socket_write.write_all(&buf_u64[..]).await?;
@@ -193,6 +201,7 @@ async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut 
                         socket_write.write_all(&buf).await?;
                     }
                     StreamUnit::Empty(stream_id) => {
+                        //info!("f2 stream id {}", stream_id);
                         buf_u64.clear();
                         buf_u64.put_u64(stream_id);
                         socket_write.write_all(&buf_u64[..]).await?;
@@ -201,7 +210,7 @@ async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut 
                         socket_write.write_all(&buf_u32[..]).await?;
                     }
                 }
-                //info!("f2 ok {} {}", auth_msg_meta.tx, n);
+                //info!("{:?}", auth_stream_layout.msg_meta);
             }
         };
     }

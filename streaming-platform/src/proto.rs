@@ -141,6 +141,12 @@ pub async fn read(state: &mut State, adapter: &mut Take<ReadHalf<'_>>) -> Result
 
     let mut buf = Cursor::new(&u64_buf[..]);
     let stream_id = buf.get_u64();
+    
+    if stream_id == 0 {
+        warn!("read stream_id is 0");
+        adapter.set_limit(LENS_BUF_SIZE as u64);
+        return Ok(ReadResult::MessageAborted(None));
+    }
 
     debug!("{} read stream_id succeded, stream_id {}", state.addr, stream_id);
     debug!("{} read unit_size attempt, stream_id {}", state.addr, stream_id);

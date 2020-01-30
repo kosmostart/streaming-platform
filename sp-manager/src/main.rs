@@ -85,8 +85,51 @@ fn main() {
             name: proc_.name().to_owned()
         });
     }
+    println!("stopping started processes if any are running");
+
     fix_running_self(&running);
 
+    match config.hubs {
+        Some(ref hubs) => {
+            let hub_path = config.hub_path.clone()
+                .expect("hub path is empty, but hubs are present");
+
+            for hub in hubs {
+                match &hub.file_name {
+                    Some(file_name) => {                        
+                        fix_running(&running, &file_name);
+                    }
+                    None => {
+                    }
+                }
+            }
+        }
+        None => {
+
+        }
+    }
+
+    match config.services {
+        Some(ref services) => {
+            let service_path = config.service_path.clone()
+                .expect("service path is empty, but services are present");
+
+            for service in services {
+                match &service.file_name {
+                    Some(file_name) => {
+                        fix_running(&running, &file_name);
+                    }
+                    None => {                        
+                    }
+                }
+            }
+        }
+        None => {            
+        }
+    }
+    
+    println!("done");
+    
     println!("waiting for socket clean up");
 
     thread::sleep(time::Duration::from_millis(5000));

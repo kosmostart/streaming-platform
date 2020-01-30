@@ -164,17 +164,20 @@ pub async fn read(state: &mut State, adapter: &mut Take<ReadHalf<'_>>) -> Result
     let mut u64_buf = [0; STREAM_ID_BUF_SIZE];
     let mut u32_buf = [0; LEN_BUF_SIZE];
 
+    debug!("{} read stream_id attempt", state.addr);
+
     adapter.read(&mut u64_buf).await?;
     let mut buf = Cursor::new(&u64_buf[..]);
     let stream_id = buf.get_u64();
 
-    //info!("read stream_id {}", stream_id);
+    debug!("{} read stream_id succeded, stream_id {}", state.addr, stream_id);
+    debug!("{} read unit_size attempt, stream_id {}", state.addr, stream_id);
 
     adapter.read(&mut u32_buf).await?;
     let mut buf = Cursor::new(&u32_buf[..]);
     let unit_size = buf.get_u32();
 
-    //info!("read unit_size {}", unit_size);
+    debug!("{} read unit_size succeded, unit_size {}, stream_id {}", state.addr, unit_size, stream_id);
 
     if !state.stream_states.contains_key(&stream_id) {
         state.stream_states.insert(stream_id, StreamState::new());
@@ -250,6 +253,8 @@ pub async fn read(state: &mut State, adapter: &mut Take<ReadHalf<'_>>) -> Result
     };
 
     adapter.set_limit(LENS_BUF_SIZE as u64);
+
+    debug!("{} read succeded, unit_size {}, stream_id {}", state.addr, unit_size, stream_id);
 
     res    
 }

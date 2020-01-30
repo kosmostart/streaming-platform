@@ -7,12 +7,14 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::io::Cursor;
 use std::net::SocketAddr;
 use std::hash::Hasher;
+use std::time::Duration;
 use log::*;
 use rand::random;
 use bytes::{Buf, BytesMut, BufMut};
 use tokio::io::Take;
 use tokio::net::tcp::ReadHalf;
 use tokio::sync::{mpsc::{Sender, Receiver, error::SendError}, oneshot};
+use tokio::time::{timeout, Elapsed};
 use tokio::prelude::*;
 use serde_json::{from_slice, Value, to_vec};
 use serde_derive::{Deserialize};
@@ -26,6 +28,7 @@ pub const DATA_BUF_SIZE: usize = 1024;
 pub const MPSC_SERVER_BUF_SIZE: usize = 1000;
 pub const MPSC_CLIENT_BUF_SIZE: usize = 100;
 pub const MPSC_RPC_BUF_SIZE: usize = 10000;
+pub const TIMEOUT_MS_AMOUNT: u64 = 10000;
 
 static COUNTER: AtomicU32 = AtomicU32::new(1);
 
@@ -593,7 +596,7 @@ impl MagicBall {
         self.rpc_inbound_tx.send(RpcMsg::AddRpc(correlation_id, rpc_tx)).await?;        
         write(self.get_stream_id(), dto, msg_meta_size, payload_size, attachments_sizes, &mut self.write_tx).await?;        
 
-        let (msg_meta, payload, attachments_data) = rpc_rx.await?;
+        let (msg_meta, payload, attachments_data) = timeout(Duration::from_millis(TIMEOUT_MS_AMOUNT), rpc_rx).await??;
         let payload: R = from_slice(&payload)?;        
 
         Ok(Message {
@@ -613,7 +616,7 @@ impl MagicBall {
         self.rpc_inbound_tx.send(RpcMsg::AddRpc(correlation_id, rpc_tx)).await?;
         write(self.get_stream_id(), dto, msg_meta_size, payload_size, attachments_sizes, &mut self.write_tx).await?;
 
-        let (msg_meta, payload, attachments_data) = rpc_rx.await?;
+        let (msg_meta, payload, attachments_data) = timeout(Duration::from_millis(TIMEOUT_MS_AMOUNT), rpc_rx).await??;
         let payload: R = from_slice(&payload)?;        
 
         Ok(Message {
@@ -699,7 +702,7 @@ impl MagicBall {
         self.rpc_inbound_tx.send(RpcMsg::AddRpc(correlation_id, rpc_tx)).await?;
         write(self.get_stream_id(), buf, msg_meta_size, payload_size, attachments_sizes, &mut self.write_tx).await?;
 
-        let (msg_meta, mut payload, mut attachments) = rpc_rx.await?;
+        let (msg_meta, mut payload, mut attachments_data) = timeout(Duration::from_millis(TIMEOUT_MS_AMOUNT), rpc_rx).await??;
 
         let mut buf = vec![];
         let mut msg_meta_buf = to_vec(&msg_meta)?;
@@ -707,7 +710,7 @@ impl MagicBall {
         buf.put_u32(msg_meta_buf.len() as u32);
         buf.append(&mut msg_meta_buf);
         buf.append(&mut payload);
-        buf.append(&mut attachments);
+        buf.append(&mut attachments_data);
         
         Ok((msg_meta, buf))
     }    
@@ -734,6 +737,7 @@ pub enum ProcessError {
     SendClientMsgError,
     SendRpcMsgError,
     OneshotRecvError(oneshot::error::RecvError),
+    Timeout,
     NoneError
 }
 
@@ -804,6 +808,12 @@ impl From<SendError<RpcMsg>> for ProcessError {
 impl From<oneshot::error::RecvError> for ProcessError {
 	fn from(err: oneshot::error::RecvError) -> ProcessError {
 		ProcessError::OneshotRecvError(err)
+	}
+}
+
+impl From<Elapsed> for ProcessError {
+	fn from(err: Elapsed) -> ProcessError {
+		ProcessError::Timeout
 	}
 }
 

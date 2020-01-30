@@ -28,7 +28,8 @@ pub const DATA_BUF_SIZE: usize = 1024;
 pub const MPSC_SERVER_BUF_SIZE: usize = 1000;
 pub const MPSC_CLIENT_BUF_SIZE: usize = 100;
 pub const MPSC_RPC_BUF_SIZE: usize = 10000;
-pub const TIMEOUT_MS_AMOUNT: u64 = 10000;
+pub const RPC_TIMEOUT_MS_AMOUNT: u64 = 10000;
+pub const STREAM_UNIT_READ_TIMEOUT_MS_AMOUNT: u64 = 1000;
 
 static COUNTER: AtomicU32 = AtomicU32::new(1);
 
@@ -141,7 +142,7 @@ pub async fn read(state: &mut State, adapter: &mut Take<ReadHalf<'_>>) -> Result
     debug!("{} read stream_id succeded, stream_id {}", state.addr, stream_id);
     debug!("{} read unit_size attempt, stream_id {}", state.addr, stream_id);
 
-    adapter.read(&mut u32_buf).await?;
+    timeout(Duration::from_millis(STREAM_UNIT_READ_TIMEOUT_MS_AMOUNT), adapter.read(&mut u32_buf)).await??;
     let mut buf = Cursor::new(&u32_buf[..]);
     let unit_size = buf.get_u32();
 
@@ -158,22 +159,18 @@ pub async fn read(state: &mut State, adapter: &mut Take<ReadHalf<'_>>) -> Result
     let res = match stream_state.step {
         Step::MsgMeta => {
             let mut buf = vec![];
-            let n = adapter.read_to_end(&mut buf).await?;
-            //info!("{} read step msg meta, n {}", state.addr, unit_size);
-            let msg_meta: MsgMeta = from_slice(&buf)?;
-            //info!("{} read step msg meta success", state.addr);
+            let n = timeout(Duration::from_millis(STREAM_UNIT_READ_TIMEOUT_MS_AMOUNT), adapter.read_to_end(&mut buf)).await??;            
+            let msg_meta: MsgMeta = from_slice(&buf)?;            
             for attachment in msg_meta.attachments.iter() {
                 stream_state.attachments.push(attachment.size);
             }             
             stream_state.step = Step::Payload(msg_meta.payload_size, 0);
             Ok(ReadResult::MsgMeta(stream_id, msg_meta, buf))            
         }
-        Step::Payload(payload_size, bytes_read) => {
-            //info!("step payload, payload_size {}, bytes_read {}", payload_size, bytes_read);
+        Step::Payload(payload_size, bytes_read) => {            
             let mut data_buf = [0; DATA_BUF_SIZE];
-            let n = adapter.read(&mut data_buf).await?;
-            let bytes_read = bytes_read + n as u64;
-            //info!("step payload, n {}, payload_size {}, bytes_read {}", n, payload_size, bytes_read);
+            let n = timeout(Duration::from_millis(STREAM_UNIT_READ_TIMEOUT_MS_AMOUNT), adapter.read(&mut data_buf)).await??;
+            let bytes_read = bytes_read + n as u64;            
             if bytes_read < payload_size {
                 stream_state.step = Step::Payload(payload_size, bytes_read);
                 Ok(ReadResult::PayloadData(stream_id, n, data_buf))
@@ -195,8 +192,8 @@ pub async fn read(state: &mut State, adapter: &mut Take<ReadHalf<'_>>) -> Result
             }
         }
         Step::Attachment(index, attachment_size, bytes_read) => {
-            let mut data_buf = [0; DATA_BUF_SIZE];
-            let n = adapter.read(&mut data_buf).await?;
+            let mut data_buf = [0; DATA_BUF_SIZE];            
+            let n = timeout(Duration::from_millis(STREAM_UNIT_READ_TIMEOUT_MS_AMOUNT), adapter.read(&mut data_buf)).await??;
             let bytes_read = bytes_read + n as u64;
             if bytes_read < attachment_size {
                 stream_state.step = Step::Attachment(index, attachment_size, bytes_read);
@@ -596,7 +593,7 @@ impl MagicBall {
         self.rpc_inbound_tx.send(RpcMsg::AddRpc(correlation_id, rpc_tx)).await?;        
         write(self.get_stream_id(), dto, msg_meta_size, payload_size, attachments_sizes, &mut self.write_tx).await?;        
 
-        let (msg_meta, payload, attachments_data) = timeout(Duration::from_millis(TIMEOUT_MS_AMOUNT), rpc_rx).await??;
+        let (msg_meta, payload, attachments_data) = timeout(Duration::from_millis(RPC_TIMEOUT_MS_AMOUNT), rpc_rx).await??;
         let payload: R = from_slice(&payload)?;        
 
         Ok(Message {
@@ -616,7 +613,7 @@ impl MagicBall {
         self.rpc_inbound_tx.send(RpcMsg::AddRpc(correlation_id, rpc_tx)).await?;
         write(self.get_stream_id(), dto, msg_meta_size, payload_size, attachments_sizes, &mut self.write_tx).await?;
 
-        let (msg_meta, payload, attachments_data) = timeout(Duration::from_millis(TIMEOUT_MS_AMOUNT), rpc_rx).await??;
+        let (msg_meta, payload, attachments_data) = timeout(Duration::from_millis(RPC_TIMEOUT_MS_AMOUNT), rpc_rx).await??;
         let payload: R = from_slice(&payload)?;        
 
         Ok(Message {
@@ -702,7 +699,7 @@ impl MagicBall {
         self.rpc_inbound_tx.send(RpcMsg::AddRpc(correlation_id, rpc_tx)).await?;
         write(self.get_stream_id(), buf, msg_meta_size, payload_size, attachments_sizes, &mut self.write_tx).await?;
 
-        let (msg_meta, mut payload, mut attachments_data) = timeout(Duration::from_millis(TIMEOUT_MS_AMOUNT), rpc_rx).await??;
+        let (msg_meta, mut payload, mut attachments_data) = timeout(Duration::from_millis(RPC_TIMEOUT_MS_AMOUNT), rpc_rx).await??;
 
         let mut buf = vec![];
         let mut msg_meta_buf = to_vec(&msg_meta)?;

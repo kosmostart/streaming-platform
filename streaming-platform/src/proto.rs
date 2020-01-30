@@ -427,8 +427,7 @@ pub enum StreamCompletion {
 pub async fn write(stream_id: u64, data: Vec<u8>, msg_meta_size: u64, payload_size: u64, attachments_sizes: Vec<u64>, write_tx: &mut Sender<StreamUnit>) -> Result<(), ProcessError> {    
     let msg_meta_offset = LEN_BUF_SIZE + msg_meta_size as usize;
     let payload_offset = msg_meta_offset + payload_size as usize;
-    //info!("msg_meta_offset {}", msg_meta_offset);
-    //info!("payload_offset {}", payload_offset);
+    debug!("write msg_meta_offset {}, payload_offset {}", msg_meta_offset, payload_offset);    
     let mut data_buf = [0; DATA_BUF_SIZE];    
 
     write_tx.send(StreamUnit::Vector(stream_id, data[LEN_BUF_SIZE..msg_meta_offset].to_vec())).await?;
@@ -475,6 +474,8 @@ pub async fn write(stream_id: u64, data: Vec<u8>, msg_meta_size: u64, payload_si
 
         prev = attachment_offset;
     }
+
+    debug!("write succeeded");
 
     Ok(())
 }

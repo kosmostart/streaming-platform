@@ -387,10 +387,10 @@ async fn process_full_message(addr: String, mut stream: TcpStream, mut read_tx: 
                     }
                 };
             }
-            res = f2 => {             
-                //info!("client fm f2 {}", addr);   
+            res = f2 => {                             
                 match res? {
                     StreamUnit::Array(stream_id, n, buf) => {
+                        debug!("client StreamUnit::Array write to socket attempt, n {}, stream_id {}", n, stream_id);
                         buf_u64.clear();
                         buf_u64.put_u64(stream_id);
                         socket_write.write_all(&buf_u64[..]).await?;
@@ -398,8 +398,10 @@ async fn process_full_message(addr: String, mut stream: TcpStream, mut read_tx: 
                         buf_u32.put_u32(n as u32);                        
                         socket_write.write_all(&buf_u32[..]).await?;
                         socket_write.write_all(&buf[..n]).await?;
+                        debug!("client StreamUnit::Array write to socket succeded, stream_id {}", stream_id);
                     }
                     StreamUnit::Vector(stream_id, buf) => {
+                        debug!("client StreamUnit::Vector write to socket attempt, len {}, stream_id {}", buf.len(), stream_id);
                         buf_u64.clear();
                         buf_u64.put_u64(stream_id);
                         socket_write.write_all(&buf_u64[..]).await?;
@@ -407,17 +409,19 @@ async fn process_full_message(addr: String, mut stream: TcpStream, mut read_tx: 
                         buf_u32.put_u32(buf.len() as u32);
                         socket_write.write_all(&buf_u32[..]).await?;
                         socket_write.write_all(&buf).await?;
+                        debug!("client StreamUnit::Vector write to socket succeded, stream_id {}", stream_id);
                     }
                     StreamUnit::Empty(stream_id) => {
+                        debug!("client StreamUnit::Empty write to socket attempt, stream_id {}", stream_id);
                         buf_u64.clear();
                         buf_u64.put_u64(stream_id);
                         socket_write.write_all(&buf_u64[..]).await?;
                         buf_u32.clear();
                         buf_u32.put_u32(0);
                         socket_write.write_all(&buf_u32[..]).await?;
+                        debug!("client StreamUnit::Empty write to socket succeded, stream_id {}", stream_id);
                     }
-                }
-                //info!("client fm f2 ok {} {}", n, addr);   
+                }                
             }
         };
     }

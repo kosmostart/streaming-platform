@@ -372,10 +372,6 @@ pub enum StreamUnit {
 
 /// Type for function called on data stream processing
 pub type ProcessStream<T> = fn(HashMap<String, String>, MagicBall, Receiver<ClientMsg>, Option<Receiver<RestreamMsg>>) -> T;
-/// Type for function called on event processing with raw payload
-pub type ProcessEventRaw<T> = fn(HashMap<String, String>, MagicBall, MessageRaw) -> T;
-/// Type for function called on rpc processing with raw payload
-pub type ProcessRpcRaw<T> = fn(HashMap<String, String>, MagicBall, MessageRaw) -> T;
 /// Type for function called on event processing with json payload
 pub type ProcessEvent<T, R> = fn(HashMap<String, String>, MagicBall, Message<R>) -> T;
 /// Type for function called on rpc processing with json payload
@@ -492,7 +488,7 @@ pub enum RpcMsg {
 
 #[derive(Clone)]
 pub struct MagicBall {    
-    addr: String,
+    pub addr: String,
     hash_buf: BytesMut,
     addr_bytes_len: usize,
     hasher: SipHasher24,
@@ -517,9 +513,6 @@ impl MagicBall {
             rpc_inbound_tx
         }
     }    
-    pub fn get_addr(&self) -> String {
-		self.addr.clone()
-    }
     pub fn get_stream_id(&mut self) -> u64 {
         self.hash_buf.truncate(self.addr_bytes_len);
         self.hash_buf.put_u32(get_counter_value());
@@ -606,9 +599,9 @@ impl MagicBall {
     pub async fn send_event_with_route<T>(&mut self, addr: &str, key: &str, payload: T, mut route: Route) -> Result<(), ProcessError> where T: serde::Serialize, for<'de> T: serde::Deserialize<'de>, T: Debug {
         //info!("send_event, route {:?}, target addr {}, key {}, payload {:?}, ", route, addr, key, payload);
 
-        route.points.push(Participator::Service(self.get_addr()));
+        route.points.push(Participator::Service(self.addr.clone()));
 
-        let (dto, msg_meta_size, payload_size, attachments_sizes) = event_dto_with_sizes(self.get_addr(), addr.to_owned(), key.to_owned(), payload, route)?;
+        let (dto, msg_meta_size, payload_size, attachments_sizes) = event_dto_with_sizes(self.addr.clone(), addr.to_owned(), key.to_owned(), payload, route)?;
 
         write(self.get_stream_id(), dto, msg_meta_size, payload_size, attachments_sizes, &mut self.write_tx).await?;
         

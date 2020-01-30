@@ -137,14 +137,7 @@ pub async fn read(state: &mut State, adapter: &mut Take<ReadHalf<'_>>) -> Result
 
     debug!("{} read stream_id attempt", state.addr);
     
-    match timeout(Duration::from_millis(STREAM_UNIT_READ_TIMEOUT_MS_AMOUNT), adapter.read(&mut u64_buf)).await? {
-        Ok(_) => {}
-        Err(e) => {
-            error!("{} read error {:#?}, stream_id read attempt", state.addr, e);
-            adapter.set_limit(LENS_BUF_SIZE as u64);
-            return Ok(ReadResult::MessageAborted(None));
-        }
-    }
+    adapter.read(&mut u64_buf).await?;
 
     let mut buf = Cursor::new(&u64_buf[..]);
     let stream_id = buf.get_u64();
@@ -170,7 +163,14 @@ pub async fn read(state: &mut State, adapter: &mut Take<ReadHalf<'_>>) -> Result
         state.stream_states.insert(stream_id, StreamState::new());
     }
 
-    let stream_state = state.stream_states.get_mut(&stream_id).ok_or(ProcessError::StreamNotFoundInState)?;
+    let stream_state = match state.stream_states.get_mut(&stream_id) {
+        Some(stream_state) => stream_state,
+        None => {
+            error!("read error {:#?}, stream_id {}", ProcessError::StreamNotFoundInState, stream_id);
+            adapter.set_limit(LENS_BUF_SIZE as u64);
+            return Ok(ReadResult::MessageAborted(Some(stream_id)));            
+        }
+    };
 
     adapter.set_limit(unit_size as u64);
 

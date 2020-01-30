@@ -190,7 +190,9 @@ where
                                 };                                
                                 route.points.push(Participator::Service(mb.addr.clone()));
                                 let (res, msg_meta_size, payload_size, attacchments_size) = reply_to_rpc_dto2_sizes(mb.addr.clone(), tx, key, correlation_id, payload, attachments, attachments_data, rpc_result, route).expect("failed to create rpc reply");
+                                debug!("client {} attempt to write rpc response", mb.addr);
                                 write(mb.get_stream_id(), res, msg_meta_size, payload_size, attacchments_size, &mut write_tx3).await.expect("failed to write rpc response");                                
+                                debug!("client {} write rpc response succeded", mb.addr);
                             });                            
                         }
                         MsgKind::RpcResponse(_) => {           

@@ -116,11 +116,19 @@ async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut 
                     }
                     MessageFinishBytes::Attachment(_, n, buf) => {
                         stream_layout.attachments_data.extend_from_slice(&buf[..n]);
-                    }
+                    }                    
                 }
                 auth_stream_layout = stream_layouts.remove(&stream_id);
                 //read_tx.send(ClientMsg::Message(stream_layout.msg_meta, stream_layout.payload, stream_layout.attachments_data)).await?;
                 break;
+            }
+            ReadResult::MessageAborted(stream_id) => {
+                match stream_id {
+                    Some(stream_id) => {
+                        let _ = stream_layouts.remove(&stream_id);
+                    }
+                    None => {}
+                }
             }
         }
     }
@@ -164,24 +172,29 @@ async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut 
                         server_tx.send(ServerMsg::SendUnit(client_addr.clone(), StreamUnit::Array(stream_id, n, buf))).await?;
                     }
                     ReadResult::MessageFinished(stream_id, finish_bytes) => {
-                        let client_addr = client_addrs.get(&stream_id).ok_or(ProcessError::ClientAddrNotFound)?;
+                        let client_addr = client_addrs.remove(&stream_id).ok_or(ProcessError::ClientAddrNotFound)?;
                         match finish_bytes {
                             MessageFinishBytes::Payload(n, buf) => {
                                 server_tx.send(ServerMsg::SendUnit(client_addr.clone(), StreamUnit::Array(stream_id, n, buf))).await?;
                             }
                             MessageFinishBytes::Attachment(_, n, buf) => {
                                 server_tx.send(ServerMsg::SendUnit(client_addr.clone(), StreamUnit::Array(stream_id, n, buf))).await?;
-                            }
-                        }
-                        let _ = client_addrs.remove(&stream_id).ok_or(ProcessError::ClientAddrNotFound)?;
+                            }                            
+                        }                        
                     }
-                };                            
+                    ReadResult::MessageAborted(stream_id) => {
+                        match stream_id {
+                            Some(stream_id) => {
+                                let _ = client_addrs.remove(&stream_id).ok_or(ProcessError::ClientAddrNotFound)?;
+                            }
+                            None => {}
+                        }
+                    }
+                };
             }
-            res = f2 => {
-                //info!("{:?}", auth_stream_layout.msg_meta);
+            res = f2 => {                
                 match res? {
-                    StreamUnit::Array(stream_id, n, buf) => {
-                        //info!("f2 stream id {}", stream_id);
+                    StreamUnit::Array(stream_id, n, buf) => {                        
                         buf_u64.clear();
                         buf_u64.put_u64(stream_id);
                         socket_write.write_all(&buf_u64[..]).await?;
@@ -190,8 +203,7 @@ async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut 
                         socket_write.write_all(&buf_u32[..]).await?;
                         socket_write.write_all(&buf[..n]).await?;
                     }
-                    StreamUnit::Vector(stream_id, buf) => {
-                        //info!("f2 stream id {}", stream_id);
+                    StreamUnit::Vector(stream_id, buf) => {                        
                         buf_u64.clear();
                         buf_u64.put_u64(stream_id);
                         socket_write.write_all(&buf_u64[..]).await?;
@@ -200,8 +212,7 @@ async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut 
                         socket_write.write_all(&buf_u32[..]).await?;
                         socket_write.write_all(&buf).await?;
                     }
-                    StreamUnit::Empty(stream_id) => {
-                        //info!("f2 stream id {}", stream_id);
+                    StreamUnit::Empty(stream_id) => {                        
                         buf_u64.clear();
                         buf_u64.put_u64(stream_id);
                         socket_write.write_all(&buf_u64[..]).await?;
@@ -210,7 +221,6 @@ async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut 
                         socket_write.write_all(&buf_u32[..]).await?;
                     }
                 }
-                //info!("{:?}", auth_stream_layout.msg_meta);
             }
         };
     }

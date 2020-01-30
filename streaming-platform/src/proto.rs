@@ -73,7 +73,9 @@ pub enum ReadResult {
     /// This one indicates attachment data stream by index finished
     AttachmentFinished(u64, usize, usize, [u8; DATA_BUF_SIZE]),
     /// Message stream finished, simple as that
-    MessageFinished(u64, MessageFinishBytes)
+    MessageFinished(u64, MessageFinishBytes),
+    /// Message was aborted, through cancelation or error
+    MessageAborted(Option<u64>)
 }
 
 /// Part of result of reading function for message finish
@@ -81,7 +83,7 @@ pub enum MessageFinishBytes {
     /// This indicates message was finished with payload
     Payload(usize, [u8; DATA_BUF_SIZE]),
     /// This indicates message was finished with attachment
-    Attachment(usize, usize, [u8; DATA_BUF_SIZE])
+    Attachment(usize, usize, [u8; DATA_BUF_SIZE])    
 }
 
 #[derive(Debug)]
@@ -134,15 +136,31 @@ pub async fn read(state: &mut State, adapter: &mut Take<ReadHalf<'_>>) -> Result
     let mut u32_buf = [0; LEN_BUF_SIZE];
 
     debug!("{} read stream_id attempt", state.addr);
+    
+    match timeout(Duration::from_millis(STREAM_UNIT_READ_TIMEOUT_MS_AMOUNT), adapter.read(&mut u64_buf)).await? {
+        Ok(_) => {}
+        Err(e) => {
+            error!("{} read error {:#?}, stream_id read attempt", state.addr, e);
+            adapter.set_limit(LENS_BUF_SIZE as u64);
+            return Ok(ReadResult::MessageAborted(None));
+        }
+    }
 
-    adapter.read(&mut u64_buf).await?;
     let mut buf = Cursor::new(&u64_buf[..]);
     let stream_id = buf.get_u64();
 
     debug!("{} read stream_id succeded, stream_id {}", state.addr, stream_id);
     debug!("{} read unit_size attempt, stream_id {}", state.addr, stream_id);
 
-    timeout(Duration::from_millis(STREAM_UNIT_READ_TIMEOUT_MS_AMOUNT), adapter.read(&mut u32_buf)).await??;
+    match timeout(Duration::from_millis(STREAM_UNIT_READ_TIMEOUT_MS_AMOUNT), adapter.read(&mut u32_buf)).await? {
+        Ok(_) => {}
+        Err(e) => {
+            error!("read error {:#?}, read unit size attempt, stream_id {}", e, stream_id);
+            adapter.set_limit(LENS_BUF_SIZE as u64);
+            return Ok(ReadResult::MessageAborted(Some(stream_id)));
+        }
+    }
+
     let mut buf = Cursor::new(&u32_buf[..]);
     let unit_size = buf.get_u32();
 
@@ -159,67 +177,92 @@ pub async fn read(state: &mut State, adapter: &mut Take<ReadHalf<'_>>) -> Result
     let res = match stream_state.step {
         Step::MsgMeta => {
             let mut buf = vec![];
-            let n = timeout(Duration::from_millis(STREAM_UNIT_READ_TIMEOUT_MS_AMOUNT), adapter.read_to_end(&mut buf)).await??;            
-            let msg_meta: MsgMeta = from_slice(&buf)?;            
-            for attachment in msg_meta.attachments.iter() {
-                stream_state.attachments.push(attachment.size);
-            }             
-            stream_state.step = Step::Payload(msg_meta.payload_size, 0);
-            Ok(ReadResult::MsgMeta(stream_id, msg_meta, buf))            
+            match timeout(Duration::from_millis(STREAM_UNIT_READ_TIMEOUT_MS_AMOUNT), adapter.read_to_end(&mut buf)).await? {
+                Ok(n) => {
+                    let msg_meta: MsgMeta = from_slice(&buf)?;            
+                    for attachment in msg_meta.attachments.iter() {
+                        stream_state.attachments.push(attachment.size);
+                    }             
+                    stream_state.step = Step::Payload(msg_meta.payload_size, 0);
+                    Ok(ReadResult::MsgMeta(stream_id, msg_meta, buf))
+                }
+                Err(e) => {
+                    error!("read error {:#?}, stream_id {}", e, stream_id);
+                    Ok(ReadResult::MessageAborted(Some(stream_id)))
+                }
+            }            
         }
         Step::Payload(payload_size, bytes_read) => {            
             let mut data_buf = [0; DATA_BUF_SIZE];
-            let n = timeout(Duration::from_millis(STREAM_UNIT_READ_TIMEOUT_MS_AMOUNT), adapter.read(&mut data_buf)).await??;
-            let bytes_read = bytes_read + n as u64;            
-            if bytes_read < payload_size {
-                stream_state.step = Step::Payload(payload_size, bytes_read);
-                Ok(ReadResult::PayloadData(stream_id, n, data_buf))
-            } else if bytes_read == payload_size {                
-                match stream_state.attachments.len() {
-                    0 => {
-                        let _ = state.stream_states.remove(&stream_id);
-                        Ok(ReadResult::MessageFinished(stream_id, MessageFinishBytes::Payload(n, data_buf)))
+            match timeout(Duration::from_millis(STREAM_UNIT_READ_TIMEOUT_MS_AMOUNT), adapter.read(&mut data_buf)).await? {
+                Ok(n) => {
+                    let bytes_read = bytes_read + n as u64;            
+                    if bytes_read < payload_size {
+                        stream_state.step = Step::Payload(payload_size, bytes_read);
+                        Ok(ReadResult::PayloadData(stream_id, n, data_buf))
+                    } else if bytes_read == payload_size {                
+                        match stream_state.attachments.len() {
+                            0 => {
+                                let _ = state.stream_states.remove(&stream_id);
+                                Ok(ReadResult::MessageFinished(stream_id, MessageFinishBytes::Payload(n, data_buf)))
+                            }
+                            _ => {
+                                stream_state.step = Step::Attachment(0, stream_state.attachments[0], 0);
+                                Ok(ReadResult::PayloadFinished(stream_id, n, data_buf))
+                            }
+                        }               
+                    } else if bytes_read > payload_size {                        
+                        error!("read error {:#?}, stream_id {}", ProcessError::BytesReadAmountExceededPayloadSize, stream_id);
+                        Ok(ReadResult::MessageAborted(Some(stream_id)))
+                    } else {                        
+                        error!("read error {:#?}, stream_id {}", ProcessError::PayloadSizeChecksFailed, stream_id);
+                        Ok(ReadResult::MessageAborted(Some(stream_id)))
                     }
-                    _ => {
-                        stream_state.step = Step::Attachment(0, stream_state.attachments[0], 0);
-                        Ok(ReadResult::PayloadFinished(stream_id, n, data_buf))
-                    }
-                }               
-            } else if bytes_read > payload_size {
-                Err(ProcessError::BytesReadAmountExceededPayloadSize)
-            } else {
-                Err(ProcessError::PayloadSizeChecksFailed)
-            }
+                }
+                Err(e) => {
+                    error!("read error {:#?}, stream_id {}", e, stream_id);                    
+                    Ok(ReadResult::MessageAborted(Some(stream_id)))
+                }
+            }            
         }
         Step::Attachment(index, attachment_size, bytes_read) => {
             let mut data_buf = [0; DATA_BUF_SIZE];            
-            let n = timeout(Duration::from_millis(STREAM_UNIT_READ_TIMEOUT_MS_AMOUNT), adapter.read(&mut data_buf)).await??;
-            let bytes_read = bytes_read + n as u64;
-            if bytes_read < attachment_size {
-                stream_state.step = Step::Attachment(index, attachment_size, bytes_read);
-                Ok(ReadResult::AttachmentData(stream_id, index, n, data_buf))
-            } else if bytes_read == attachment_size {                
-                match stream_state.attachments.len() {
-                    index => {                        
-                        let _ = state.stream_states.remove(&stream_id);
-                        Ok(ReadResult::MessageFinished(stream_id, MessageFinishBytes::Attachment(index, n, data_buf)))
+            match timeout(Duration::from_millis(STREAM_UNIT_READ_TIMEOUT_MS_AMOUNT), adapter.read(&mut data_buf)).await? {
+                Ok(n) => {
+                    let bytes_read = bytes_read + n as u64;
+                    if bytes_read < attachment_size {
+                        stream_state.step = Step::Attachment(index, attachment_size, bytes_read);
+                        Ok(ReadResult::AttachmentData(stream_id, index, n, data_buf))
+                    } else if bytes_read == attachment_size {                
+                        match stream_state.attachments.len() {
+                            index => {                        
+                                let _ = state.stream_states.remove(&stream_id);
+                                Ok(ReadResult::MessageFinished(stream_id, MessageFinishBytes::Attachment(index, n, data_buf)))
+                            }
+                            _ => {
+                                stream_state.step = Step::Attachment(index + 1, stream_state.attachments[index + 1], 0);
+                                Ok(ReadResult::AttachmentFinished(stream_id, index, n, data_buf))
+                            }
+                        }              
+                    } else if bytes_read > attachment_size {
+                        error!("read error {:#?}, stream_id {}", ProcessError::BytesReadAmountExceededAttachmentSize, stream_id);
+                        Ok(ReadResult::MessageAborted(Some(stream_id)))
+                    } else {
+                        error!("read error {:#?}, stream_id {}", ProcessError::AttachmentSizeChecksFailed, stream_id);
+                        Ok(ReadResult::MessageAborted(Some(stream_id)))
                     }
-                    _ => {
-                        stream_state.step = Step::Attachment(index + 1, stream_state.attachments[index + 1], 0);
-                        Ok(ReadResult::AttachmentFinished(stream_id, index, n, data_buf))
-                    }
-                }              
-            } else if bytes_read > attachment_size {
-                Err(ProcessError::BytesReadAmountExceededAttachmentSize)
-            } else {
-                Err(ProcessError::AttachmentSizeChecksFailed)
-            }
-        }        
+                }
+                Err(e) => {
+                    error!("read error {:#?}, stream_id {}", e, stream_id);                    
+                    Ok(ReadResult::MessageAborted(Some(stream_id)))
+                }
+            }            
+        }    
     };
 
     adapter.set_limit(LENS_BUF_SIZE as u64);
 
-    debug!("{} read succeded, unit_size {}, stream_id {}", state.addr, unit_size, stream_id);
+    debug!("{} read finished, unit_size {}, stream_id {}", state.addr, unit_size, stream_id);
 
     res    
 }
@@ -366,11 +409,13 @@ pub enum ClientMsg {
     /// This is sent in Stream mode without fs future
     MessageFinished(u64),
     /// This is sent in FullMessage mode without fs future
-    Message(u64, MsgMeta, Vec<u8>, Vec<u8>)
+    Message(u64, MsgMeta, Vec<u8>, Vec<u8>),
+    /// Message was aborted, through cancelation or error
+    MessageAborted(Option<u64>)
 }
 
 impl ClientMsg {
-    pub fn get_stream_id(&self) -> u64 {
+    pub fn get_stream_id(&self) -> Option<u64> {
         match self {
             ClientMsg::MsgMeta(stream_id, _) |
             ClientMsg::PayloadData(stream_id, _, _) |
@@ -378,7 +423,8 @@ impl ClientMsg {
             ClientMsg::AttachmentData(stream_id, _, _, _) |
             ClientMsg::AttachmentFinished(stream_id, _, _, _) |
             ClientMsg::MessageFinished(stream_id) |
-            ClientMsg::Message(stream_id, _, _, _) => *stream_id
+            ClientMsg::Message(stream_id, _, _, _) => Some(*stream_id),
+            ClientMsg::MessageAborted(stream_id) => *stream_id
         }
     }
 }

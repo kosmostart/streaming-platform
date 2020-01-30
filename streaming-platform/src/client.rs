@@ -282,9 +282,12 @@ async fn process_message_stream(addr: String, mut stream: TcpStream, mut read_tx
                             }
                             MessageFinishBytes::Attachment(index, n, buf) => {
                                 read_tx.send(ClientMsg::AttachmentFinished(stream_id, index, n, buf)).await?;
-                            }
+                            }                            
                         }
                         read_tx.send(ClientMsg::MessageFinished(stream_id)).await?;
+                    }
+                    ReadResult::MessageAborted(stream_id) => {
+                        read_tx.send(ClientMsg::MessageAborted(stream_id)).await?;
                     }
                 };
             }
@@ -380,10 +383,19 @@ async fn process_full_message(addr: String, mut stream: TcpStream, mut read_tx: 
                             }
                             MessageFinishBytes::Attachment(_, n, buf) => {
                                 stream_layout.attachments_data.extend_from_slice(&buf[..n]);
-                            }
+                            }                            
                         }
                         let stream_layout = stream_layouts.remove(&stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
                         read_tx.send(ClientMsg::Message(stream_id, stream_layout.msg_meta, stream_layout.payload, stream_layout.attachments_data)).await?;
+                    }
+                    ReadResult::MessageAborted(stream_id) => {
+                        match stream_id {
+                            Some(stream_id) => {
+                                let _ = stream_layouts.remove(&stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
+                            }
+                            None => {}
+                        }
+                        read_tx.send(ClientMsg::MessageAborted(stream_id)).await?;                        
                     }
                 };
             }

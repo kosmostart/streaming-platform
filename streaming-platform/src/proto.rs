@@ -56,41 +56,6 @@ pub enum ClientKind {
     Hub
 }
 
-/*
-/// Read full message from source in to memory. Should be used carefully with large message content.
-pub async fn read_full(socket_read: &mut ReadHalf<'_>) -> Result<(MsgMeta, Vec<u8>, Vec<u8>), ProcessError> {
-    //info!("read_full start {}", addr);
-    let mut len_buf = [0; LEN_BUF_SIZE];
-    socket_read.read_exact(&mut len_buf).await?;
-
-    let mut buf = Cursor::new(len_buf);        
-    let len = buf.get_u32() as usize;
-    //info!("read_full len {} {}", addr, len);
-    let mut adapter = socket_read.take(len as u64);
-
-    let mut msg_meta = vec![];
-
-    let n = adapter.read_to_end(&mut msg_meta).await?;
-    //info!("read_full n {} {}", addr, n);
-
-    let msg_meta: MsgMeta = from_slice(&msg_meta)?;        
-    //info!("read_full {} {:?}", addr, msg_meta);
-    let mut adapter = socket_read.take(msg_meta.payload_size as u64);
-
-    let mut payload = vec![];
-    let n = adapter.read_to_end(&mut payload).await?;
-
-    let mut adapter = socket_read.take(msg_meta.attachments_len() as u64);
-
-    let mut attachments = vec![];
-    let n = adapter.read_to_end(&mut attachments).await?;
-
-    //info!("read_full ok {}", addr);
-    
-    Ok((msg_meta, payload, attachments))
-}
-*/
-
 /// The result of reading function
 pub enum ReadResult {    
     /// Message data stream is prepended with MsgMeta struct

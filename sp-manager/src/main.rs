@@ -40,7 +40,8 @@ enum ProcessType {
 enum Msg {
     StartServiceProcess(String, crossbeam::channel::Sender<String>),
     StartHubProcess(String, crossbeam::channel::Sender<String>),
-    StopProcess(String, crossbeam::channel::Sender<String>)
+    StopProcess(String, crossbeam::channel::Sender<String>),
+    StopAll(crossbeam::channel::Sender<String>)
 }
 
 /// This is what we're going to decode into. Each field is optional, meaning
@@ -97,8 +98,9 @@ fn main() {
     let start_tx = started_tx.clone();
     let start_hub_tx = started_tx.clone();
     let stop_tx = started_tx.clone();
+    let stop_tx2 = started_tx.clone();
 
-    let stated_processes = std::thread::Builder::new()
+    let started_processes_handle = std::thread::Builder::new()
         .name("started-processes".to_owned())
         .spawn(move || {
             println!("quering system data");
@@ -361,6 +363,17 @@ fn main() {
 
                         reply_tx.send("Ok".to_owned());
                     }
+                    Msg::StopAll(reply_tx) => {
+                        println!("stopping all started processes");
+
+                        for (name, process) in started.iter_mut() {
+                            println!("found {} in started", name);
+                            let res = process.instance.kill();
+                            println!("stop result for {} {:?}", name, res);
+                        }
+                            
+                        reply_tx.send("Ok".to_owned());
+                    }
                 }
                 
             }
@@ -413,7 +426,19 @@ fn main() {
 
                     reply
                 })
-        )        
+        )
+        .or(
+            warp::path("stop-all")                
+                .map(move || {
+                    let (reply_tx, reply_rx) = crossbeam::channel::unbounded();
+
+                    stop_tx2.send(Msg::StopAll(reply_tx));
+
+                    let reply = reply_rx.recv_timeout(std::time::Duration::from_secs(30)).unwrap();
+
+                    reply
+                })
+        )
         ;
 	
     let addr = "0.0.0.0:49999".parse::<SocketAddr>().unwrap();        

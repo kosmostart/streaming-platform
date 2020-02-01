@@ -28,9 +28,10 @@ pub const DATA_BUF_SIZE: usize = 1024;
 pub const MPSC_SERVER_BUF_SIZE: usize = 1000;
 pub const MPSC_CLIENT_BUF_SIZE: usize = 100;
 pub const MPSC_RPC_BUF_SIZE: usize = 10000;
-pub const RPC_TIMEOUT_MS_AMOUNT: u64 = 10000;
+pub const RPC_TIMEOUT_MS_AMOUNT: u64 = 30000;
 pub const STREAM_UNIT_READ_TIMEOUT_MS_AMOUNT: u64 = 1000;
 
+/*
 static COUNTER: AtomicU32 = AtomicU32::new(1);
 
 pub fn get_counter_value() -> u32 {
@@ -39,6 +40,7 @@ pub fn get_counter_value() -> u32 {
     }
     COUNTER.fetch_add(1, Ordering::Relaxed)
 }
+*/
 
 pub fn get_hasher() -> SipHasher24 {    
     SipHasher24::new_with_keys(0, random::<u64>())
@@ -47,7 +49,8 @@ pub fn get_hasher() -> SipHasher24 {
 pub fn get_stream_id_onetime(addr: &str) -> u64 {
     let mut buf = BytesMut::new();
     buf.put(addr.as_bytes());
-    buf.put_u32(get_counter_value());
+    //buf.put_u32(get_counter_value());
+    buf.extend_from_slice(Uuid::new_v4().to_string().as_bytes());
     let mut hasher = get_hasher();
     hasher.write(&buf);
     hasher.finish()
@@ -538,15 +541,14 @@ impl MagicBall {
     }    
     pub fn get_stream_id(&mut self) -> u64 {
         self.hash_buf.truncate(self.addr_bytes_len);
-        self.hash_buf.put_u32(get_counter_value());
+        //self.hash_buf.put_u32(get_counter_value());
+        self.hash_buf.extend_from_slice(Uuid::new_v4().to_string().as_bytes());
         self.hasher.write(&self.hash_buf);
         self.hasher.finish()
     }
-    /// Please note, stream_id value MUST ONLY BE ACQUIRED with get_stream_id() function. 
-    /// This value MUST BE UNIQUE PER EACH MESSAGE IN TRANSFER AT CURRENT MOMENT OF TIME (that is what get_stream_id() function does).
-    /// Function is called write_vec for convenience, actually it is write message or message parts function.
-    /// stream_id generation made explicit on purpose to point out RESPONSIBILITY OF THE USER OF THIS FUNCTION.
-    /// Ofcourse, stream_id generation can be implicit - this, however, will lead to less flexible API (if for example you need stream payload or attachments data (not pull payload and/or attachments in memory)).
+    /// This function should be called for single message or parts of it (not for multiple messages inside vec)
+    /// Please note, stream_id value MUST BE ACQUIRED with get_stream_id() function.         
+    /// stream_id generation can be implicit - this, however, will lead to less flexible API (if for example you need stream payload or attachments data (not pull payload and/or attachments in memory)).
     pub async fn write_vec(&mut self, stream_id: u64, data: Vec<u8>, msg_meta_size: u64, payload_size: u64, attachments_sizes: Vec<u64>) -> Result<(), ProcessError> {
         let msg_meta_offset = LEN_BUF_SIZE + msg_meta_size as usize;
         let payload_offset = msg_meta_offset + payload_size as usize;

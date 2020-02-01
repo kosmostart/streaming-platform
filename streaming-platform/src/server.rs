@@ -134,6 +134,7 @@ async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut 
     }
     let auth_stream_layout = auth_stream_layout.ok_or(ProcessError::AuthStreamLayoutIsEmpty)?;    
     let auth_payload: Value = from_slice(&auth_stream_layout.payload)?;
+    state.addr = "Server connection from ".to_owned() + &auth_stream_layout.msg_meta.tx;
     //info!("{:?}", auth_stream_layout.msg_meta);
     let (mut client_tx, mut client_rx) = mpsc::channel(MPSC_CLIENT_BUF_SIZE);
     server_tx.send(ServerMsg::AddClient(auth_stream_layout.msg_meta.tx, client_net_addr, client_tx)).await?;    

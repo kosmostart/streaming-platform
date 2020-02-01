@@ -145,10 +145,9 @@ pub async fn read(state: &mut State, adapter: &mut Take<ReadHalf<'_>>) -> Result
     let mut buf = Cursor::new(&u64_buf[..]);
     let stream_id = buf.get_u64();
     
-    if stream_id == 0 {
-        warn!("read stream_id is 0");
+    if stream_id == 0 {        
         adapter.set_limit(LENS_BUF_SIZE as u64);
-        return Ok(ReadResult::MessageAborted(None));
+        return Err(ProcessError::StreamIdIsZero);
     }
 
     debug!("{} read stream_id succeded, stream_id {}", state.addr, stream_id);
@@ -547,8 +546,7 @@ impl MagicBall {
         self.hasher.finish()
     }
     /// This function should be called for single message or parts of it (not for multiple messages inside vec)
-    /// Please note, stream_id value MUST BE ACQUIRED with get_stream_id() function.         
-    /// stream_id generation can be implicit - this, however, will lead to less flexible API (if for example you need stream payload or attachments data (not pull payload and/or attachments in memory)).
+    /// stream_id value MUST BE ACQUIRED with get_stream_id() function. stream_id generation can be implicit, however this will leads to less flexible API (if for example you need stream payload or attachments data).
     pub async fn write_vec(&mut self, stream_id: u64, data: Vec<u8>, msg_meta_size: u64, payload_size: u64, attachments_sizes: Vec<u64>) -> Result<(), ProcessError> {
         let msg_meta_offset = LEN_BUF_SIZE + msg_meta_size as usize;
         let payload_offset = msg_meta_offset + payload_size as usize;
@@ -751,7 +749,9 @@ impl MagicBall {
         let (rpc_tx, rpc_rx) = oneshot::channel();
                 
         self.rpc_inbound_tx.send(RpcMsg::AddRpc(correlation_id, rpc_tx)).await?;
+        debug!("proxy_rpc write attempt");
         write(self.get_stream_id(), buf, msg_meta_size, payload_size, attachments_sizes, &mut self.write_tx).await?;
+        debug!("proxy_rpc write attempt succeeded");
 
         let (msg_meta, mut payload, mut attachments_data) = timeout(Duration::from_millis(RPC_TIMEOUT_MS_AMOUNT), rpc_rx).await??;
 
@@ -778,6 +778,7 @@ pub enum ProcessError {
     BytesReadAmountExceededAttachmentSize,
     AttachmentSizeChecksFailed,    
     StreamClosed,
+    StreamIdIsZero,
     NotEnoughBytesForLen,
     IncorrectReadResult,    
     Io(std::io::Error),

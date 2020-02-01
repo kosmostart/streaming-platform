@@ -42,7 +42,7 @@ pub async fn start_future(config: ServerConfig) -> Result<(), ProcessError> {
                                 Err(e) => { 
                                     match e {
                                         tokio::sync::mpsc::error::TrySendError::Full(_) => panic!("ServerMsg::SendArray processing failed - buffer full"),
-                                        tokio::sync::mpsc::error::TrySendError::Closed(_) => panic!("ServerMsg::SendArray processing failed - client channgel closed")
+                                        tokio::sync::mpsc::error::TrySendError::Closed(_) => panic!("ServerMsg::SendArray processing failed - client channel closed")
                                     }                                    
                                 }
                             }

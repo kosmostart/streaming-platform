@@ -453,10 +453,11 @@ pub async fn write(stream_id: u64, data: Vec<u8>, msg_meta_size: u64, payload_si
     let payload_offset = msg_meta_offset + payload_size as usize;
     debug!("write stream_id {}, data len {}, msg_meta_offset {}, payload_offset {}", stream_id, data.len(), msg_meta_offset, payload_offset);    
     let mut data_buf = [0; DATA_BUF_SIZE];
-    let mut checksum = 0;
 
+    let vector = data[LEN_BUF_SIZE..msg_meta_offset].to_vec();
+    let mut checksum = vector.len();
 
-    write_tx.send(StreamUnit::Vector(stream_id, data[LEN_BUF_SIZE..msg_meta_offset].to_vec())).await?;
+    write_tx.send(StreamUnit::Vector(stream_id, vector)).await?;
 
 
     match payload_size {
@@ -508,6 +509,7 @@ pub async fn write(stream_id: u64, data: Vec<u8>, msg_meta_size: u64, payload_si
     }
 
     if checksum != data.len() - 4 {
+        error!("stream_id {}, checksum {}, content len {}", stream_id, checksum, data.len() - 4);
         return Err(ProcessError::WriteChecksumCheckFailed);
     }
 

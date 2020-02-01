@@ -451,8 +451,10 @@ pub enum StreamCompletion {
 pub async fn write(stream_id: u64, data: Vec<u8>, msg_meta_size: u64, payload_size: u64, attachments_sizes: Vec<u64>, write_tx: &mut Sender<StreamUnit>) -> Result<(), ProcessError> {    
     let msg_meta_offset = LEN_BUF_SIZE + msg_meta_size as usize;
     let payload_offset = msg_meta_offset + payload_size as usize;
-    debug!("write msg_meta_offset {}, payload_offset {}", msg_meta_offset, payload_offset);    
-    let mut data_buf = [0; DATA_BUF_SIZE];    
+    debug!("write stream_id {}, data len {}, msg_meta_offset {}, payload_offset {}", stream_id, data.len(), msg_meta_offset, payload_offset);    
+    let mut data_buf = [0; DATA_BUF_SIZE];
+    let mut checksum = 0;
+
 
     write_tx.send(StreamUnit::Vector(stream_id, data[LEN_BUF_SIZE..msg_meta_offset].to_vec())).await?;
 
@@ -468,7 +470,10 @@ pub async fn write(stream_id: u64, data: Vec<u8>, msg_meta_size: u64, payload_si
                 let n = source.read(&mut data_buf).await?;        
                 match n {
                     0 => break,
-                    _ => write_tx.send(StreamUnit::Array(stream_id, n, data_buf)).await?
+                    _ => {
+                        checksum = checksum + n;
+                        write_tx.send(StreamUnit::Array(stream_id, n, data_buf)).await?;
+                    }
                 }
             }
         }
@@ -490,13 +495,20 @@ pub async fn write(stream_id: u64, data: Vec<u8>, msg_meta_size: u64, payload_si
                     let n = source.read(&mut data_buf).await?;        
                     match n {
                         0 => break,
-                        _ => write_tx.send(StreamUnit::Array(stream_id, n, data_buf)).await?
+                        _ => {
+                            checksum = checksum + n;
+                            write_tx.send(StreamUnit::Array(stream_id, n, data_buf)).await?;
+                        }
                     }
                 }
             }
         }        
 
         prev = attachment_offset;
+    }
+
+    if checksum != data.len() - 4 {
+        return Err(ProcessError::WriteChecksumCheckFailed);
     }
 
     debug!("write succeeded");
@@ -780,6 +792,7 @@ pub enum ProcessError {
     StreamClosed,
     StreamIdIsZero,
     NotEnoughBytesForLen,
+    WriteChecksumCheckFailed,
     IncorrectReadResult,    
     Io(std::io::Error),
     SerdeJson(serde_json::Error),

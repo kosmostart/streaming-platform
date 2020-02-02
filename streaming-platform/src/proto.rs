@@ -275,93 +275,6 @@ pub async fn read(state: &mut State, adapter: &mut Take<ReadHalf<'_>>) -> Result
     res    
 }
 
-/*
-pub async fn read(state: &mut State, adapter: &mut Take<ReadHalf<'_>>) -> Result<ReadResult, ProcessError> {
-    //info!("reading");
-    match state.step {        
-        Step::Len => {
-            //info!("step len");
-            let mut len_buf = [0; DATA_BUF_SIZE];
-            adapter.read(&mut len_buf).await?;
-
-            let mut buf = Cursor::new(&len_buf[..LEN_BUF_SIZE]);
-            let len = buf.get_u32();
-
-            state.step = Step::MsgMeta(len);
-
-            //info!("step len ok");
-
-            Ok(ReadResult::LenFinished(len_buf))
-        }
-        Step::MsgMeta(len) => {
-            adapter.set_limit(len as u64);
-            let mut buf = vec![];
-            let n = adapter.read_to_end(&mut buf).await?;
-
-            let msg_meta: MsgMeta = from_slice(&buf)?;
-            adapter.set_limit(msg_meta.payload_size as u64);
-
-            state.attachments = Some(msg_meta.attachments.iter().map(|x| x.size).collect());
-
-            state.step = Step::Payload;
-
-            Ok(ReadResult::MsgMeta(msg_meta, buf))
-        }
-        Step::Payload => {
-            let mut data_buf = [0; DATA_BUF_SIZE];
-
-            match adapter.read(&mut data_buf).await? {
-                0 => {
-                    let attachments = state.attachments.as_ref().ok_or(ProcessError::AttachmentFieldIsEmpty)?;
-
-                    match attachments.len() {
-                        0 => {
-                            adapter.set_limit(LEN_BUF_SIZE as u64);
-                            state.step = Step::Finish;
-                        }
-                        _ => {                      
-                            adapter.set_limit(attachments[0] as u64);
-                            state.step = Step::Attachment(0);
-                        }                            
-                    };
-
-                    Ok(ReadResult::PayloadFinished)
-                }
-                n => Ok(ReadResult::PayloadData(n, data_buf))
-            }                                
-        }
-        Step::Attachment(index) => {
-            let mut data_buf = [0; DATA_BUF_SIZE];                       
-
-            match adapter.read(&mut data_buf).await? {
-                0 => {
-                    let attachments = state.attachments.as_ref().ok_or(ProcessError::AttachmentFieldIsEmpty)?;
-
-                    match index < attachments.len() - 1 {
-                        true => {
-                            let new_index = index + 1;
-                            adapter.set_limit(attachments[new_index] as u64);
-                            state.step = Step::Attachment(new_index);
-                        }
-                        false => {
-                            adapter.set_limit(LEN_BUF_SIZE as u64);
-                            state.step = Step::Finish;
-                        }
-                    };
-
-                    Ok(ReadResult::AttachmentFinished(index))
-                }
-                n => Ok(ReadResult::AttachmentData(index, n, data_buf))
-            }
-        }
-        Step::Finish => {
-            state.step = Step::Len;
-            Ok(ReadResult::MessageFinished)
-        }
-    }
-}
-*/
-
 #[derive(Debug, Deserialize, Clone)]
 pub struct ServerConfig {
     pub host: String,
@@ -452,12 +365,9 @@ pub async fn write(stream_id: u64, data: Vec<u8>, msg_meta_size: u64, payload_si
     let msg_meta_offset = LEN_BUF_SIZE + msg_meta_size as usize;
     let payload_offset = msg_meta_offset + payload_size as usize;
     debug!("write stream_id {}, data len {}, msg_meta_offset {}, payload_offset {}", stream_id, data.len(), msg_meta_offset, payload_offset);    
-    let mut data_buf = [0; DATA_BUF_SIZE];
+    let mut data_buf = [0; DATA_BUF_SIZE];    
 
-    let vector = data[LEN_BUF_SIZE..msg_meta_offset].to_vec();
-    let mut checksum = vector.len();
-
-    write_tx.send(StreamUnit::Vector(stream_id, vector)).await?;
+    write_tx.send(StreamUnit::Vector(stream_id, data[LEN_BUF_SIZE..msg_meta_offset].to_vec())).await?;
 
 
     match payload_size {
@@ -471,10 +381,7 @@ pub async fn write(stream_id: u64, data: Vec<u8>, msg_meta_size: u64, payload_si
                 let n = source.read(&mut data_buf).await?;        
                 match n {
                     0 => break,
-                    _ => {
-                        checksum = checksum + n;
-                        write_tx.send(StreamUnit::Array(stream_id, n, data_buf)).await?;
-                    }
+                    _ => write_tx.send(StreamUnit::Array(stream_id, n, data_buf)).await?
                 }
             }
         }
@@ -496,10 +403,7 @@ pub async fn write(stream_id: u64, data: Vec<u8>, msg_meta_size: u64, payload_si
                     let n = source.read(&mut data_buf).await?;        
                     match n {
                         0 => break,
-                        _ => {
-                            checksum = checksum + n;
-                            write_tx.send(StreamUnit::Array(stream_id, n, data_buf)).await?;
-                        }
+                        _ => write_tx.send(StreamUnit::Array(stream_id, n, data_buf)).await?
                     }
                 }
             }
@@ -508,12 +412,7 @@ pub async fn write(stream_id: u64, data: Vec<u8>, msg_meta_size: u64, payload_si
         prev = attachment_offset;
     }
 
-    if checksum != data.len() - 4 {
-        error!("stream_id {}, checksum {}, content len {}", stream_id, checksum, data.len() - 4);
-        return Err(ProcessError::WriteChecksumCheckFailed);
-    }
-
-    debug!("write succeeded");
+    debug!("stream_id {} write succeeded", stream_id);
 
     Ok(())
 }

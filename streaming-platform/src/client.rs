@@ -256,14 +256,13 @@ async fn process_message_stream(addr: String, mut stream: TcpStream, mut read_tx
 
     //println!("auth {:?}", auth_msg_meta);
     //println!("auth {:?}", auth_payload);        
-
-    let mut adapter = socket_read.take(LENS_BUF_SIZE as u64);
-    let mut state = State::new(addr.clone());
+    
     let mut buf_u64 = BytesMut::with_capacity(8);
     let mut buf_u32 = BytesMut::with_capacity(4);
+    let mut state = State::new(addr.clone());    
 
     loop {
-        let f1 = read(&mut state, &mut adapter).fuse();
+        let f1 = read(&mut state, &mut socket_read).fuse();
         let f2 = write_rx.recv().fuse();
 
         pin_mut!(f1, f2);
@@ -334,72 +333,76 @@ async fn process_full_message(addr: String, mut stream: TcpStream, mut read_tx: 
 
     //println!("auth {:?}", auth_msg_meta);
     //println!("auth {:?}", auth_payload);
-
-    let mut adapter = socket_read.take(LENS_BUF_SIZE as u64);
-    let mut state = State::new(addr.clone());
+        
+    let mut bytes_peeked = 0;
+    let mut peek_buf = [0; 1];
     let mut buf_u64 = BytesMut::with_capacity(8);
-    let mut buf_u32 = BytesMut::with_capacity(4);    
+    let mut buf_u32 = BytesMut::with_capacity(4);        
     let mut stream_layouts = HashMap::new();
+    let mut state = State::new(addr.clone());    
 
     loop {
-        let f1 = read(&mut state, &mut adapter).fuse();
+        if bytes_peeked > 0 {
+            bytes_peeked = 0;
+            
+            match read(&mut state, &mut socket_read).await? {
+                ReadResult::MsgMeta(stream_id, msg_meta, _) => {
+                    stream_layouts.insert(stream_id, StreamLayout {
+                        id: stream_id,
+                        msg_meta,
+                        payload: vec![],
+                        attachments_data: vec![]
+                    });
+                }
+                ReadResult::PayloadData(stream_id, n, buf) => {
+                    let stream_layout = stream_layouts.get_mut(&stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
+                    stream_layout.payload.extend_from_slice(&buf[..n]);
+
+                }
+                ReadResult::PayloadFinished(stream_id, n, buf) => {
+                    let stream_layout = stream_layouts.get_mut(&stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
+                    stream_layout.payload.extend_from_slice(&buf[..n]);
+                }
+                ReadResult::AttachmentData(stream_id, _, n, buf) => {
+                    let stream_layout = stream_layouts.get_mut(&stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
+                    stream_layout.attachments_data.extend_from_slice(&buf[..n]);
+                }
+                ReadResult::AttachmentFinished(stream_id, _, n, buf) => {
+                    let stream_layout = stream_layouts.get_mut(&stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
+                    stream_layout.attachments_data.extend_from_slice(&buf[..n]);
+                }
+                ReadResult::MessageFinished(stream_id, finish_bytes) => {
+                    let stream_layout = stream_layouts.get_mut(&stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
+                    match finish_bytes {
+                        MessageFinishBytes::Payload(n, buf) => {
+                            stream_layout.payload.extend_from_slice(&buf[..n]);
+                        }
+                        MessageFinishBytes::Attachment(_, n, buf) => {
+                            stream_layout.attachments_data.extend_from_slice(&buf[..n]);
+                        }                            
+                    }
+                    let stream_layout = stream_layouts.remove(&stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
+                    read_tx.send(ClientMsg::Message(stream_id, stream_layout.msg_meta, stream_layout.payload, stream_layout.attachments_data)).await?;
+                }
+                ReadResult::MessageAborted(stream_id) => {
+                    match stream_id {
+                        Some(stream_id) => {
+                            let _ = stream_layouts.remove(&stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
+                        }
+                        None => {}
+                    }
+                    read_tx.send(ClientMsg::MessageAborted(stream_id)).await?;                        
+                }
+            };
+        }        
+
+        let f1 = socket_read.peek(&mut peek_buf).fuse();
         let f2 = write_rx.recv().fuse();
 
         pin_mut!(f1, f2);
 
         let res = select! {
-            res = f1 => {
-
-                match res? {                    
-                    ReadResult::MsgMeta(stream_id, msg_meta, _) => {
-                        stream_layouts.insert(stream_id, StreamLayout {
-                            id: stream_id,
-                            msg_meta,
-                            payload: vec![],
-                            attachments_data: vec![]
-                        });
-                    }
-                    ReadResult::PayloadData(stream_id, n, buf) => {
-                        let stream_layout = stream_layouts.get_mut(&stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
-                        stream_layout.payload.extend_from_slice(&buf[..n]);
-
-                    }
-                    ReadResult::PayloadFinished(stream_id, n, buf) => {
-                        let stream_layout = stream_layouts.get_mut(&stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
-                        stream_layout.payload.extend_from_slice(&buf[..n]);
-                    }
-                    ReadResult::AttachmentData(stream_id, _, n, buf) => {
-                        let stream_layout = stream_layouts.get_mut(&stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
-                        stream_layout.attachments_data.extend_from_slice(&buf[..n]);
-                    }
-                    ReadResult::AttachmentFinished(stream_id, _, n, buf) => {
-                        let stream_layout = stream_layouts.get_mut(&stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
-                        stream_layout.attachments_data.extend_from_slice(&buf[..n]);
-                    }
-                    ReadResult::MessageFinished(stream_id, finish_bytes) => {
-                        let stream_layout = stream_layouts.get_mut(&stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
-                        match finish_bytes {
-                            MessageFinishBytes::Payload(n, buf) => {
-                                stream_layout.payload.extend_from_slice(&buf[..n]);
-                            }
-                            MessageFinishBytes::Attachment(_, n, buf) => {
-                                stream_layout.attachments_data.extend_from_slice(&buf[..n]);
-                            }                            
-                        }
-                        let stream_layout = stream_layouts.remove(&stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
-                        read_tx.send(ClientMsg::Message(stream_id, stream_layout.msg_meta, stream_layout.payload, stream_layout.attachments_data)).await?;
-                    }
-                    ReadResult::MessageAborted(stream_id) => {
-                        match stream_id {
-                            Some(stream_id) => {
-                                let _ = stream_layouts.remove(&stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
-                            }
-                            None => {}
-                        }
-                        read_tx.send(ClientMsg::MessageAborted(stream_id)).await?;                        
-                    }
-                };
-            }
+            res = f1 => bytes_peeked = res?,
             res = f2 => {                             
                 match res? {
                     StreamUnit::Array(stream_id, n, buf) => {
@@ -436,6 +439,6 @@ async fn process_full_message(addr: String, mut stream: TcpStream, mut read_tx: 
                     }
                 }                
             }
-        };
+        };        
     }
 }

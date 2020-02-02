@@ -70,15 +70,14 @@ pub async fn start_future(config: ServerConfig) -> Result<(), ProcessError> {
 }
 
 async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut server_tx: Sender<ServerMsg>, config: &ServerConfig) -> Result<(), ProcessError> {
-    let (mut socket_read, mut socket_write) = stream.split();
-    let mut adapter = socket_read.take(LENS_BUF_SIZE as u64);
+    let (mut socket_read, mut socket_write) = stream.split();    
     let mut state = State::new("Server".to_owned());
     let mut buf_u64 = BytesMut::with_capacity(8);
     let mut buf_u32 = BytesMut::with_capacity(4);    
     let mut stream_layouts = HashMap::new();
     let mut auth_stream_layout = None;
     loop {
-        match read(&mut state, &mut adapter).await? {
+        match read(&mut state, &mut socket_read).await? {
             ReadResult::MsgMeta(stream_id, msg_meta, _) => {
                 //info!("{} {:?}", stream_id, msg_meta);
                 stream_layouts.insert(stream_id, StreamLayout {
@@ -139,60 +138,68 @@ async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut 
     let (mut client_tx, mut client_rx) = mpsc::channel(MPSC_CLIENT_BUF_SIZE);
     server_tx.send(ServerMsg::AddClient(auth_stream_layout.msg_meta.tx, client_net_addr, client_tx)).await?;    
     let mut client_addrs = HashMap::new();
+    let mut bytes_peeked = 0;
+    let mut peek_buf = [0; 1];
     loop {
-        let f1 = read(&mut state, &mut adapter).fuse();
-        let f2 = client_rx.recv().fuse();
-        pin_mut!(f1, f2);
-        let res = select! {
-            res = f1 => {                
-                match res? {                    
-                    ReadResult::MsgMeta(stream_id, msg_meta, buf) => {
-                        //info!("{} {:?}", stream_id, msg_meta);
-                        client_addrs.insert(stream_id, msg_meta.rx.clone());
-                        //info!("sending msg meta");
-                        server_tx.send(ServerMsg::SendUnit(msg_meta.rx.clone(), StreamUnit::Vector(stream_id, buf))).await?;
-                    }
-                    ReadResult::PayloadData(stream_id, n, buf) => {                        
-                        let client_addr = client_addrs.get(&stream_id).ok_or(ProcessError::ClientAddrNotFound)?;
-                        //info!("sending payload data");
-                        server_tx.send(ServerMsg::SendUnit(client_addr.clone(), StreamUnit::Array(stream_id, n, buf))).await?;
-                    }
-                    ReadResult::PayloadFinished(stream_id, n, buf) => {
-                        let client_addr = client_addrs.get(&stream_id).ok_or(ProcessError::ClientAddrNotFound)?;
-                        //info!("sending payload finished");
-                        server_tx.send(ServerMsg::SendUnit(client_addr.clone(), StreamUnit::Array(stream_id, n, buf))).await?;
-                    }
-                    ReadResult::AttachmentData(stream_id, _, n, buf) => {
-                        let client_addr = client_addrs.get(&stream_id).ok_or(ProcessError::ClientAddrNotFound)?;
-                        //info!("sending attachment");
-                        server_tx.send(ServerMsg::SendUnit(client_addr.clone(), StreamUnit::Array(stream_id, n, buf))).await?;
-                    }
-                    ReadResult::AttachmentFinished(stream_id, _, n, buf) => {
-                        let client_addr = client_addrs.get(&stream_id).ok_or(ProcessError::ClientAddrNotFound)?;
-                        //info!("sending attachment finished");
-                        server_tx.send(ServerMsg::SendUnit(client_addr.clone(), StreamUnit::Array(stream_id, n, buf))).await?;
-                    }
-                    ReadResult::MessageFinished(stream_id, finish_bytes) => {
-                        let client_addr = client_addrs.remove(&stream_id).ok_or(ProcessError::ClientAddrNotFound)?;
-                        match finish_bytes {
-                            MessageFinishBytes::Payload(n, buf) => {
-                                server_tx.send(ServerMsg::SendUnit(client_addr.clone(), StreamUnit::Array(stream_id, n, buf))).await?;
-                            }
-                            MessageFinishBytes::Attachment(_, n, buf) => {
-                                server_tx.send(ServerMsg::SendUnit(client_addr.clone(), StreamUnit::Array(stream_id, n, buf))).await?;
-                            }                            
-                        }                        
-                    }
-                    ReadResult::MessageAborted(stream_id) => {
-                        match stream_id {
-                            Some(stream_id) => {
-                                let _ = client_addrs.remove(&stream_id).ok_or(ProcessError::ClientAddrNotFound)?;
-                            }
-                            None => {}
+        if bytes_peeked > 0 {
+            bytes_peeked = 0;
+
+            match read(&mut state, &mut socket_read).await? {
+                ReadResult::MsgMeta(stream_id, msg_meta, buf) => {
+                    //info!("{} {:?}", stream_id, msg_meta);
+                    client_addrs.insert(stream_id, msg_meta.rx.clone());
+                    //info!("sending msg meta");
+                    server_tx.send(ServerMsg::SendUnit(msg_meta.rx.clone(), StreamUnit::Vector(stream_id, buf))).await?;
+                }
+                ReadResult::PayloadData(stream_id, n, buf) => {                        
+                    let client_addr = client_addrs.get(&stream_id).ok_or(ProcessError::ClientAddrNotFound)?;
+                    //info!("sending payload data");
+                    server_tx.send(ServerMsg::SendUnit(client_addr.clone(), StreamUnit::Array(stream_id, n, buf))).await?;
+                }
+                ReadResult::PayloadFinished(stream_id, n, buf) => {
+                    let client_addr = client_addrs.get(&stream_id).ok_or(ProcessError::ClientAddrNotFound)?;
+                    //info!("sending payload finished");
+                    server_tx.send(ServerMsg::SendUnit(client_addr.clone(), StreamUnit::Array(stream_id, n, buf))).await?;
+                }
+                ReadResult::AttachmentData(stream_id, _, n, buf) => {
+                    let client_addr = client_addrs.get(&stream_id).ok_or(ProcessError::ClientAddrNotFound)?;
+                    //info!("sending attachment");
+                    server_tx.send(ServerMsg::SendUnit(client_addr.clone(), StreamUnit::Array(stream_id, n, buf))).await?;
+                }
+                ReadResult::AttachmentFinished(stream_id, _, n, buf) => {
+                    let client_addr = client_addrs.get(&stream_id).ok_or(ProcessError::ClientAddrNotFound)?;
+                    //info!("sending attachment finished");
+                    server_tx.send(ServerMsg::SendUnit(client_addr.clone(), StreamUnit::Array(stream_id, n, buf))).await?;
+                }
+                ReadResult::MessageFinished(stream_id, finish_bytes) => {
+                    let client_addr = client_addrs.remove(&stream_id).ok_or(ProcessError::ClientAddrNotFound)?;
+                    match finish_bytes {
+                        MessageFinishBytes::Payload(n, buf) => {
+                            server_tx.send(ServerMsg::SendUnit(client_addr.clone(), StreamUnit::Array(stream_id, n, buf))).await?;
                         }
+                        MessageFinishBytes::Attachment(_, n, buf) => {
+                            server_tx.send(ServerMsg::SendUnit(client_addr.clone(), StreamUnit::Array(stream_id, n, buf))).await?;
+                        }                            
+                    }                        
+                }
+                ReadResult::MessageAborted(stream_id) => {
+                    match stream_id {
+                        Some(stream_id) => {
+                            let _ = client_addrs.remove(&stream_id).ok_or(ProcessError::ClientAddrNotFound)?;
+                        }
+                        None => {}
                     }
-                };
-            }
+                }
+            };
+        }
+
+        let f1 = socket_read.peek(&mut peek_buf).fuse();
+        let f2 = client_rx.recv().fuse();
+
+        pin_mut!(f1, f2);
+
+        let res = select! {
+            res = f1 => bytes_peeked = res?,
             res = f2 => {                
                 match res? {
                     StreamUnit::Array(stream_id, n, buf) => {                        

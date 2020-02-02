@@ -134,19 +134,20 @@ pub struct StreamLayout {
     pub attachments_data: Vec<u8>
 }
 
-pub async fn read(state: &mut State, adapter: &mut Take<ReadHalf<'_>>) -> Result<ReadResult, ProcessError> {    
+pub async fn read(state: &mut State, socket_read: &mut ReadHalf<'_>) -> Result<ReadResult, ProcessError> {    
     let mut u64_buf = [0; STREAM_ID_BUF_SIZE];
     let mut u32_buf = [0; LEN_BUF_SIZE];
 
     debug!("{} read stream_id attempt", state.addr);
+
+    let mut adapter = socket_read.take(LENS_BUF_SIZE as u64);
     
     adapter.read(&mut u64_buf).await?;
 
     let mut buf = Cursor::new(&u64_buf[..]);
     let stream_id = buf.get_u64();
     
-    if stream_id == 0 {        
-        adapter.set_limit(LENS_BUF_SIZE as u64);
+    if stream_id == 0 {                
         return Err(ProcessError::StreamIdIsZero);
     }
 
@@ -156,8 +157,7 @@ pub async fn read(state: &mut State, adapter: &mut Take<ReadHalf<'_>>) -> Result
     match timeout(Duration::from_millis(STREAM_UNIT_READ_TIMEOUT_MS_AMOUNT), adapter.read(&mut u32_buf)).await? {
         Ok(_) => {}
         Err(e) => {
-            error!("read error {:#?}, read unit size attempt, stream_id {}", e, stream_id);
-            adapter.set_limit(LENS_BUF_SIZE as u64);
+            error!("read error {:#?}, read unit size attempt, stream_id {}", e, stream_id);            
             return Ok(ReadResult::MessageAborted(Some(stream_id)));
         }
     }
@@ -174,8 +174,7 @@ pub async fn read(state: &mut State, adapter: &mut Take<ReadHalf<'_>>) -> Result
     let stream_state = match state.stream_states.get_mut(&stream_id) {
         Some(stream_state) => stream_state,
         None => {
-            error!("read error {:#?}, stream_id {}", ProcessError::StreamNotFoundInState, stream_id);
-            adapter.set_limit(LENS_BUF_SIZE as u64);
+            error!("read error {:#?}, stream_id {}", ProcessError::StreamNotFoundInState, stream_id);            
             return Ok(ReadResult::MessageAborted(Some(stream_id)));            
         }
     };
@@ -266,9 +265,7 @@ pub async fn read(state: &mut State, adapter: &mut Take<ReadHalf<'_>>) -> Result
                 }
             }            
         }    
-    };
-
-    adapter.set_limit(LENS_BUF_SIZE as u64);
+    };    
 
     debug!("{} read finished, unit_size {}, stream_id {}", state.addr, unit_size, stream_id);
 

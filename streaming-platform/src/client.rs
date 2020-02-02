@@ -257,40 +257,45 @@ async fn process_message_stream(addr: String, mut stream: TcpStream, mut read_tx
     //println!("auth {:?}", auth_msg_meta);
     //println!("auth {:?}", auth_payload);        
     
+    let mut bytes_peeked = 0;
+    let mut peek_buf = [0; 1];
     let mut buf_u64 = BytesMut::with_capacity(8);
     let mut buf_u32 = BytesMut::with_capacity(4);
     let mut state = State::new(addr.clone());    
 
     loop {
-        let f1 = read(&mut state, &mut socket_read).fuse();
+        if bytes_peeked > 0 {
+            bytes_peeked = 0;
+            match read(&mut state, &mut socket_read).await? {
+                ReadResult::MsgMeta(stream_id, msg_meta, _) => read_tx.send(ClientMsg::MsgMeta(stream_id, msg_meta)).await?,
+                ReadResult::PayloadData(stream_id, n, buf) => read_tx.send(ClientMsg::PayloadData(stream_id, n, buf)).await?,
+                ReadResult::PayloadFinished(stream_id, n, buf) => read_tx.send(ClientMsg::PayloadFinished(stream_id, n, buf)).await?,
+                ReadResult::AttachmentData(stream_id, index, n, buf) => read_tx.send(ClientMsg::AttachmentData(stream_id, index, n, buf)).await?,
+                ReadResult::AttachmentFinished(stream_id, index, n, buf) => read_tx.send(ClientMsg::AttachmentFinished(stream_id, index, n, buf)).await?,
+                ReadResult::MessageFinished(stream_id, finish_bytes) => {
+                    match finish_bytes {
+                        MessageFinishBytes::Payload(n, buf) => {
+                            read_tx.send(ClientMsg::PayloadFinished(stream_id, n, buf)).await?;
+                        }
+                        MessageFinishBytes::Attachment(index, n, buf) => {
+                            read_tx.send(ClientMsg::AttachmentFinished(stream_id, index, n, buf)).await?;
+                        }                            
+                    }
+                    read_tx.send(ClientMsg::MessageFinished(stream_id)).await?;
+                }
+                ReadResult::MessageAborted(stream_id) => {
+                    read_tx.send(ClientMsg::MessageAborted(stream_id)).await?;
+                }
+            };
+        }
+        
+        let f1 = socket_read.peek(&mut peek_buf).fuse();
         let f2 = write_rx.recv().fuse();
 
         pin_mut!(f1, f2);
 
         let res = select! {
-            res = f1 => {                                
-                match res? {                    
-                    ReadResult::MsgMeta(stream_id, msg_meta, _) => read_tx.send(ClientMsg::MsgMeta(stream_id, msg_meta)).await?,
-                    ReadResult::PayloadData(stream_id, n, buf) => read_tx.send(ClientMsg::PayloadData(stream_id, n, buf)).await?,
-                    ReadResult::PayloadFinished(stream_id, n, buf) => read_tx.send(ClientMsg::PayloadFinished(stream_id, n, buf)).await?,
-                    ReadResult::AttachmentData(stream_id, index, n, buf) => read_tx.send(ClientMsg::AttachmentData(stream_id, index, n, buf)).await?,
-                    ReadResult::AttachmentFinished(stream_id, index, n, buf) => read_tx.send(ClientMsg::AttachmentFinished(stream_id, index, n, buf)).await?,
-                    ReadResult::MessageFinished(stream_id, finish_bytes) => {
-                        match finish_bytes {
-                            MessageFinishBytes::Payload(n, buf) => {
-                                read_tx.send(ClientMsg::PayloadFinished(stream_id, n, buf)).await?;
-                            }
-                            MessageFinishBytes::Attachment(index, n, buf) => {
-                                read_tx.send(ClientMsg::AttachmentFinished(stream_id, index, n, buf)).await?;
-                            }                            
-                        }
-                        read_tx.send(ClientMsg::MessageFinished(stream_id)).await?;
-                    }
-                    ReadResult::MessageAborted(stream_id) => {
-                        read_tx.send(ClientMsg::MessageAborted(stream_id)).await?;
-                    }
-                };
-            }
+            res = f1 => bytes_peeked = res?,
             res = f2 => {                
                 match res? {
                     StreamUnit::Array(stream_id, n, buf) => {

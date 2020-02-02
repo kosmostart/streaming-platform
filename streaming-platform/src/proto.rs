@@ -25,9 +25,9 @@ pub const STREAM_ID_BUF_SIZE: usize = 8;
 pub const LEN_BUF_SIZE: usize = 4;
 pub const LENS_BUF_SIZE: usize = 12;
 pub const DATA_BUF_SIZE: usize = 1024;
-pub const MPSC_SERVER_BUF_SIZE: usize = 1000;
-pub const MPSC_CLIENT_BUF_SIZE: usize = 100;
-pub const MPSC_RPC_BUF_SIZE: usize = 10000;
+pub const MPSC_SERVER_BUF_SIZE: usize = 1000000;
+pub const MPSC_CLIENT_BUF_SIZE: usize = 1000000;
+pub const MPSC_RPC_BUF_SIZE: usize = 1000000;
 pub const RPC_TIMEOUT_MS_AMOUNT: u64 = 30000;
 //pub const STREAM_UNIT_READ_TIMEOUT_MS_AMOUNT: u64 = 1000;
 

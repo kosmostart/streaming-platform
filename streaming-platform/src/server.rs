@@ -36,20 +36,20 @@ pub async fn start_future(config: ServerConfig) -> Result<(), ProcessError> {
                     //info!("sending stream unit to client {}", addr);
                     match clients.get_mut(&addr) {
                         Some(client) => {
-                            match client.tx.send(stream_unit).await {
-                            //match client.tx.try_send(stream_unit) {
+                            //match client.tx.send(stream_unit).await {
+                            match client.tx.try_send(stream_unit) {
                                 Ok(()) => {}
+                                /*
                                 Err(_) => {
                                     error!("error processing ServerMsg::SendUnit, send failed");
                                 }
-                                /*
+                                */                                
                                 Err(e) => { 
                                     match e {                                        
                                         tokio::sync::mpsc::error::TrySendError::Full(_) => panic!("ServerMsg::SendArray processing failed - buffer full"),
                                         tokio::sync::mpsc::error::TrySendError::Closed(_) => panic!("ServerMsg::SendArray processing failed - client channel closed")
                                     }                                    
-                                }
-                                */
+                                }                                
                             }
                             //info!("sent unit to client {}", addr);
                         }

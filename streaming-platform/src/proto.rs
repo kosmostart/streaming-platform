@@ -534,42 +534,36 @@ pub async fn write_to_stream(stream_id: u64, data: Vec<u8>, msg_meta_size: u64, 
     Ok(())
 }
 
-pub async fn write_loop(addr: String, mut client_rx: Receiver<StreamUnit>, socket_write: &mut TcpStream) -> Result<(), ProcessError> {
-    let mut buf_u64 = BytesMut::with_capacity(8);
-    let mut buf_u32 = BytesMut::with_capacity(4);
-
+pub async fn write_loop(addr: String, mut client_rx: Receiver<StreamUnit>, socket_write: &mut TcpStream) -> Result<(), ProcessError> {    
     loop {       
         match client_rx.recv().await {
             Some(res) => {
+                let mut buf_u64 = BytesMut::new();
+                let mut buf_u32 = BytesMut::new();
+
                 match res {
                     StreamUnit::Array(stream_id, n, buf) => {
-                        debug!("{} StreamUnit::Array write to socket attempt, n {}, stream_id {}", addr, n, stream_id);
-                        buf_u64.clear();
+                        debug!("{} StreamUnit::Array write to socket attempt, n {}, stream_id {}", addr, n, stream_id);                        
                         buf_u64.put_u64(stream_id);
-                        socket_write.write_all(&buf_u64[..]).await?;
-                        buf_u32.clear();
+                        socket_write.write_all(&buf_u64[..]).await?;                        
                         buf_u32.put_u32(n as u32);
                         socket_write.write_all(&buf_u32[..]).await?;
                         socket_write.write_all(&buf[..n]).await?;
                         debug!("{} StreamUnit::Array write to socket succeded, stream_id {}", addr, stream_id);
                     }
                     StreamUnit::Vector(stream_id, buf) => {                        
-                        debug!("{} StreamUnit::Vector write to socket attempt, len {}, stream_id {}", addr, buf.len(), stream_id);
-                        buf_u64.clear();
+                        debug!("{} StreamUnit::Vector write to socket attempt, len {}, stream_id {}", addr, buf.len(), stream_id);                        
                         buf_u64.put_u64(stream_id);
-                        socket_write.write_all(&buf_u64[..]).await?;
-                        buf_u32.clear();
+                        socket_write.write_all(&buf_u64[..]).await?;                        
                         buf_u32.put_u32(buf.len() as u32);
                         socket_write.write_all(&buf_u32[..]).await?;
                         socket_write.write_all(&buf).await?;
                         debug!("{} StreamUnit::Vector write to socket succeded, stream_id {}", addr, stream_id);
                     }
                     StreamUnit::Empty(stream_id) => {       
-                        debug!("{} StreamUnit::Empty write to socket attempt, stream_id {}", addr, stream_id);                 
-                        buf_u64.clear();
+                        debug!("{} StreamUnit::Empty write to socket attempt, stream_id {}", addr, stream_id);                                         
                         buf_u64.put_u64(stream_id);
-                        socket_write.write_all(&buf_u64[..]).await?;
-                        buf_u32.clear();
+                        socket_write.write_all(&buf_u64[..]).await?;                        
                         buf_u32.put_u32(0);
                         socket_write.write_all(&buf_u32[..]).await?;
                         debug!("{} StreamUnit::Empty write to socket succeded, stream_id {}", addr, stream_id);
@@ -582,38 +576,32 @@ pub async fn write_loop(addr: String, mut client_rx: Receiver<StreamUnit>, socke
 }
 
 pub async fn write_stream_unit(socket_write: &mut TcpStream, stream_unit: StreamUnit) -> Result<(), ProcessError> {
-    let mut buf_u64 = BytesMut::with_capacity(8);
-    let mut buf_u32 = BytesMut::with_capacity(4);
+    let mut buf_u64 = BytesMut::new();
+    let mut buf_u32 = BytesMut::new();
 
     match stream_unit {
         StreamUnit::Array(stream_id, n, buf) => {
-            debug!("StreamUnit::Array write to socket attempt, n {}, stream_id {}", n, stream_id);
-            buf_u64.clear();
+            debug!("StreamUnit::Array write to socket attempt, n {}, stream_id {}", n, stream_id);            
             buf_u64.put_u64(stream_id);
-            socket_write.write_all(&buf_u64[..]).await?;
-            buf_u32.clear();
+            socket_write.write_all(&buf_u64[..]).await?;            
             buf_u32.put_u32(n as u32);
             socket_write.write_all(&buf_u32[..]).await?;
             socket_write.write_all(&buf[..n]).await?;
             debug!("StreamUnit::Array write to socket succeded, stream_id {}", stream_id);
         }
         StreamUnit::Vector(stream_id, buf) => {                        
-            debug!("StreamUnit::Vector write to socket attempt, len {}, stream_id {}", buf.len(), stream_id);
-            buf_u64.clear();
+            debug!("StreamUnit::Vector write to socket attempt, len {}, stream_id {}", buf.len(), stream_id);            
             buf_u64.put_u64(stream_id);
-            socket_write.write_all(&buf_u64[..]).await?;
-            buf_u32.clear();
+            socket_write.write_all(&buf_u64[..]).await?;            
             buf_u32.put_u32(buf.len() as u32);
             socket_write.write_all(&buf_u32[..]).await?;
             socket_write.write_all(&buf).await?;
             debug!("StreamUnit::Vector write to socket succeded, stream_id {}", stream_id);
         }
         StreamUnit::Empty(stream_id) => {       
-            debug!("StreamUnit::Empty write to socket attempt, stream_id {}", stream_id);                 
-            buf_u64.clear();
+            debug!("StreamUnit::Empty write to socket attempt, stream_id {}", stream_id);                             
             buf_u64.put_u64(stream_id);
-            socket_write.write_all(&buf_u64[..]).await?;
-            buf_u32.clear();
+            socket_write.write_all(&buf_u64[..]).await?;            
             buf_u32.put_u32(0);
             socket_write.write_all(&buf_u32[..]).await?;
             debug!("StreamUnit::Empty write to socket succeded, stream_id {}", stream_id);

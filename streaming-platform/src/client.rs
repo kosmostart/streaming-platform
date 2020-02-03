@@ -51,26 +51,10 @@ where
                 }
             }
         }
-    });
-    tokio::spawn(async move {        
-        let target = "Server";
-
-        let route = Route {
-            source: Participator::Service(addr.clone()),
-            spec: RouteSpec::Simple,
-            points: vec![Participator::Service(addr.clone())]
-        };  
-
-        let (dto, msg_meta_size, payload_size, attachments_sizes) = rpc_dto_with_sizes(addr.clone(), target.to_owned(), "Auth".to_owned(), json!({
-            "access_key": access_key
-        }), route).unwrap();
-
-        let res = write(get_stream_id_onetime(&addr), dto, msg_meta_size, payload_size, attachments_sizes, &mut write_tx).await;
-        info!("{:?}", res);        
-    });
+    });    
     let mut mb = MagicBall::new(addr2, write_tx2, rpc_inbound_tx);
     tokio::spawn(process_stream(config, mb, read_rx, restream_rx));
-    connect_stream_future(host, addr3, read_tx, write_rx).await;
+    connect_stream_future(host, addr3, access_key, read_tx, write_rx).await;
 }
 
 pub async fn full_message_mode<P: 'static, T: 'static, Q: 'static, R: 'static>(host: &str, addr: &str, access_key: &str, process_event: ProcessEvent<T, P>, process_rpc: ProcessRpc<Q, P>, startup: Startup<R>, config: HashMap<String, String>)
@@ -121,24 +105,7 @@ where
                 }
             }
         }
-    });
-
-    tokio::spawn(async move {        
-        let target = "SvcHub";
-
-        let route = Route {
-            source: Participator::Service(addr.clone()),
-            spec: RouteSpec::Simple,
-            points: vec![Participator::Service(addr.clone())]
-        };  
-
-        let (dto, msg_meta_size, payload_size, attachments_size) = rpc_dto_with_sizes(addr.clone(), target.to_owned(), "Auth".to_owned(), json!({
-            "access_key": access_key
-        }), route).unwrap();
-
-        let res = write(get_stream_id_onetime(&addr), dto, msg_meta_size, payload_size, attachments_size, &mut write_tx).await;
-        info!("{:?}", res);        
-    });
+    });    
 
     tokio::spawn(async move {
         let mut mb = MagicBall::new(addr2, write_tx2, rpc_inbound_tx);        
@@ -229,21 +196,46 @@ where
             }
         }    
     });
-    connect_full_message_future(host, addr3, read_tx, write_rx).await;
+    connect_full_message_future(host, addr3, access_key, read_tx, write_rx).await;
 }
 
-async fn connect_stream_future(host: &str, addr: String, mut read_tx: Sender<ClientMsg>, mut write_rx: Receiver<StreamUnit>) {    
+async fn auth(target: String, addr: String, access_key: String, stream: &mut TcpStream) -> Result<(), ProcessError> {
+    let route = Route {
+        source: Participator::Service(addr.clone()),
+        spec: RouteSpec::Simple,
+        points: vec![Participator::Service(addr.clone())]
+    };  
+
+    let (dto, msg_meta_size, payload_size, attachments_size) = rpc_dto_with_sizes(addr.clone(), target.to_owned(), "Auth".to_owned(), json!({
+        "access_key": access_key
+    }), route).unwrap();
+
+    write_to_stream(get_stream_id_onetime(&addr), dto, msg_meta_size, payload_size, attachments_size, stream).await
+}
+
+
+async fn connect_stream_future(host: &str, addr: String, access_key: String, mut read_tx: Sender<ClientMsg>, mut write_rx: Receiver<StreamUnit>) {    
+    let server = "Server".to_owned();
+
     let mut write_stream = TcpStream::connect(host).await.expect("connection to host failed");
+    auth(server.clone(), addr.clone(), access_key.clone(), &mut write_stream).await.expect("write stream authorization failed");
+
     let mut read_stream = TcpStream::connect(host).await.expect("connection to host failed");
+    auth(server.clone(), addr.clone(), access_key, &mut read_stream).await.expect("read stream authorization failed");
 
     let res = process_message_stream(addr, write_stream, read_stream, read_tx, write_rx).await;
 
     info!("{:?}", res);
 }
 
-async fn connect_full_message_future(host: &str, addr: String, mut read_tx: Sender<ClientMsg>, mut write_rx: Receiver<StreamUnit>) {    
-    let mut write_stream = TcpStream::connect(host).await.expect("write connection to host failed");
-    let mut read_stream = TcpStream::connect(host).await.expect("read connection to host failed");
+async fn connect_full_message_future(host: &str, addr: String, access_key: String, mut read_tx: Sender<ClientMsg>, mut write_rx: Receiver<StreamUnit>) {    
+    let server = "Server".to_owned();
+    
+    let mut write_stream = TcpStream::connect(host).await.expect("connection to host failed");
+    auth(server.clone(), addr.clone(), access_key.clone(), &mut write_stream).await.expect("wrtie stream authorization failed");;
+
+    let mut read_stream = TcpStream::connect(host).await.expect("connection to host failed");
+    auth(server.clone(), addr.clone(), access_key, &mut read_stream).await.expect("read stream authorization failed");;
 
     let res = process_full_message(addr, write_stream, read_stream, read_tx, write_rx).await;
 
@@ -260,7 +252,7 @@ async fn process_message_stream(addr: String, mut write_stream: TcpStream, mut r
     let mut state = State::new(addr.clone());    
 
     tokio::spawn(async move {
-        let res = write_loop(addr, write_rx, write_stream).await;
+        let res = write_loop(addr, write_rx, &mut write_stream).await;
         error!("{:?}", res);
     });
 
@@ -300,7 +292,7 @@ async fn process_full_message(addr: String, mut write_stream: TcpStream, mut rea
     let mut state = State::new(addr.clone());
 
     tokio::spawn(async move {
-        let res = write_loop(addr, write_rx, write_stream).await;
+        let res = write_loop(addr, write_rx, &mut write_stream).await;
         error!("{:?}", res);
     });
     

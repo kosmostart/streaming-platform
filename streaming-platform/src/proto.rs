@@ -477,7 +477,64 @@ pub async fn write(stream_id: u64, data: Vec<u8>, msg_meta_size: u64, payload_si
     Ok(())
 }
 
-pub async fn write_loop(addr: String, mut client_rx: Receiver<StreamUnit>, mut socket_write: TcpStream) -> Result<(), ProcessError> {
+pub async fn write_to_stream(stream_id: u64, data: Vec<u8>, msg_meta_size: u64, payload_size: u64, attachments_sizes: Vec<u64>, stream: &mut TcpStream) -> Result<(), ProcessError> {
+    let msg_meta_offset = LEN_BUF_SIZE + msg_meta_size as usize;
+    let payload_offset = msg_meta_offset + payload_size as usize;
+
+    debug!("write stream_id {}, data len {}, msg_meta_offset {}, payload_offset {}", stream_id, data.len(), msg_meta_offset, payload_offset);    
+
+    let mut data_buf = [0; DATA_BUF_SIZE];    
+
+    write_stream_unit(stream, StreamUnit::Vector(stream_id, data[LEN_BUF_SIZE..msg_meta_offset].to_vec())).await?;
+
+    match payload_size {
+        0 => {
+            write_stream_unit(stream, StreamUnit::Empty(stream_id)).await?;
+        }
+        _ => {
+            let mut source = &data[msg_meta_offset..payload_offset];
+
+            loop {        
+                let n = source.read(&mut data_buf).await?;        
+                match n {
+                    0 => break,
+                    _ => write_stream_unit(stream, StreamUnit::Array(stream_id, n, data_buf)).await?
+                }
+            }
+        }
+    }    
+
+    let mut prev = payload_offset as usize;
+
+    for attachment_size in attachments_sizes {
+        let attachment_offset = prev + attachment_size as usize;
+
+        match attachment_size {
+            0 => {
+                write_stream_unit(stream, StreamUnit::Empty(stream_id)).await?;
+            }
+            _ => {
+                let mut source = &data[prev..attachment_offset];
+
+                loop {        
+                    let n = source.read(&mut data_buf).await?;        
+                    match n {
+                        0 => break,
+                        _ => write_stream_unit(stream, StreamUnit::Array(stream_id, n, data_buf)).await?
+                    }
+                }
+            }
+        }        
+
+        prev = attachment_offset;
+    }
+
+    debug!("stream_id {} write succeeded", stream_id);
+
+    Ok(())
+}
+
+pub async fn write_loop(addr: String, mut client_rx: Receiver<StreamUnit>, socket_write: &mut TcpStream) -> Result<(), ProcessError> {
     let mut buf_u64 = BytesMut::with_capacity(8);
     let mut buf_u32 = BytesMut::with_capacity(4);
 
@@ -524,6 +581,46 @@ pub async fn write_loop(addr: String, mut client_rx: Receiver<StreamUnit>, mut s
     }
 }
 
+pub async fn write_stream_unit(socket_write: &mut TcpStream, stream_unit: StreamUnit) -> Result<(), ProcessError> {
+    let mut buf_u64 = BytesMut::with_capacity(8);
+    let mut buf_u32 = BytesMut::with_capacity(4);
+
+    match stream_unit {
+        StreamUnit::Array(stream_id, n, buf) => {
+            debug!("StreamUnit::Array write to socket attempt, n {}, stream_id {}", n, stream_id);
+            buf_u64.clear();
+            buf_u64.put_u64(stream_id);
+            socket_write.write_all(&buf_u64[..]).await?;
+            buf_u32.clear();
+            buf_u32.put_u32(n as u32);
+            socket_write.write_all(&buf_u32[..]).await?;
+            socket_write.write_all(&buf[..n]).await?;
+            debug!("StreamUnit::Array write to socket succeded, stream_id {}", stream_id);
+        }
+        StreamUnit::Vector(stream_id, buf) => {                        
+            debug!("StreamUnit::Vector write to socket attempt, len {}, stream_id {}", buf.len(), stream_id);
+            buf_u64.clear();
+            buf_u64.put_u64(stream_id);
+            socket_write.write_all(&buf_u64[..]).await?;
+            buf_u32.clear();
+            buf_u32.put_u32(buf.len() as u32);
+            socket_write.write_all(&buf_u32[..]).await?;
+            socket_write.write_all(&buf).await?;
+            debug!("StreamUnit::Vector write to socket succeded, stream_id {}", stream_id);
+        }
+        StreamUnit::Empty(stream_id) => {       
+            debug!("StreamUnit::Empty write to socket attempt, stream_id {}", stream_id);                 
+            buf_u64.clear();
+            buf_u64.put_u64(stream_id);
+            socket_write.write_all(&buf_u64[..]).await?;
+            buf_u32.clear();
+            buf_u32.put_u32(0);
+            socket_write.write_all(&buf_u32[..]).await?;
+            debug!("StreamUnit::Empty write to socket succeded, stream_id {}", stream_id);
+        }
+    }
+    Ok(())
+}
 
 // Used for RPC implementation
 pub enum RpcMsg {

@@ -192,9 +192,8 @@ async fn process_read_stream(addr: String, mut stream: TcpStream, client_net_add
 
     server_tx.try_send(ServerMsg::AddClient(addr.clone(), client_net_addr, client_tx))?;    
 
-    write_loop(addr, client_rx, stream).await    
+    write_loop(addr, client_rx, &mut stream).await
 }
-
 
 async fn process_write_stream(addr: String, stream: &mut TcpStream, client_net_addr: SocketAddr, mut server_tx: Sender<ServerMsg>, config: &ServerConfig) -> Result<(), ProcessError> {    
     let mut state = State::new("read stream from Server to ".to_owned() + &addr);        

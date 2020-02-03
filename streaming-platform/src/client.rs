@@ -249,201 +249,112 @@ async fn connect_full_message_future(host: &str, addr: String, mut read_tx: Send
 }
 
 async fn process_message_stream(addr: String, mut stream: TcpStream, mut read_tx: Sender<ClientMsg>, mut write_rx: Receiver<StreamUnit>) -> Result<(), ProcessError> {
-    let (mut socket_read, mut socket_write) = stream.split();
+    let (mut socket_read, mut socket_write) = tokio::io::split(stream);
 
     //let (auth_msg_meta, auth_payload, auth_attachments) = read_full(&mut socket_read).await?;
     //let auth_payload: Value = from_slice(&auth_payload)?;    
 
     //println!("auth {:?}", auth_msg_meta);
     //println!("auth {:?}", auth_payload);        
-    
-    let mut bytes_peeked = 0;
-    let mut peek_buf = [0; 1];
-    let mut buf_u64 = BytesMut::with_capacity(8);
-    let mut buf_u32 = BytesMut::with_capacity(4);
+        
     let mut state = State::new(addr.clone());    
 
+    tokio::spawn(async move {
+        let res = write_loop(addr, write_rx, socket_write).await;
+        error!("{:?}", res);
+    });
+
     loop {
-        if bytes_peeked > 0 {
-            bytes_peeked = 0;
-            match read(&mut state, &mut socket_read).await? {
-                ReadResult::MsgMeta(stream_id, msg_meta, _) => read_tx.try_send(ClientMsg::MsgMeta(stream_id, msg_meta))?,
-                ReadResult::PayloadData(stream_id, n, buf) => read_tx.try_send(ClientMsg::PayloadData(stream_id, n, buf))?,
-                ReadResult::PayloadFinished(stream_id, n, buf) => read_tx.try_send(ClientMsg::PayloadFinished(stream_id, n, buf))?,
-                ReadResult::AttachmentData(stream_id, index, n, buf) => read_tx.try_send(ClientMsg::AttachmentData(stream_id, index, n, buf))?,
-                ReadResult::AttachmentFinished(stream_id, index, n, buf) => read_tx.try_send(ClientMsg::AttachmentFinished(stream_id, index, n, buf))?,
-                ReadResult::MessageFinished(stream_id, finish_bytes) => {
-                    match finish_bytes {
-                        MessageFinishBytes::Payload(n, buf) => {
-                            read_tx.try_send(ClientMsg::PayloadFinished(stream_id, n, buf))?;
-                        }
-                        MessageFinishBytes::Attachment(index, n, buf) => {
-                            read_tx.try_send(ClientMsg::AttachmentFinished(stream_id, index, n, buf))?;
-                        }                            
+        match read(&mut state, &mut socket_read).await? {
+            ReadResult::MsgMeta(stream_id, msg_meta, _) => read_tx.try_send(ClientMsg::MsgMeta(stream_id, msg_meta))?,
+            ReadResult::PayloadData(stream_id, n, buf) => read_tx.try_send(ClientMsg::PayloadData(stream_id, n, buf))?,
+            ReadResult::PayloadFinished(stream_id, n, buf) => read_tx.try_send(ClientMsg::PayloadFinished(stream_id, n, buf))?,
+            ReadResult::AttachmentData(stream_id, index, n, buf) => read_tx.try_send(ClientMsg::AttachmentData(stream_id, index, n, buf))?,
+            ReadResult::AttachmentFinished(stream_id, index, n, buf) => read_tx.try_send(ClientMsg::AttachmentFinished(stream_id, index, n, buf))?,
+            ReadResult::MessageFinished(stream_id, finish_bytes) => {
+                match finish_bytes {
+                    MessageFinishBytes::Payload(n, buf) => {
+                        read_tx.try_send(ClientMsg::PayloadFinished(stream_id, n, buf))?;
                     }
-                    read_tx.try_send(ClientMsg::MessageFinished(stream_id))?;
+                    MessageFinishBytes::Attachment(index, n, buf) => {
+                        read_tx.try_send(ClientMsg::AttachmentFinished(stream_id, index, n, buf))?;
+                    }                            
                 }
-                ReadResult::MessageAborted(stream_id) => {
-                    read_tx.try_send(ClientMsg::MessageAborted(stream_id))?;
-                }
-            };
-        }
-
-        let f1 = socket_read.peek(&mut peek_buf).fuse();
-        let f2 = write_rx.recv().fuse();
-
-        pin_mut!(f1, f2);
-
-        let res = select! {
-            res = f1 => bytes_peeked = res?,
-            res = f2 => {                
-                match res? {
-                    StreamUnit::Array(stream_id, n, buf) => {
-                        buf_u64.clear();
-                        buf_u64.put_u64(stream_id);
-                        socket_write.write_all(&buf_u64[..]).await?;
-                        buf_u32.clear();
-                        buf_u32.put_u32(n as u32);
-                        socket_write.write_all(&buf_u32[..]).await?;
-                        socket_write.write_all(&buf[..n]).await?;
-                    }
-                    StreamUnit::Vector(stream_id, buf) => {
-                        buf_u64.clear();
-                        buf_u64.put_u64(stream_id);
-                        socket_write.write_all(&buf_u64[..]).await?;
-                        buf_u32.clear();
-                        buf_u32.put_u32(buf.len() as u32);
-                        socket_write.write_all(&buf_u32[..]).await?;
-                        socket_write.write_all(&buf).await?;
-                    }
-                    StreamUnit::Empty(stream_id) => {
-                        buf_u64.clear();
-                        buf_u64.put_u64(stream_id);
-                        socket_write.write_all(&buf_u64[..]).await?;
-                        buf_u32.clear();
-                        buf_u32.put_u32(0);
-                        socket_write.write_all(&buf_u32[..]).await?;
-                    }
-                }
+                read_tx.try_send(ClientMsg::MessageFinished(stream_id))?;
             }
-        };
+            ReadResult::MessageAborted(stream_id) => {
+                read_tx.try_send(ClientMsg::MessageAborted(stream_id))?;
+            }
+        }
     }
 }
 
 async fn process_full_message(addr: String, mut stream: TcpStream, mut read_tx: Sender<ClientMsg>, mut write_rx: Receiver<StreamUnit>) -> Result<(), ProcessError> {
-    let (mut socket_read, mut socket_write) = stream.split();
+    let (mut socket_read, mut socket_write) = tokio::io::split(stream);
 
     //let (auth_msg_meta, auth_payload, auth_attachments) = read_full(&mut socket_read).await?;
     //let auth_payload: Value = from_slice(&auth_payload)?;    
 
     //println!("auth {:?}", auth_msg_meta);
     //println!("auth {:?}", auth_payload);
-        
-    let mut bytes_peeked = 0;
-    let mut peek_buf = [0; 1];
-    let mut buf_u64 = BytesMut::with_capacity(8);
-    let mut buf_u32 = BytesMut::with_capacity(4);        
-    let mut stream_layouts = HashMap::new();
-    let mut state = State::new(addr.clone());    
-
-    loop {
-        if bytes_peeked > 0 {
-            bytes_peeked = 0;
             
-            match read(&mut state, &mut socket_read).await? {
-                ReadResult::MsgMeta(stream_id, msg_meta, _) => {
-                    stream_layouts.insert(stream_id, StreamLayout {
-                        id: stream_id,
-                        msg_meta,
-                        payload: vec![],
-                        attachments_data: vec![]
-                    });
-                }
-                ReadResult::PayloadData(stream_id, n, buf) => {
-                    let stream_layout = stream_layouts.get_mut(&stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
-                    stream_layout.payload.extend_from_slice(&buf[..n]);
+    let mut stream_layouts = HashMap::new();
+    let mut state = State::new(addr.clone());
 
-                }
-                ReadResult::PayloadFinished(stream_id, n, buf) => {
-                    let stream_layout = stream_layouts.get_mut(&stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
-                    stream_layout.payload.extend_from_slice(&buf[..n]);
-                }
-                ReadResult::AttachmentData(stream_id, _, n, buf) => {
-                    let stream_layout = stream_layouts.get_mut(&stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
-                    stream_layout.attachments_data.extend_from_slice(&buf[..n]);
-                }
-                ReadResult::AttachmentFinished(stream_id, _, n, buf) => {
-                    let stream_layout = stream_layouts.get_mut(&stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
-                    stream_layout.attachments_data.extend_from_slice(&buf[..n]);
-                }
-                ReadResult::MessageFinished(stream_id, finish_bytes) => {
-                    let stream_layout = stream_layouts.get_mut(&stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
-                    match finish_bytes {
-                        MessageFinishBytes::Payload(n, buf) => {
-                            stream_layout.payload.extend_from_slice(&buf[..n]);
-                        }
-                        MessageFinishBytes::Attachment(_, n, buf) => {
-                            stream_layout.attachments_data.extend_from_slice(&buf[..n]);
-                        }                            
-                    }
-                    let stream_layout = stream_layouts.remove(&stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
-                    read_tx.try_send(ClientMsg::Message(stream_id, stream_layout.msg_meta, stream_layout.payload, stream_layout.attachments_data))?;
-                }
-                ReadResult::MessageAborted(stream_id) => {
-                    match stream_id {
-                        Some(stream_id) => {
-                            let _ = stream_layouts.remove(&stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
-                        }
-                        None => {}
-                    }
-                    read_tx.try_send(ClientMsg::MessageAborted(stream_id))?;
-                }
-            };
-        }        
-
-        let f1 = socket_read.peek(&mut peek_buf).fuse();
-        let f2 = write_rx.recv().fuse();
-
-        pin_mut!(f1, f2);
-
-        let res = select! {
-            res = f1 => bytes_peeked = res?,
-            res = f2 => {                             
-                match res? {
-                    StreamUnit::Array(stream_id, n, buf) => {
-                        debug!("client StreamUnit::Array write to {} socket attempt, n {}, stream_id {}", addr, n, stream_id);
-                        buf_u64.clear();
-                        buf_u64.put_u64(stream_id);
-                        socket_write.write_all(&buf_u64[..]).await?;
-                        buf_u32.clear();
-                        buf_u32.put_u32(n as u32);                        
-                        socket_write.write_all(&buf_u32[..]).await?;
-                        socket_write.write_all(&buf[..n]).await?;
-                        debug!("client StreamUnit::Array write to {} socket succeded, stream_id {}", addr, stream_id);
-                    }
-                    StreamUnit::Vector(stream_id, buf) => {
-                        debug!("client StreamUnit::Vector write to {} socket attempt, len {}, stream_id {}", addr, buf.len(), stream_id);
-                        buf_u64.clear();
-                        buf_u64.put_u64(stream_id);
-                        socket_write.write_all(&buf_u64[..]).await?;
-                        buf_u32.clear();
-                        buf_u32.put_u32(buf.len() as u32);
-                        socket_write.write_all(&buf_u32[..]).await?;
-                        socket_write.write_all(&buf).await?;
-                        debug!("client StreamUnit::Vector write to {} socket succeded, stream_id {}", addr, stream_id);
-                    }
-                    StreamUnit::Empty(stream_id) => {
-                        debug!("client StreamUnit::Empty write to {} socket attempt, stream_id {}", addr, stream_id);
-                        buf_u64.clear();
-                        buf_u64.put_u64(stream_id);
-                        socket_write.write_all(&buf_u64[..]).await?;
-                        buf_u32.clear();
-                        buf_u32.put_u32(0);
-                        socket_write.write_all(&buf_u32[..]).await?;
-                        debug!("client StreamUnit::Empty write to {} socket succeded, stream_id {}", addr, stream_id);
-                    }
-                }                
+    tokio::spawn(async move {
+        let res = write_loop(addr, write_rx, socket_write).await;
+        error!("{:?}", res);
+    });
+    
+    loop {
+        match read(&mut state, &mut socket_read).await? {
+            ReadResult::MsgMeta(stream_id, msg_meta, _) => {
+                stream_layouts.insert(stream_id, StreamLayout {
+                    id: stream_id,
+                    msg_meta,
+                    payload: vec![],
+                    attachments_data: vec![]
+                });
             }
-        };        
-    }
+            ReadResult::PayloadData(stream_id, n, buf) => {
+                let stream_layout = stream_layouts.get_mut(&stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
+                stream_layout.payload.extend_from_slice(&buf[..n]);
+
+            }
+            ReadResult::PayloadFinished(stream_id, n, buf) => {
+                let stream_layout = stream_layouts.get_mut(&stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
+                stream_layout.payload.extend_from_slice(&buf[..n]);
+            }
+            ReadResult::AttachmentData(stream_id, _, n, buf) => {
+                let stream_layout = stream_layouts.get_mut(&stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
+                stream_layout.attachments_data.extend_from_slice(&buf[..n]);
+            }
+            ReadResult::AttachmentFinished(stream_id, _, n, buf) => {
+                let stream_layout = stream_layouts.get_mut(&stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
+                stream_layout.attachments_data.extend_from_slice(&buf[..n]);
+            }
+            ReadResult::MessageFinished(stream_id, finish_bytes) => {
+                let stream_layout = stream_layouts.get_mut(&stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
+                match finish_bytes {
+                    MessageFinishBytes::Payload(n, buf) => {
+                        stream_layout.payload.extend_from_slice(&buf[..n]);
+                    }
+                    MessageFinishBytes::Attachment(_, n, buf) => {
+                        stream_layout.attachments_data.extend_from_slice(&buf[..n]);
+                    }                            
+                }
+                let stream_layout = stream_layouts.remove(&stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
+                read_tx.try_send(ClientMsg::Message(stream_id, stream_layout.msg_meta, stream_layout.payload, stream_layout.attachments_data))?;
+            }
+            ReadResult::MessageAborted(stream_id) => {
+                match stream_id {
+                    Some(stream_id) => {
+                        let _ = stream_layouts.remove(&stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
+                    }
+                    None => {}
+                }
+                read_tx.try_send(ClientMsg::MessageAborted(stream_id))?;
+            }
+        };
+    }    
 }

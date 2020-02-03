@@ -2,8 +2,6 @@ use std::collections::HashMap;
 use std::io::{Cursor, BufReader, Read};
 use std::net::SocketAddr;
 use log::*;
-use futures::{select, pin_mut, future::FutureExt};
-use bytes::{BytesMut, BufMut};
 use tokio::runtime::Runtime;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc::{self, Sender};
@@ -75,12 +73,12 @@ pub async fn start_future(config: ServerConfig) -> Result<(), ProcessError> {
 }
 
 async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut server_tx: Sender<ServerMsg>, config: &ServerConfig) -> Result<(), ProcessError> {
-    let (mut socket_read, mut socket_write) = stream.split();    
-    let mut state = State::new("Server".to_owned());
-    let mut buf_u64 = BytesMut::with_capacity(8);
-    let mut buf_u32 = BytesMut::with_capacity(4);    
+    let addr = "Server".to_owned();
+    let (mut socket_read, mut socket_write) = tokio::io::split(stream);
+    let mut state = State::new(addr.clone());
     let mut stream_layouts = HashMap::new();
     let mut auth_stream_layout = None;
+
     loop {
         match read(&mut state, &mut socket_read).await? {
             ReadResult::MsgMeta(stream_id, msg_meta, _) => {
@@ -136,6 +134,7 @@ async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut 
             }
         }
     }
+    
     let auth_stream_layout = auth_stream_layout.ok_or(ProcessError::AuthStreamLayoutIsEmpty)?;    
     let auth_payload: Value = from_slice(&auth_stream_layout.payload)?;
     state.addr = "Server connection from ".to_owned() + &auth_stream_layout.msg_meta.tx;
@@ -143,98 +142,59 @@ async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut 
     let (mut client_tx, mut client_rx) = mpsc::channel(MPSC_CLIENT_BUF_SIZE);
     server_tx.try_send(ServerMsg::AddClient(auth_stream_layout.msg_meta.tx, client_net_addr, client_tx))?;
     let mut client_addrs = HashMap::new();
-    let mut bytes_peeked = 0;
-    let mut peek_buf = [0; 1];
-    loop {
-        if bytes_peeked > 0 {
-            bytes_peeked = 0;
 
-            match read(&mut state, &mut socket_read).await? {
-                ReadResult::MsgMeta(stream_id, msg_meta, buf) => {
-                    //info!("{} {:?}", stream_id, msg_meta);
-                    client_addrs.insert(stream_id, msg_meta.rx.clone());
-                    //info!("sending msg meta");
-                    server_tx.try_send(ServerMsg::SendUnit(msg_meta.rx.clone(), StreamUnit::Vector(stream_id, buf)))?;
-                }
-                ReadResult::PayloadData(stream_id, n, buf) => {                        
-                    let client_addr = client_addrs.get(&stream_id).ok_or(ProcessError::ClientAddrNotFound)?;
-                    //info!("sending payload data");
-                    server_tx.try_send(ServerMsg::SendUnit(client_addr.clone(), StreamUnit::Array(stream_id, n, buf)))?;
-                }
-                ReadResult::PayloadFinished(stream_id, n, buf) => {
-                    let client_addr = client_addrs.get(&stream_id).ok_or(ProcessError::ClientAddrNotFound)?;
-                    //info!("sending payload finished");
-                    server_tx.try_send(ServerMsg::SendUnit(client_addr.clone(), StreamUnit::Array(stream_id, n, buf)))?;
-                }
-                ReadResult::AttachmentData(stream_id, _, n, buf) => {
-                    let client_addr = client_addrs.get(&stream_id).ok_or(ProcessError::ClientAddrNotFound)?;
-                    //info!("sending attachment");
-                    server_tx.try_send(ServerMsg::SendUnit(client_addr.clone(), StreamUnit::Array(stream_id, n, buf)))?;
-                }
-                ReadResult::AttachmentFinished(stream_id, _, n, buf) => {
-                    let client_addr = client_addrs.get(&stream_id).ok_or(ProcessError::ClientAddrNotFound)?;
-                    //info!("sending attachment finished");
-                    server_tx.try_send(ServerMsg::SendUnit(client_addr.clone(), StreamUnit::Array(stream_id, n, buf)))?;
-                }
-                ReadResult::MessageFinished(stream_id, finish_bytes) => {
-                    let client_addr = client_addrs.remove(&stream_id).ok_or(ProcessError::ClientAddrNotFound)?;
-                    match finish_bytes {
-                        MessageFinishBytes::Payload(n, buf) => {
-                            server_tx.try_send(ServerMsg::SendUnit(client_addr.clone(), StreamUnit::Array(stream_id, n, buf)))?;
-                        }
-                        MessageFinishBytes::Attachment(_, n, buf) => {
-                            server_tx.try_send(ServerMsg::SendUnit(client_addr.clone(), StreamUnit::Array(stream_id, n, buf)))?;
-                        }                            
-                    }                        
-                }
-                ReadResult::MessageAborted(stream_id) => {
-                    match stream_id {
-                        Some(stream_id) => {
-                            let _ = client_addrs.remove(&stream_id).ok_or(ProcessError::ClientAddrNotFound)?;
-                        }
-                        None => {}
+    tokio::spawn(async move {
+        let res = write_loop(addr, client_rx, socket_write).await;
+        error!("{:?}", res);
+    });
+    
+    loop {        
+        match read(&mut state, &mut socket_read).await? {
+            ReadResult::MsgMeta(stream_id, msg_meta, buf) => {
+                //info!("{} {:?}", stream_id, msg_meta);
+                client_addrs.insert(stream_id, msg_meta.rx.clone());
+                //info!("sending msg meta");
+                server_tx.try_send(ServerMsg::SendUnit(msg_meta.rx.clone(), StreamUnit::Vector(stream_id, buf)))?;
+            }
+            ReadResult::PayloadData(stream_id, n, buf) => {                        
+                let client_addr = client_addrs.get(&stream_id).ok_or(ProcessError::ClientAddrNotFound)?;
+                //info!("sending payload data");
+                server_tx.try_send(ServerMsg::SendUnit(client_addr.clone(), StreamUnit::Array(stream_id, n, buf)))?;
+            }
+            ReadResult::PayloadFinished(stream_id, n, buf) => {
+                let client_addr = client_addrs.get(&stream_id).ok_or(ProcessError::ClientAddrNotFound)?;
+                //info!("sending payload finished");
+                server_tx.try_send(ServerMsg::SendUnit(client_addr.clone(), StreamUnit::Array(stream_id, n, buf)))?;
+            }
+            ReadResult::AttachmentData(stream_id, _, n, buf) => {
+                let client_addr = client_addrs.get(&stream_id).ok_or(ProcessError::ClientAddrNotFound)?;
+                //info!("sending attachment");
+                server_tx.try_send(ServerMsg::SendUnit(client_addr.clone(), StreamUnit::Array(stream_id, n, buf)))?;
+            }
+            ReadResult::AttachmentFinished(stream_id, _, n, buf) => {
+                let client_addr = client_addrs.get(&stream_id).ok_or(ProcessError::ClientAddrNotFound)?;
+                //info!("sending attachment finished");
+                server_tx.try_send(ServerMsg::SendUnit(client_addr.clone(), StreamUnit::Array(stream_id, n, buf)))?;
+            }
+            ReadResult::MessageFinished(stream_id, finish_bytes) => {
+                let client_addr = client_addrs.remove(&stream_id).ok_or(ProcessError::ClientAddrNotFound)?;
+                match finish_bytes {
+                    MessageFinishBytes::Payload(n, buf) => {
+                        server_tx.try_send(ServerMsg::SendUnit(client_addr.clone(), StreamUnit::Array(stream_id, n, buf)))?;
                     }
-                }
-            };
-        }
-
-        let f1 = socket_read.peek(&mut peek_buf).fuse();
-        let f2 = client_rx.recv().fuse();
-
-        pin_mut!(f1, f2);
-
-        let res = select! {
-            res = f1 => bytes_peeked = res?,
-            res = f2 => {                
-                match res? {
-                    StreamUnit::Array(stream_id, n, buf) => {                        
-                        buf_u64.clear();
-                        buf_u64.put_u64(stream_id);
-                        socket_write.write_all(&buf_u64[..]).await?;
-                        buf_u32.clear();
-                        buf_u32.put_u32(n as u32);
-                        socket_write.write_all(&buf_u32[..]).await?;
-                        socket_write.write_all(&buf[..n]).await?;
+                    MessageFinishBytes::Attachment(_, n, buf) => {
+                        server_tx.try_send(ServerMsg::SendUnit(client_addr.clone(), StreamUnit::Array(stream_id, n, buf)))?;
+                    }                            
+                }                        
+            }
+            ReadResult::MessageAborted(stream_id) => {
+                match stream_id {
+                    Some(stream_id) => {
+                        let _ = client_addrs.remove(&stream_id).ok_or(ProcessError::ClientAddrNotFound)?;
                     }
-                    StreamUnit::Vector(stream_id, buf) => {                        
-                        buf_u64.clear();
-                        buf_u64.put_u64(stream_id);
-                        socket_write.write_all(&buf_u64[..]).await?;
-                        buf_u32.clear();
-                        buf_u32.put_u32(buf.len() as u32);
-                        socket_write.write_all(&buf_u32[..]).await?;
-                        socket_write.write_all(&buf).await?;
-                    }
-                    StreamUnit::Empty(stream_id) => {                        
-                        buf_u64.clear();
-                        buf_u64.put_u64(stream_id);
-                        socket_write.write_all(&buf_u64[..]).await?;
-                        buf_u32.clear();
-                        buf_u32.put_u32(0);
-                        socket_write.write_all(&buf_u32[..]).await?;
-                    }
+                    None => {}
                 }
             }
-        };
+        }        
     }
 }

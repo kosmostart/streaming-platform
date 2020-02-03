@@ -12,7 +12,8 @@ use log::*;
 use rand::random;
 use bytes::{Buf, BytesMut, BufMut};
 use tokio::io::Take;
-use tokio::net::tcp::ReadHalf;
+use tokio::io::{ReadHalf, WriteHalf};
+use tokio::net::TcpStream;
 use tokio::sync::{mpsc::{Sender, Receiver, error::{SendError, TrySendError}}, oneshot};
 use tokio::time::{timeout, Elapsed};
 use tokio::prelude::*;
@@ -134,7 +135,7 @@ pub struct StreamLayout {
     pub attachments_data: Vec<u8>
 }
 
-pub async fn read(state: &mut State, socket_read: &mut ReadHalf<'_>) -> Result<ReadResult, ProcessError> {    
+pub async fn read(state: &mut State, socket_read: &mut ReadHalf<TcpStream>) -> Result<ReadResult, ProcessError> {    
     let mut u64_buf = [0; STREAM_ID_BUF_SIZE];
     let mut u32_buf = [0; LEN_BUF_SIZE];
 
@@ -477,6 +478,54 @@ pub async fn write(stream_id: u64, data: Vec<u8>, msg_meta_size: u64, payload_si
     Ok(())
 }
 
+pub async fn write_loop(addr: String, mut client_rx: Receiver<StreamUnit>, mut socket_write: WriteHalf<TcpStream>) -> Result<(), ProcessError> {
+    let mut buf_u64 = BytesMut::with_capacity(8);
+    let mut buf_u32 = BytesMut::with_capacity(4);
+
+    loop {       
+        match client_rx.recv().await {
+            Some(res) => {
+                match res {
+                    StreamUnit::Array(stream_id, n, buf) => {
+                        debug!("{} StreamUnit::Array write to socket attempt, n {}, stream_id {}", addr, n, stream_id);
+                        buf_u64.clear();
+                        buf_u64.put_u64(stream_id);
+                        socket_write.write_all(&buf_u64[..]).await?;
+                        buf_u32.clear();
+                        buf_u32.put_u32(n as u32);
+                        socket_write.write_all(&buf_u32[..]).await?;
+                        socket_write.write_all(&buf[..n]).await?;
+                        debug!("{} StreamUnit::Array write to socket succeded, stream_id {}", addr, stream_id);
+                    }
+                    StreamUnit::Vector(stream_id, buf) => {                        
+                        debug!("{} StreamUnit::Vector write to socket attempt, len {}, stream_id {}", addr, buf.len(), stream_id);
+                        buf_u64.clear();
+                        buf_u64.put_u64(stream_id);
+                        socket_write.write_all(&buf_u64[..]).await?;
+                        buf_u32.clear();
+                        buf_u32.put_u32(buf.len() as u32);
+                        socket_write.write_all(&buf_u32[..]).await?;
+                        socket_write.write_all(&buf).await?;
+                        debug!("{} StreamUnit::Vector write to socket succeded, stream_id {}", addr, stream_id);
+                    }
+                    StreamUnit::Empty(stream_id) => {       
+                        debug!("{} StreamUnit::Empty write to socket attempt, stream_id {}", addr, stream_id);                 
+                        buf_u64.clear();
+                        buf_u64.put_u64(stream_id);
+                        socket_write.write_all(&buf_u64[..]).await?;
+                        buf_u32.clear();
+                        buf_u32.put_u32(0);
+                        socket_write.write_all(&buf_u32[..]).await?;
+                        debug!("{} StreamUnit::Empty write to socket succeded, stream_id {}", addr, stream_id);
+                    }
+                }
+            }
+            None => return Err(ProcessError::WriteChannelDropped)
+        }
+    }
+}
+
+
 // Used for RPC implementation
 pub enum RpcMsg {
     AddRpc(Uuid, oneshot::Sender<(MsgMeta, Vec<u8>, Vec<u8>)>),    
@@ -753,11 +802,11 @@ pub enum ProcessError {
     StreamClosed,
     StreamIdIsZero,
     NotEnoughBytesForLen,
-    WriteChecksumCheckFailed,
+    WriteChannelDropped,
     IncorrectReadResult,    
     Io(std::io::Error),
     SerdeJson(serde_json::Error),
-    GetFile(GetFileError),
+    GetFile(GetFileError),    
     SendStreamUnitError,
     SendServerMsgError,
     SendClientMsgError,

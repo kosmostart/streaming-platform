@@ -141,7 +141,7 @@ async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut 
     state.addr = "Server connection from ".to_owned() + &auth_stream_layout.msg_meta.tx;
     //info!("{:?}", auth_stream_layout.msg_meta);
     let (mut client_tx, mut client_rx) = mpsc::channel(MPSC_CLIENT_BUF_SIZE);
-    server_tx.send(ServerMsg::AddClient(auth_stream_layout.msg_meta.tx, client_net_addr, client_tx)).await?;    
+    server_tx.try_send(ServerMsg::AddClient(auth_stream_layout.msg_meta.tx, client_net_addr, client_tx))?;
     let mut client_addrs = HashMap::new();
     let mut bytes_peeked = 0;
     let mut peek_buf = [0; 1];
@@ -154,36 +154,36 @@ async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut 
                     //info!("{} {:?}", stream_id, msg_meta);
                     client_addrs.insert(stream_id, msg_meta.rx.clone());
                     //info!("sending msg meta");
-                    server_tx.send(ServerMsg::SendUnit(msg_meta.rx.clone(), StreamUnit::Vector(stream_id, buf))).await?;
+                    server_tx.try_send(ServerMsg::SendUnit(msg_meta.rx.clone(), StreamUnit::Vector(stream_id, buf)))?;
                 }
                 ReadResult::PayloadData(stream_id, n, buf) => {                        
                     let client_addr = client_addrs.get(&stream_id).ok_or(ProcessError::ClientAddrNotFound)?;
                     //info!("sending payload data");
-                    server_tx.send(ServerMsg::SendUnit(client_addr.clone(), StreamUnit::Array(stream_id, n, buf))).await?;
+                    server_tx.try_send(ServerMsg::SendUnit(client_addr.clone(), StreamUnit::Array(stream_id, n, buf)))?;
                 }
                 ReadResult::PayloadFinished(stream_id, n, buf) => {
                     let client_addr = client_addrs.get(&stream_id).ok_or(ProcessError::ClientAddrNotFound)?;
                     //info!("sending payload finished");
-                    server_tx.send(ServerMsg::SendUnit(client_addr.clone(), StreamUnit::Array(stream_id, n, buf))).await?;
+                    server_tx.try_send(ServerMsg::SendUnit(client_addr.clone(), StreamUnit::Array(stream_id, n, buf)))?;
                 }
                 ReadResult::AttachmentData(stream_id, _, n, buf) => {
                     let client_addr = client_addrs.get(&stream_id).ok_or(ProcessError::ClientAddrNotFound)?;
                     //info!("sending attachment");
-                    server_tx.send(ServerMsg::SendUnit(client_addr.clone(), StreamUnit::Array(stream_id, n, buf))).await?;
+                    server_tx.try_send(ServerMsg::SendUnit(client_addr.clone(), StreamUnit::Array(stream_id, n, buf)))?;
                 }
                 ReadResult::AttachmentFinished(stream_id, _, n, buf) => {
                     let client_addr = client_addrs.get(&stream_id).ok_or(ProcessError::ClientAddrNotFound)?;
                     //info!("sending attachment finished");
-                    server_tx.send(ServerMsg::SendUnit(client_addr.clone(), StreamUnit::Array(stream_id, n, buf))).await?;
+                    server_tx.try_send(ServerMsg::SendUnit(client_addr.clone(), StreamUnit::Array(stream_id, n, buf)))?;
                 }
                 ReadResult::MessageFinished(stream_id, finish_bytes) => {
                     let client_addr = client_addrs.remove(&stream_id).ok_or(ProcessError::ClientAddrNotFound)?;
                     match finish_bytes {
                         MessageFinishBytes::Payload(n, buf) => {
-                            server_tx.send(ServerMsg::SendUnit(client_addr.clone(), StreamUnit::Array(stream_id, n, buf))).await?;
+                            server_tx.try_send(ServerMsg::SendUnit(client_addr.clone(), StreamUnit::Array(stream_id, n, buf)))?;
                         }
                         MessageFinishBytes::Attachment(_, n, buf) => {
-                            server_tx.send(ServerMsg::SendUnit(client_addr.clone(), StreamUnit::Array(stream_id, n, buf))).await?;
+                            server_tx.try_send(ServerMsg::SendUnit(client_addr.clone(), StreamUnit::Array(stream_id, n, buf)))?;
                         }                            
                     }                        
                 }

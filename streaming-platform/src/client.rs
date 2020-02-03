@@ -38,7 +38,7 @@ where
                 RpcMsg::RpcDataRequest(correlation_id) => {
                     match rpcs.remove(&correlation_id) {
                         Some(rpc_tx) => {
-                            match rpc_outbound_tx.send(RpcMsg::RpcDataResponse(correlation_id, rpc_tx)).await {
+                            match rpc_outbound_tx.try_send(RpcMsg::RpcDataResponse(correlation_id, rpc_tx)) {
                                 Ok(()) => {}
                                 Err(_) => panic!("rpc outbound tx send failed on rpc data request")
                             }
@@ -108,7 +108,7 @@ where
                 RpcMsg::RpcDataRequest(correlation_id) => {
                     match rpcs.remove(&correlation_id) {
                         Some(rpc_tx) => {
-                            match rpc_outbound_tx.send(RpcMsg::RpcDataResponse(correlation_id, rpc_tx)).await {
+                            match rpc_outbound_tx.try_send(RpcMsg::RpcDataResponse(correlation_id, rpc_tx)) {
                                 Ok(()) => {}
                                 Err(_) => panic!("rpc outbound tx send failed on rpc data request")
                             }
@@ -198,7 +198,7 @@ where
                         }
                         MsgKind::RpcResponse(_) => {           
                             debug!("client got rpc response {}", msg_meta.display());
-                            match rpc_inbound_tx2.send(RpcMsg::RpcDataRequest(msg_meta.correlation_id)).await {
+                            match rpc_inbound_tx2.try_send(RpcMsg::RpcDataRequest(msg_meta.correlation_id)) {
                                 Ok(()) => {
                                     debug!("client RpcDataRequest send succeeded {}", msg_meta.display());
                                 }
@@ -267,28 +267,28 @@ async fn process_message_stream(addr: String, mut stream: TcpStream, mut read_tx
         if bytes_peeked > 0 {
             bytes_peeked = 0;
             match read(&mut state, &mut socket_read).await? {
-                ReadResult::MsgMeta(stream_id, msg_meta, _) => read_tx.send(ClientMsg::MsgMeta(stream_id, msg_meta)).await?,
-                ReadResult::PayloadData(stream_id, n, buf) => read_tx.send(ClientMsg::PayloadData(stream_id, n, buf)).await?,
-                ReadResult::PayloadFinished(stream_id, n, buf) => read_tx.send(ClientMsg::PayloadFinished(stream_id, n, buf)).await?,
-                ReadResult::AttachmentData(stream_id, index, n, buf) => read_tx.send(ClientMsg::AttachmentData(stream_id, index, n, buf)).await?,
-                ReadResult::AttachmentFinished(stream_id, index, n, buf) => read_tx.send(ClientMsg::AttachmentFinished(stream_id, index, n, buf)).await?,
+                ReadResult::MsgMeta(stream_id, msg_meta, _) => read_tx.try_send(ClientMsg::MsgMeta(stream_id, msg_meta))?,
+                ReadResult::PayloadData(stream_id, n, buf) => read_tx.try_send(ClientMsg::PayloadData(stream_id, n, buf))?,
+                ReadResult::PayloadFinished(stream_id, n, buf) => read_tx.try_send(ClientMsg::PayloadFinished(stream_id, n, buf))?,
+                ReadResult::AttachmentData(stream_id, index, n, buf) => read_tx.try_send(ClientMsg::AttachmentData(stream_id, index, n, buf))?,
+                ReadResult::AttachmentFinished(stream_id, index, n, buf) => read_tx.try_send(ClientMsg::AttachmentFinished(stream_id, index, n, buf))?,
                 ReadResult::MessageFinished(stream_id, finish_bytes) => {
                     match finish_bytes {
                         MessageFinishBytes::Payload(n, buf) => {
-                            read_tx.send(ClientMsg::PayloadFinished(stream_id, n, buf)).await?;
+                            read_tx.try_send(ClientMsg::PayloadFinished(stream_id, n, buf))?;
                         }
                         MessageFinishBytes::Attachment(index, n, buf) => {
-                            read_tx.send(ClientMsg::AttachmentFinished(stream_id, index, n, buf)).await?;
+                            read_tx.try_send(ClientMsg::AttachmentFinished(stream_id, index, n, buf))?;
                         }                            
                     }
-                    read_tx.send(ClientMsg::MessageFinished(stream_id)).await?;
+                    read_tx.try_send(ClientMsg::MessageFinished(stream_id))?;
                 }
                 ReadResult::MessageAborted(stream_id) => {
-                    read_tx.send(ClientMsg::MessageAborted(stream_id)).await?;
+                    read_tx.try_send(ClientMsg::MessageAborted(stream_id))?;
                 }
             };
         }
-        
+
         let f1 = socket_read.peek(&mut peek_buf).fuse();
         let f2 = write_rx.recv().fuse();
 
@@ -387,7 +387,7 @@ async fn process_full_message(addr: String, mut stream: TcpStream, mut read_tx: 
                         }                            
                     }
                     let stream_layout = stream_layouts.remove(&stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
-                    read_tx.send(ClientMsg::Message(stream_id, stream_layout.msg_meta, stream_layout.payload, stream_layout.attachments_data)).await?;
+                    read_tx.try_send(ClientMsg::Message(stream_id, stream_layout.msg_meta, stream_layout.payload, stream_layout.attachments_data))?;
                 }
                 ReadResult::MessageAborted(stream_id) => {
                     match stream_id {
@@ -396,7 +396,7 @@ async fn process_full_message(addr: String, mut stream: TcpStream, mut read_tx: 
                         }
                         None => {}
                     }
-                    read_tx.send(ClientMsg::MessageAborted(stream_id)).await?;                        
+                    read_tx.try_send(ClientMsg::MessageAborted(stream_id))?;
                 }
             };
         }        

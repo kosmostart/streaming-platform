@@ -53,7 +53,7 @@ where
         }
     });
     tokio::spawn(async move {        
-        let target = "SvcHub";
+        let target = "Server";
 
         let route = Route {
             source: Participator::Service(addr.clone()),
@@ -66,7 +66,7 @@ where
         }), route).unwrap();
 
         let res = write(get_stream_id_onetime(&addr), dto, msg_meta_size, payload_size, attachments_sizes, &mut write_tx).await;
-        println!("{:?}", res);        
+        info!("{:?}", res);        
     });
     let mut mb = MagicBall::new(addr2, write_tx2, rpc_inbound_tx);
     tokio::spawn(process_stream(config, mb, read_rx, restream_rx));
@@ -137,7 +137,7 @@ where
         }), route).unwrap();
 
         let res = write(get_stream_id_onetime(&addr), dto, msg_meta_size, payload_size, attachments_size, &mut write_tx).await;
-        println!("{:?}", res);        
+        info!("{:?}", res);        
     });
 
     tokio::spawn(async move {
@@ -233,24 +233,24 @@ where
 }
 
 async fn connect_stream_future(host: &str, addr: String, mut read_tx: Sender<ClientMsg>, mut write_rx: Receiver<StreamUnit>) {    
-    let mut stream = TcpStream::connect(host).await.expect("onnection to host failed");
+    let mut write_stream = TcpStream::connect(host).await.expect("connection to host failed");
+    let mut read_stream = TcpStream::connect(host).await.expect("connection to host failed");
 
-    let res = process_message_stream(addr, stream, read_tx, write_rx).await;
+    let res = process_message_stream(addr, write_stream, read_stream, read_tx, write_rx).await;
 
-    println!("{:?}", res);
+    info!("{:?}", res);
 }
 
 async fn connect_full_message_future(host: &str, addr: String, mut read_tx: Sender<ClientMsg>, mut write_rx: Receiver<StreamUnit>) {    
-    let mut stream = TcpStream::connect(host).await.expect("onnection to host failed");
+    let mut write_stream = TcpStream::connect(host).await.expect("write connection to host failed");
+    let mut read_stream = TcpStream::connect(host).await.expect("read connection to host failed");
 
-    let res = process_full_message(addr, stream, read_tx, write_rx).await;
+    let res = process_full_message(addr, write_stream, read_stream, read_tx, write_rx).await;
 
-    println!("{:?}", res);
+    info!("{:?}", res);
 }
 
-async fn process_message_stream(addr: String, mut stream: TcpStream, mut read_tx: Sender<ClientMsg>, mut write_rx: Receiver<StreamUnit>) -> Result<(), ProcessError> {
-    let (mut socket_read, mut socket_write) = tokio::io::split(stream);
-
+async fn process_message_stream(addr: String, mut write_stream: TcpStream, mut read_stream: TcpStream, mut read_tx: Sender<ClientMsg>, mut write_rx: Receiver<StreamUnit>) -> Result<(), ProcessError> {    
     //let (auth_msg_meta, auth_payload, auth_attachments) = read_full(&mut socket_read).await?;
     //let auth_payload: Value = from_slice(&auth_payload)?;    
 
@@ -260,12 +260,12 @@ async fn process_message_stream(addr: String, mut stream: TcpStream, mut read_tx
     let mut state = State::new(addr.clone());    
 
     tokio::spawn(async move {
-        let res = write_loop(addr, write_rx, socket_write).await;
+        let res = write_loop(addr, write_rx, write_stream).await;
         error!("{:?}", res);
     });
 
     loop {
-        match read(&mut state, &mut socket_read).await? {
+        match read(&mut state, &mut read_stream).await? {
             ReadResult::MsgMeta(stream_id, msg_meta, _) => read_tx.try_send(ClientMsg::MsgMeta(stream_id, msg_meta))?,
             ReadResult::PayloadData(stream_id, n, buf) => read_tx.try_send(ClientMsg::PayloadData(stream_id, n, buf))?,
             ReadResult::PayloadFinished(stream_id, n, buf) => read_tx.try_send(ClientMsg::PayloadFinished(stream_id, n, buf))?,
@@ -289,9 +289,7 @@ async fn process_message_stream(addr: String, mut stream: TcpStream, mut read_tx
     }
 }
 
-async fn process_full_message(addr: String, mut stream: TcpStream, mut read_tx: Sender<ClientMsg>, mut write_rx: Receiver<StreamUnit>) -> Result<(), ProcessError> {
-    let (mut socket_read, mut socket_write) = tokio::io::split(stream);
-
+async fn process_full_message(addr: String, mut write_stream: TcpStream, mut read_stream: TcpStream, mut read_tx: Sender<ClientMsg>, mut write_rx: Receiver<StreamUnit>) -> Result<(), ProcessError> {    
     //let (auth_msg_meta, auth_payload, auth_attachments) = read_full(&mut socket_read).await?;
     //let auth_payload: Value = from_slice(&auth_payload)?;    
 
@@ -302,12 +300,12 @@ async fn process_full_message(addr: String, mut stream: TcpStream, mut read_tx: 
     let mut state = State::new(addr.clone());
 
     tokio::spawn(async move {
-        let res = write_loop(addr, write_rx, socket_write).await;
+        let res = write_loop(addr, write_rx, write_stream).await;
         error!("{:?}", res);
     });
     
     loop {
-        match read(&mut state, &mut socket_read).await? {
+        match read(&mut state, &mut read_stream).await? {
             ReadResult::MsgMeta(stream_id, msg_meta, _) => {
                 stream_layouts.insert(stream_id, StreamLayout {
                     id: stream_id,

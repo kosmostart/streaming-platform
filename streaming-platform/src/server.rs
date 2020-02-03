@@ -60,27 +60,71 @@ pub async fn start_future(config: ServerConfig) -> Result<(), ProcessError> {
             }     
         }
     });
+
+    let mut client_states = HashMap::new();
+
     loop {        
         let (mut stream, client_net_addr) = listener.accept().await?;
+        info!("new connection from {}", client_net_addr);
         let config = config.clone();
         let server_tx = server_tx.clone();
-        info!("connected");  
-        tokio::spawn(async move {
-            let res = process_stream(stream, client_net_addr, server_tx, &config).await;
-            info!("{:?}", res);
-        });        
+        match auth_stream(&mut stream, client_net_addr, &config).await {
+            Ok(addr) => {
+                info!("stream from {} authorized as {}", client_net_addr, addr);
+                if !client_states.contains_key(&addr) {
+                    client_states.insert(addr.clone(), ClientState::new());
+                }
+                match client_states.get_mut(&addr) {
+                    Some(client_state) => {
+                        
+                        if !client_state.has_writer {
+                            client_state.has_writer = true;
+                            tokio::spawn(async move {            
+                                let res = process_write_stream(addr.clone(), &mut stream, client_net_addr, server_tx, &config).await;
+                                error!("{} reader process eneded, {:?}", addr, res);
+                            });
+                        } else {
+                            if !client_state.has_reader {
+                                client_state.has_reader = true;
+                                tokio::spawn(async move {            
+                                    let res = process_read_stream(addr.clone(), stream, client_net_addr, server_tx, &config).await;
+                                    error!("{} reader process eneded, {:?}", addr, res);
+                                });
+                            } else {
+                                error!("writer and reader already present");
+                            }                            
+                        }
+                        
+                    }
+                    None => error!("failed to get client state for {} stream from {}", addr, client_net_addr)
+                }                
+            }
+            Err(e) => error!("failed to authorize stream from {}, {:?}", client_net_addr, e)
+        }        
     }
 }
 
-async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut server_tx: Sender<ServerMsg>, config: &ServerConfig) -> Result<(), ProcessError> {
-    let addr = "Server".to_owned();
-    let (mut socket_read, mut socket_write) = tokio::io::split(stream);
-    let mut state = State::new(addr.clone());
+struct ClientState {
+    has_writer: bool,
+    has_reader: bool
+}
+
+impl ClientState {
+    pub fn new() -> ClientState {
+        ClientState {
+            has_writer: false,
+            has_reader: false
+        }
+    }
+}
+
+async fn auth_stream(stream: &mut TcpStream, client_net_addr: SocketAddr, config: &ServerConfig) -> Result<String, ProcessError> {    
+    let mut state = State::new("Server".to_owned());
     let mut stream_layouts = HashMap::new();
     let mut auth_stream_layout = None;
 
     loop {
-        match read(&mut state, &mut socket_read).await? {
+        match read(&mut state, stream).await? {
             ReadResult::MsgMeta(stream_id, msg_meta, _) => {
                 //info!("{} {:?}", stream_id, msg_meta);
                 stream_layouts.insert(stream_id, StreamLayout {
@@ -136,20 +180,28 @@ async fn process_stream(mut stream: TcpStream, client_net_addr: SocketAddr, mut 
     }
     
     let auth_stream_layout = auth_stream_layout.ok_or(ProcessError::AuthStreamLayoutIsEmpty)?;    
-    let auth_payload: Value = from_slice(&auth_stream_layout.payload)?;
-    state.addr = "Server connection from ".to_owned() + &auth_stream_layout.msg_meta.tx;
-    //info!("{:?}", auth_stream_layout.msg_meta);
+    //let auth_payload: Value = from_slice(&auth_stream_layout.payload)?;
+
+    Ok(auth_stream_layout.msg_meta.tx)
+}
+
+
+async fn process_read_stream(addr: String, mut stream: TcpStream, client_net_addr: SocketAddr, mut server_tx: Sender<ServerMsg>, config: &ServerConfig) -> Result<(), ProcessError> {    
+    let mut state = State::new("write stream from Server to ".to_owned() + &addr);    
     let (mut client_tx, mut client_rx) = mpsc::channel(MPSC_CLIENT_BUF_SIZE);
-    server_tx.try_send(ServerMsg::AddClient(auth_stream_layout.msg_meta.tx, client_net_addr, client_tx))?;
+
+    server_tx.try_send(ServerMsg::AddClient(addr.clone(), client_net_addr, client_tx))?;    
+
+    write_loop(addr, client_rx, stream).await    
+}
+
+
+async fn process_write_stream(addr: String, stream: &mut TcpStream, client_net_addr: SocketAddr, mut server_tx: Sender<ServerMsg>, config: &ServerConfig) -> Result<(), ProcessError> {    
+    let mut state = State::new("read stream from Server to ".to_owned() + &addr);        
     let mut client_addrs = HashMap::new();
 
-    tokio::spawn(async move {
-        let res = write_loop(addr, client_rx, socket_write).await;
-        error!("{:?}", res);
-    });
-    
     loop {        
-        match read(&mut state, &mut socket_read).await? {
+        match read(&mut state, stream).await? {
             ReadResult::MsgMeta(stream_id, msg_meta, buf) => {
                 //info!("{} {:?}", stream_id, msg_meta);
                 client_addrs.insert(stream_id, msg_meta.rx.clone());

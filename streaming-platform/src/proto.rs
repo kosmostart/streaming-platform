@@ -12,7 +12,6 @@ use log::*;
 use rand::random;
 use bytes::{Buf, BytesMut, BufMut};
 use tokio::io::Take;
-use tokio::io::{ReadHalf, WriteHalf};
 use tokio::net::TcpStream;
 use tokio::sync::{mpsc::{Sender, Receiver, error::{SendError, TrySendError}}, oneshot};
 use tokio::time::{timeout, Elapsed};
@@ -135,7 +134,7 @@ pub struct StreamLayout {
     pub attachments_data: Vec<u8>
 }
 
-pub async fn read(state: &mut State, socket_read: &mut ReadHalf<TcpStream>) -> Result<ReadResult, ProcessError> {    
+pub async fn read(state: &mut State, socket_read: &mut TcpStream) -> Result<ReadResult, ProcessError> {    
     let mut u64_buf = [0; STREAM_ID_BUF_SIZE];
     let mut u32_buf = [0; LEN_BUF_SIZE];
 
@@ -478,7 +477,7 @@ pub async fn write(stream_id: u64, data: Vec<u8>, msg_meta_size: u64, payload_si
     Ok(())
 }
 
-pub async fn write_loop(addr: String, mut client_rx: Receiver<StreamUnit>, mut socket_write: WriteHalf<TcpStream>) -> Result<(), ProcessError> {
+pub async fn write_loop(addr: String, mut client_rx: Receiver<StreamUnit>, mut socket_write: TcpStream) -> Result<(), ProcessError> {
     let mut buf_u64 = BytesMut::with_capacity(8);
     let mut buf_u32 = BytesMut::with_capacity(4);
 

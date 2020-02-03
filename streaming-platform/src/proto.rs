@@ -140,9 +140,10 @@ pub async fn read(state: &mut State, socket_read: &mut TcpStream) -> Result<Read
 
     debug!("{} read stream_id attempt", state.addr);
 
-    let mut adapter = socket_read.take(LENS_BUF_SIZE as u64);
+    //let mut adapter = socket_read.take(LENS_BUF_SIZE as u64);
     
-    adapter.read(&mut u64_buf).await?;
+    //adapter.read(&mut u64_buf).await?;
+    socket_read.read_exact(&mut u64_buf).await?;
 
     let mut buf = Cursor::new(&u64_buf[..]);
     let stream_id = buf.get_u64();
@@ -154,7 +155,8 @@ pub async fn read(state: &mut State, socket_read: &mut TcpStream) -> Result<Read
     debug!("{} read stream_id succeded, stream_id {}", state.addr, stream_id);
     debug!("{} read unit_size attempt, stream_id {}", state.addr, stream_id);
 
-    adapter.read(&mut u32_buf).await?;
+    //adapter.read(&mut u32_buf).await?;
+    socket_read.read_exact(&mut u32_buf).await?;
 
     /*
     match timeout(Duration::from_millis(STREAM_UNIT_READ_TIMEOUT_MS_AMOUNT), adapter.read(&mut u32_buf)).await? {
@@ -181,13 +183,12 @@ pub async fn read(state: &mut State, socket_read: &mut TcpStream) -> Result<Read
             error!("read error {:#?}, stream_id {}", ProcessError::StreamNotFoundInState, stream_id);            
             return Ok(ReadResult::MessageAborted(Some(stream_id)));            
         }
-    };
-
-    adapter.set_limit(unit_size as u64);
+    };        
 
     let res = match stream_state.step {
         Step::MsgMeta => {
             let mut buf = vec![];
+            let mut adapter = socket_read.take(unit_size as u64);
             let n = adapter.read_to_end(&mut buf).await?;
             let msg_meta: MsgMeta = from_slice(&buf)?;            
             for attachment in msg_meta.attachments.iter() {
@@ -214,7 +215,8 @@ pub async fn read(state: &mut State, socket_read: &mut TcpStream) -> Result<Read
         }
         Step::Payload(payload_size, bytes_read) => {            
             let mut data_buf = [0; DATA_BUF_SIZE];
-            let n = adapter.read(&mut data_buf).await?;
+            //let n = adapter.read_to_end(&mut data_buf).await?;
+            let n = socket_read.read_exact(&mut data_buf[..unit_size as usize]).await?;
             let bytes_read = bytes_read + n as u64;            
             if bytes_read < payload_size {
                 stream_state.step = Step::Payload(payload_size, bytes_read);
@@ -272,7 +274,8 @@ pub async fn read(state: &mut State, socket_read: &mut TcpStream) -> Result<Read
         }
         Step::Attachment(index, attachment_size, bytes_read) => {
             let mut data_buf = [0; DATA_BUF_SIZE];
-            let n = adapter.read(&mut data_buf).await?;
+            //let n = adapter.read(&mut data_buf).await?;
+            let n = socket_read.read_exact(&mut data_buf[..unit_size as usize]).await?;
             let bytes_read = bytes_read + n as u64;
             if bytes_read < attachment_size {
                 stream_state.step = Step::Attachment(index, attachment_size, bytes_read);

@@ -232,10 +232,10 @@ async fn connect_full_message_future(host: &str, addr: String, access_key: Strin
     let server = "Server".to_owned();
     
     let mut write_stream = TcpStream::connect(host).await.expect("connection to host failed");
-    auth(server.clone(), addr.clone(), access_key.clone(), &mut write_stream).await.expect("wrtie stream authorization failed");;
+    auth(server.clone(), addr.clone(), access_key.clone(), &mut write_stream).await.expect("wrtie stream authorization failed");
 
     let mut read_stream = TcpStream::connect(host).await.expect("connection to host failed");
-    auth(server.clone(), addr.clone(), access_key, &mut read_stream).await.expect("read stream authorization failed");;
+    auth(server.clone(), addr.clone(), access_key, &mut read_stream).await.expect("read stream authorization failed");
 
     let res = process_full_message(addr, write_stream, read_stream, read_tx, write_rx).await;
 

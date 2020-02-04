@@ -930,79 +930,79 @@ impl Error for ProcessError {
 }
 
 impl From<std::io::Error> for ProcessError {
-	fn from(err: std::io::Error) -> ProcessError {
-		ProcessError::Io(err)
+	fn from(e: std::io::Error) -> ProcessError {
+		ProcessError::Io(e)
 	}
 }
 
 impl From<serde_json::Error> for ProcessError {
-	fn from(err: serde_json::Error) -> ProcessError {
-		ProcessError::SerdeJson(err)
+	fn from(e: serde_json::Error) -> ProcessError {
+		ProcessError::SerdeJson(e)
 	}
 }
 
 impl From<option::NoneError> for ProcessError {
-	fn from(err: option::NoneError) -> ProcessError {
+	fn from(e: option::NoneError) -> ProcessError {
 		ProcessError::NoneError
 	}
 }
 
 impl From<SendError<StreamUnit>> for ProcessError {
-	fn from(err: SendError<StreamUnit>) -> ProcessError {
+	fn from(e: SendError<StreamUnit>) -> ProcessError {
 		ProcessError::SendStreamUnitError
 	}
 }
 
 impl From<SendError<ServerMsg>> for ProcessError {
-	fn from(err: SendError<ServerMsg>) -> ProcessError {
+	fn from(e: SendError<ServerMsg>) -> ProcessError {
 		ProcessError::SendServerMsgError
 	}
 }
 
 impl From<SendError<ClientMsg>> for ProcessError {
-	fn from(err: SendError<ClientMsg>) -> ProcessError {
+	fn from(e: SendError<ClientMsg>) -> ProcessError {
 		ProcessError::SendClientMsgError
 	}
 }
 
 impl From<SendError<RpcMsg>> for ProcessError {
-	fn from(err: SendError<RpcMsg>) -> ProcessError {
+	fn from(e: SendError<RpcMsg>) -> ProcessError {
 		ProcessError::SendRpcMsgError
 	}
 }
 
 impl From<oneshot::error::RecvError> for ProcessError {
-	fn from(err: oneshot::error::RecvError) -> ProcessError {
-		ProcessError::OneshotRecvError(err)
+	fn from(e: oneshot::error::RecvError) -> ProcessError {
+		ProcessError::OneshotRecvError(e)
 	}
 }
 
 impl From<Elapsed> for ProcessError {
-	fn from(err: Elapsed) -> ProcessError {
+	fn from(e: Elapsed) -> ProcessError {
 		ProcessError::Timeout
 	}
 }
 
 impl From<TrySendError<ServerMsg>> for ProcessError {
-	fn from(err: TrySendError<ServerMsg>) -> ProcessError {
+	fn from(e: TrySendError<ServerMsg>) -> ProcessError {
 		ProcessError::TrySendServerMsg
 	}
 }
 
 impl From<TrySendError<ClientMsg>> for ProcessError {
-	fn from(err: TrySendError<ClientMsg>) -> ProcessError {
+	fn from(e: TrySendError<ClientMsg>) -> ProcessError {
 		ProcessError::TrySendClientMsg
 	}
 }
 
 impl From<TrySendError<StreamUnit>> for ProcessError {
-	fn from(err: TrySendError<StreamUnit>) -> ProcessError {
+	fn from(e: TrySendError<StreamUnit>) -> ProcessError {
 		ProcessError::TrySendStreamUnit
 	}
 }
 
 impl From<TrySendError<RpcMsg>> for ProcessError {
-	fn from(err: TrySendError<RpcMsg>) -> ProcessError {
+	fn from(e: TrySendError<RpcMsg>) -> ProcessError {
 		ProcessError::TrySendRpcMsg
 	}
 }

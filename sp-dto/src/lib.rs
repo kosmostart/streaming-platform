@@ -183,7 +183,7 @@ impl MsgMeta {
         let split: Vec<&str> = self.key.split(".").collect();
 
         if index >= split.len() {
-            return Err("index equals or superior to key parts length".to_owned());
+            return Err("index equals or superior to parts length".to_owned());
         }
 
         return Ok(split[index])
@@ -193,7 +193,7 @@ impl MsgMeta {
         let split: Vec<&str> = self.key.split(".").collect();
 
         if index >= split.len() {
-            return Err("index equals or superior to key parts length".to_owned());
+            return Err("index equals or superior to parts length".to_owned());
         }
 
         return Ok(split[index] == value)
@@ -203,7 +203,7 @@ impl MsgMeta {
         let split: Vec<&str> = self.tx.split(".").collect();
 
         if index >= split.len() {
-            return Err("index equals or superior to key parts length".to_owned());
+            return Err("index equals or superior to parts length".to_owned());
         }
 
         return Ok(split[index])
@@ -213,7 +213,7 @@ impl MsgMeta {
         let split: Vec<&str> = self.tx.split(".").collect();
 
         if index >= split.len() {
-            return Err("index equals or superior to key parts length".to_owned());
+            return Err("index equals or superior to parts length".to_owned());
         }
 
         return Ok(split[index] == value)
@@ -230,7 +230,7 @@ impl MsgMeta {
         let split: Vec<&str> = addr.split(".").collect();
 
         if index >= split.len() {
-            return Err("index equals or superior to key parts length".to_owned());
+            return Err("index equals or superior to parts length".to_owned());
         }
 
         return Ok(split[index])
@@ -241,10 +241,21 @@ impl MsgMeta {
         let split: Vec<&str> = addr.split(".").collect();
 
         if index >= split.len() {
-            return Err("index equals or superior to key parts length".to_owned());
+            return Err("index equals or superior to parts length".to_owned());
         }
 
         return Ok(split[index] == value)
+    }
+    /// Get source cmp part before last one, . is used as a separator.
+    pub fn source_cmp_part_before_last(&self) -> Result<&str, String> {
+        let addr = self.source_cmp_addr().ok_or("Not a cmp source".to_owned())?;
+        let split: Vec<&str> = addr.split(".").collect();
+
+        if split.len() < 2 {
+            return Err("parts length is less than 2".to_owned());
+        }
+
+        return Ok(split[split.len() - 2])
     }
     pub fn source_svc_addr(&self) -> Option<String> {
         match &self.route.source {

@@ -31,7 +31,7 @@ pub enum Response {
 }
 
 pub struct Hub {
-    hub: Box<Bridge<Worker>>,
+    hub: Box<dyn Bridge<Worker>>,
     pub spec: CmpSpec,
     pub cfg: HubCfg
 }

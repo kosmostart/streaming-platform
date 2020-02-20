@@ -77,7 +77,7 @@ fn main() {
     // First we update all information of our system struct.
     system.refresh_all();
     let mut running = vec![];
-    for (pid, proc_) in system.get_process_list() {
+    for (pid, proc_) in system.get_processes() {
         //println!("{}:{} => status: {:?}", pid, proc_.name(), proc_.status());
 
         running.push(Process {
@@ -151,7 +151,7 @@ fn main() {
             // First we update all information of our system struct.
             system.refresh_all();
             let mut running = vec![];
-            for (pid, proc_) in system.get_process_list() {
+            for (pid, proc_) in system.get_processes() {
                 //println!("{}:{} => status: {:?}", pid, proc_.name(), proc_.status());
 
                 running.push(Process {
@@ -269,7 +269,7 @@ fn main() {
 
                         let mut running = vec![];
 
-                        for (pid, proc_) in system.get_process_list() {
+                        for (pid, proc_) in system.get_processes() {
                             //println!("{}:{} => status: {:?}", pid, proc_.name(), proc_.status());
 
                             running.push(Process {
@@ -332,7 +332,7 @@ fn main() {
 
                         let mut running = vec![];
 
-                        for (pid, proc_) in system.get_process_list() {
+                        for (pid, proc_) in system.get_processes() {
                             //println!("{}:{} => status: {:?}", pid, proc_.name(), proc_.status());
 
                             running.push(Process {

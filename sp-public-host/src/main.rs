@@ -62,9 +62,13 @@ pub fn main() {
         }
     });
 
+    println!("1");
+
     warp::serve(routes)
         .tls()
         .cert_path(config.cert_path)
         .key_path(config.key_path)
-        .run(host);    
+        .run(host); 
+    
+    println!("2");
 }

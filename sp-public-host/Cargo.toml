@@ -13,4 +13,6 @@ env_logger = "*"
 serde = "*"
 serde_derive = "*"
 toml = "*"
+bytes = "*"
+futures = { version = "0.3", features = ["async-await"] }
 warp = { git = "https://github.com/seanmonstar/warp", features = ["tls"] }

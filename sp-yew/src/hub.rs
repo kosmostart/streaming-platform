@@ -88,8 +88,8 @@ impl Hub {
             points: vec![Participator::Component(self.spec.addr.clone(), self.cfg.app_addr.clone(), self.cfg.client_addr.clone())]
         };
         let (correlation_id, dto) = rpc_dto_with_correlation_id(self.spec.addr.clone(), addr.to_owned(), key.to_owned(), payload, route).expect("failed to create rpc dto with correlation id on server rpc");
-        let host = self.cfg.fetch_url.clone().expect("fetch host is empty on server rpc");
-        self.hub.send(Request::Rpc(host, correlation_id, dto));
+        let url = self.cfg.fetch_url.clone().expect("fetch host is empty on server rpc");
+        self.hub.send(Request::Rpc(url, correlation_id, dto));
     }
     pub fn rpc_with_client(&mut self, addr: &str, key: &str, payload: Value, client_addr: String) {
         let route = Route {
@@ -117,6 +117,16 @@ impl Hub {
             }
             None => panic!(format!("domain is empty on server rpc with domain call {}", self.spec.addr))
         }        
+    }
+    pub fn rpc_with_segment(&mut self, segment: &str, addr: &str, key: &str, payload: Value) {
+        let route = Route {
+            source: Participator::Component(self.spec.addr.clone(), self.cfg.app_addr.clone(), self.cfg.client_addr.clone()),
+            spec: RouteSpec::Simple,
+            points: vec![Participator::Component(self.spec.addr.clone(), self.cfg.app_addr.clone(), self.cfg.client_addr.clone())]
+        };
+        let (correlation_id, dto) = rpc_dto_with_correlation_id(self.spec.addr.clone(), addr.to_owned(), key.to_owned(), payload, route).expect("failed to create rpc dto with correlation id on server rpc");
+        let url = self.cfg.host.clone().expect("fetch host is empty on server rpc") + "/" + segment + "/";
+        self.hub.send(Request::Rpc(url, correlation_id, dto));
     }
     pub fn send_event_local(&mut self, addr: &str, key: &str, payload: Value) {
         self.hub.send(Request::Msg(
@@ -325,8 +335,8 @@ impl Agent for Worker {
                     None => self.console.log(&format!("hub: missing client {}", msg_meta.rx))
                 }
             }
-            Request::Rpc(host, correlation_id, data) => {
-                let request = fetch::Request::post(host)        
+            Request::Rpc(url, correlation_id, data) => {
+                let request = fetch::Request::post(url)        
                     .body(Ok(data))
                     .expect("Failed to build request.");
                 let task = self.fetch_service.fetch_binary(request, self.fetch_cb.clone());

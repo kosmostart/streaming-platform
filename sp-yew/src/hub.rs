@@ -339,8 +339,12 @@ impl Agent for Worker {
                 let request = fetch::Request::post(url)        
                     .body(Ok(data))
                     .expect("Failed to build request.");
-                let task = self.fetch_service.fetch_binary(request, self.fetch_cb.clone());
-                self.fetch_tasks.insert(correlation_id, task);
+                match self.fetch_service.fetch_binary(request, self.fetch_cb.clone()) {
+                    Ok(task) => {
+                        let _ = self.fetch_tasks.insert(correlation_id, task);
+                    }
+                    Err(e) => self.console.log(&format!("error: error on fetch, {}", e))
+                }
             }
         }
     }

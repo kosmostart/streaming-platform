@@ -13,5 +13,5 @@ serde = "*"
 serde_json = "*"
 serde_derive = "*"
 stdweb = "*"
-yew = { git = "https://github.com/DenisKolodin/yew" }
+yew = { git = "https://github.com/DenisKolodin/yew", features = ["std_web"] }
 sp-dto = { path = "../sp-dto" }

@@ -6,6 +6,7 @@ use serde_derive::Deserialize;
 use futures::stream::TryStreamExt;
 use futures::future::TryFutureExt;
 use bytes::buf::BufMut;
+use tokio::runtime::Runtime;
 use warp::{Filter, fs};
 use warp::{multipart, http::{Response}};
 
@@ -17,7 +18,7 @@ struct Config {
     dir: String
 }
 
-pub fn main() {    
+pub fn main() {
     let config_path = std::env::args().nth(1)
         .expect("path to config file not passed as argument");
     let file = File::open(config_path)
@@ -28,7 +29,7 @@ pub fn main() {
         .expect("failed to read config");
     let config: Config = toml::from_str(&config)
         .expect("failed to deserialize config");
-	let host = config.host.parse::<SocketAddr>().unwrap();
+    let host = config.host.parse::<SocketAddr>().unwrap();
     //let routes = fs::dir(config.dir);
     let routes = 
         warp::path("upload").and(
@@ -60,15 +61,13 @@ pub fn main() {
 
                 Ok::<Response<&str>, warp::Rejection>(res)
         }
-    });
+    });    
 
-    println!("1");
-
-    warp::serve(routes)
+    let mut rt = Runtime::new().expect("failed to create runtime");
+    rt.block_on(warp::serve(routes)
         .tls()
         .cert_path(config.cert_path)
         .key_path(config.key_path)
-        .run(host); 
-    
-    println!("2");
+        .run(host)
+    );   
 }

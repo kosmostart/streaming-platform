@@ -50,6 +50,11 @@ pub fn main() {
                     panic!("multipart error: {:?}", e);
                 });
 
+                for (name, data) in part.unwrap() {
+                    let mut file = File::create(name).unwrap();
+                    file.write_all(&data).unwrap();
+                }
+
                 let res = Response::builder()                
                 .body("ok").unwrap();
 

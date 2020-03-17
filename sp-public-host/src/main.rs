@@ -30,9 +30,8 @@ pub fn main() {
     let config: Config = toml::from_str(&config)
         .expect("failed to deserialize config");
     let host = config.host.parse::<SocketAddr>().unwrap();
-    //let routes = fs::dir(config.dir);
-
-    
+    let routes = fs::dir(config.dir);
+    /*    
     let routes = 
         warp::path("upload").and(
         multipart::form()).and_then(|form: multipart::FormData| {
@@ -64,8 +63,7 @@ pub fn main() {
                 Ok::<Response<&str>, warp::Rejection>(res)
         }
     });
-    
-
+    */
     let mut rt = Runtime::new().expect("failed to create runtime");
     rt.block_on(warp::serve(routes)
         .tls()

@@ -9,6 +9,7 @@ members = [
 	"distribution/sp-pack-core",
 	"distribution/sp-build",
 	"distribution/sp-public-host",
-	#"distribution/sp-file-hub",
+	"distribution/sp-hub",
+	"distribution/sp-file-svc",
 	#"distribution/spup"
 ]

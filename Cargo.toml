@@ -6,9 +6,9 @@ members = [
 	"sp-dto",
 	"sp-manager",
 	"sp-yew",
-	"sp-pack-core",
-	"sp-build",
-	"sp-public-host",
-	#"sp-file-hub",
-	#"spup"
+	"distribution/sp-pack-core",
+	"distribution/sp-build",
+	"distribution/sp-public-host",
+	#"distribution/sp-file-hub",
+	#"distribution/spup"
 ]

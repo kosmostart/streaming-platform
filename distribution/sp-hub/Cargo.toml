@@ -8,4 +8,8 @@ edition = "2018"
 
 [dependencies]
 
+env_logger = "*"
+serde = "*"
+serde_derive = "*"
+toml = "*"
 streaming-platform = { path = "../../streaming-platform" }

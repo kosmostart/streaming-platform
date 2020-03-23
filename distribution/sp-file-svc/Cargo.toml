@@ -7,3 +7,11 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+
+log = "*"
+env_logger = "*"
+serde = "*"
+serde_derive = "*"
+serde_json = "*"
+toml = "*"
+streaming-platform = { path = "../../streaming-platform" }

@@ -11,5 +11,5 @@ members = [
 	"distribution/sp-public-host",
 	"distribution/sp-hub",
 	"distribution/sp-file-svc",
-	#"distribution/spup"
+	"distribution/spup"
 ]

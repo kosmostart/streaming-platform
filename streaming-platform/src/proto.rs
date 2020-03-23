@@ -340,14 +340,7 @@ pub async fn read(state: &mut State, socket_read: &mut TcpStream) -> Result<Read
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct ServerConfig {
-    pub host: String,
-    pub dirs: Option<Vec<Dir>>
-}
-
-#[derive(Debug, Deserialize, Clone)]
-pub struct Dir {
-    pub access_key: String,
-    pub path: String
+    pub host: String    
 }
 
 pub struct Client {

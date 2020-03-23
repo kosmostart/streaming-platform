@@ -1,0 +1,4 @@
+host = "127.0.0.1:60000"
+addr = "Spup.HelloWorld"
+access_key = "HelloWorld"
+path = "./"

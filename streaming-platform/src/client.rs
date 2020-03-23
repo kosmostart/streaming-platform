@@ -12,9 +12,10 @@ use serde_json::{json, Value, from_slice, to_vec};
 use sp_dto::*;
 use crate::proto::*;
 
-pub async fn stream_mode<T: 'static>(host: &str, addr: &str, access_key: &str, process_stream: ProcessStream<T>, config: HashMap<String, String>, restream_rx: Option<Receiver<RestreamMsg>>)
+pub async fn stream_mode<T: 'static, R: 'static>(host: &str, addr: &str, access_key: &str, process_stream: ProcessStream<T>, startup: Startup<R>, config: HashMap<String, String>, restream_rx: Option<Receiver<RestreamMsg>>)
 where 
-    T: Future<Output = ()> + Send    
+    T: Future<Output = ()> + Send,
+    R: Future<Output = ()> + Send
 {    
     let (mut read_tx, mut read_rx) = mpsc::channel(MPSC_CLIENT_BUF_SIZE);
     let (mut write_tx, mut write_rx) = mpsc::channel(MPSC_CLIENT_BUF_SIZE);
@@ -53,7 +54,8 @@ where
         }
     });    
     let mut mb = MagicBall::new(addr2, write_tx2, rpc_inbound_tx);
-    tokio::spawn(process_stream(config, mb, read_rx, restream_rx));
+    tokio::spawn(process_stream(config.clone(), mb.clone(), read_rx, restream_rx));
+    tokio::spawn(startup(config, mb));
     connect_stream_future(host, addr3, access_key, read_tx, write_rx).await;
 }
 

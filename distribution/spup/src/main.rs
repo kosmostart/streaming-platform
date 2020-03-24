@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use serde_json::{json, Value, from_slice, to_vec};
 use log::*;
 use tokio::{io::AsyncWriteExt, fs::File, sync::mpsc::Receiver};
-use streaming_platform::{ServerConfig, stream_mode, tokio::{self, runtime::Runtime, io::AsyncReadExt}, DATA_BUF_SIZE, MagicBall, ClientMsg, RestreamMsg, StreamLayout, StreamUnit, sp_dto::{MsgMeta, MsgKind, reply_to_rpc_dto2_sizes, Participator, uuid::Uuid, RpcResult}};
+use streaming_platform::{ServerConfig, stream_mode, tokio::{self, runtime::Runtime, io::AsyncReadExt}, DATA_BUF_SIZE, MagicBall, ClientMsg, RestreamMsg, StreamLayout, StreamUnit, sp_dto::{MsgMeta, MsgKind, reply_to_rpc_dto2_sizes, rpc_dto_with_correlation_id_sizes, Route, Participator, RouteSpec, uuid::Uuid, RpcResult}};
 
 mod cfg;
 
@@ -20,10 +20,34 @@ fn main() {
     let config = cfg::get_config();    
     let access_key = "";
     let mut rt = Runtime::new().expect("failed to create runtime");
-    rt.block_on(stream_mode(&config.host, &config.addr, access_key, process_stream, startup, HashMap::new(), None));
+    let mut hm_config = HashMap::new();
+    hm_config.insert("access_key".to_owned(), config.access_key.clone());
+    rt.block_on(stream_mode(&config.host, &config.addr, access_key, process_stream, startup, hm_config, None));
 }
 
 pub async fn startup(config: HashMap<String, String>, mut mb: MagicBall) {
+    let access_key = config.get("access_key").expect("access key is empty");
+    let (correlation_id, dto, msg_meta_size, payload_size, attachments_sizes) = rpc_dto_with_correlation_id_sizes(
+        mb.addr.clone(),
+        "File".to_owned(),
+        "Download".to_owned(),
+        json!({
+            "access_key": access_key
+        }),
+        Route {
+            source: Participator::Service(mb.addr.clone()),
+            spec: RouteSpec::Simple,
+            points: vec![Participator::Service(mb.addr.clone())]
+        }
+    ).expect("failed to create download rpc dto");    
+    let stream_id = mb.get_stream_id();
+    mb.write_vec(
+        stream_id,
+        dto, 
+        msg_meta_size, 
+        payload_size, 
+        attachments_sizes
+    ).await.expect("failed to write download rpc dto");
 }
 
 pub async fn process_stream(config: HashMap<String, String>, mut mb: MagicBall, mut rx: Receiver<ClientMsg>, _: Option<Receiver<RestreamMsg>>) {

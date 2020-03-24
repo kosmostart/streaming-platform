@@ -1,5 +1,6 @@
 use std::collections::HashMap;
-use serde_json::{json, Value, from_slice, to_vec};
+use std::fs;
+use serde_json::{json, Value, from_slice, to_vec, to_string, from_str};
 use log::*;
 use tokio::{io::AsyncWriteExt, fs::File, sync::mpsc::Receiver};
 use streaming_platform::{ServerConfig, stream_mode, tokio::{self, runtime::Runtime, io::AsyncReadExt}, DATA_BUF_SIZE, MagicBall, ClientMsg, RestreamMsg, StreamLayout, StreamUnit, sp_dto::{MsgMeta, MsgKind, reply_to_rpc_dto2_sizes, Participator, uuid::Uuid, RpcResult}};
@@ -9,8 +10,7 @@ mod cfg;
 struct FileStreamLayout {
     stream: StreamLayout,
     payload: Option<Value>,
-    download_payload: Option<Value>,
-    file_id: Option<Uuid>,
+    download_payload: Option<Value>,    
     file: Option<File>,
     rpc_result: RpcResult
 }
@@ -20,19 +20,22 @@ fn main() {
     let config = cfg::get_config();    
     let access_key = "";
     let mut rt = Runtime::new().expect("failed to create runtime");
-    rt.block_on(stream_mode(&config.host, &config.addr, access_key, process_stream, startup, HashMap::new(), None));
+    let mut hm_config = HashMap::new();
+    hm_config.insert("dirs".to_owned(), to_string(&json!(config.dirs.expect("config directories are empty"))).expect("failed to serialize config directories"));
+    rt.block_on(stream_mode(&config.host, &config.addr, access_key, process_stream, startup, hm_config, None));
 }
 
 pub async fn startup(config: HashMap<String, String>, mut mb: MagicBall) {
 }
 
 pub async fn process_stream(config: HashMap<String, String>, mut mb: MagicBall, mut rx: Receiver<ClientMsg>, _: Option<Receiver<RestreamMsg>>) {
-    let storage_path = config.get("storage_path").expect("missing storage_path config value");
+    let dirs = config.get("dirs").expect("missing dirs config value");
+    let dirs: Vec<cfg::Dir> = from_str(dirs).expect("failed to deserialize config directories");
     let mut stream_layouts = HashMap::new();    
     loop {        
         let client_msg = rx.recv().await.expect("connection issues acquired");
         let stream_id = client_msg.get_stream_id();
-        match process_client_msg(&mut mb, &mut stream_layouts, storage_path, client_msg).await {
+        match process_client_msg(&mut mb, &mut stream_layouts, &dirs, client_msg).await {
             Ok(()) => {}
             Err(e) => {
                 match stream_id {
@@ -69,7 +72,7 @@ pub async fn process_stream(config: HashMap<String, String>, mut mb: MagicBall, 
     }
 }
 
-async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64, FileStreamLayout>, storage_path: &str, client_msg: ClientMsg) -> Result<(), Error> {
+async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64, FileStreamLayout>, dirs: &Vec<cfg::Dir>, client_msg: ClientMsg) -> Result<(), Error> {
     match client_msg {
         ClientMsg::MsgMeta(stream_id, msg_meta) => {            
             stream_layouts.insert(stream_id, FileStreamLayout {
@@ -80,8 +83,7 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
                     attachments_data: vec![]
                 },
                 payload: None,
-                download_payload: None,
-                file_id: None,
+                download_payload: None,                
                 file: None,
                 rpc_result: RpcResult::Ok
             });
@@ -132,8 +134,7 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
         ClientMsg::MessageFinished(stream_id) => {                                
             let stream_layout = stream_layouts.remove(&stream_id).ok_or(Error::CustomError("not found stream for message finish".to_owned()))?;
             match stream_layout.stream.msg_meta.key.as_ref() {                            
-                "Upload" => {                    
-                    let file_id = stream_layout.file_id.ok_or(Error::CustomError("empty file id for upload message finish".to_owned()))?;
+                "Upload" => {                                        
                     let payload = stream_layout.payload.ok_or(Error::CustomError("empty payload for upload message finish".to_owned()))?;                                        
                     let reponse_payload = to_vec(&json!({
 
@@ -156,38 +157,36 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
                     let FileStreamLayout { 
                         stream,
                         payload: _,
-                        download_payload,
-                        file_id: _,
+                        download_payload,                        
                         file: _,
                         rpc_result: _
                     } = stream_layout;
                     let payload = download_payload.ok_or(Error::CustomError("empty download payload for download message finish".to_owned()))?;
-                    let service_path = payload["service_path"].as_str().ok_or(Error::OptionIsNone)?;
-                    let domain_path = payload["domain_path"].as_str().ok_or(Error::OptionIsNone)?;
-                    let token_path = payload["token_path"].as_str().ok_or(Error::OptionIsNone)?;
-                    let file_id = payload["file_id"].as_str().ok_or(Error::OptionIsNone)?;
-                    let file_name = payload["file_name"].as_str().ok_or(Error::OptionIsNone)?.to_owned();
-                    let mut path = String::new();
-                    path.push_str(&storage_path);
-                    path.push_str("/");
-                    path.push_str(service_path);
-                    path.push_str("/");
-                    path.push_str(domain_path);
-                    path.push_str("/");
-                    path.push_str(token_path);
-                    path.push_str("/");
-                    path.push_str(file_id);
-                    let mb = mb.clone();
-                    tokio::spawn(async move {                    
-                        match download_file(mb, stream.msg_meta, path, file_name.clone()).await {
-                            Ok(()) => {
-                                info!("file download complete, name {}", file_name);
+                    let access_key = payload["access_key"].as_str().ok_or(Error::OptionIsNone("access_key".to_owned()))?;                    
+                    let target_dir = dirs.iter().find(|x| x.access_key == access_key).ok_or(Error::TargetDirNotFoundByAccessKey)?;
+                    let path = fs::read_dir(&target_dir.path)?.nth(0).ok_or(Error::NoFilesInTargetDir)??.path();
+
+                    let file_name = path.file_name()
+                        .ok_or(Error::FileNameIsEmpty)?
+                        .to_str()
+                        .ok_or(Error::FileNameIsEmpty)?
+                        .to_owned();
+
+                    if path.is_file() {                
+                        let mb = mb.clone();
+                        tokio::spawn(async move {                    
+                            match download_file(mb, stream.msg_meta, path, file_name.clone()).await {
+                                Ok(()) => {
+                                    info!("file download complete, name {}", file_name);
+                                }
+                                Err(e) => {
+                                    error!("download file error {:?}", e);
+                                }
                             }
-                            Err(e) => {
-                                error!("download file error {:?}", e);
-                            }
-                        }
-                    });                    
+                        });
+                    } else {
+                        println!("not a file my friends");
+                    }                                                            
                 }
                 _ => {}
             }
@@ -197,7 +196,7 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
     Ok(())
 }
 
-async fn download_file(mut mb: MagicBall, msg_meta: MsgMeta, path: String, file_name: String) -> Result<(), Error> {
+async fn download_file(mut mb: MagicBall, msg_meta: MsgMeta, path: std::path::PathBuf, file_name: String) -> Result<(), Error> {
     let mut file = File::open(&path).await?;
     let size = file.metadata().await?.len();
     let (dto, msg_meta_size, payload_size, _) = reply_to_rpc_dto2_sizes(mb.addr.clone(), msg_meta.tx.clone(), msg_meta.key.clone(), msg_meta.correlation_id, vec![], vec![(file_name, size)], vec![], RpcResult::Ok, msg_meta.route.clone())?;    
@@ -228,7 +227,10 @@ pub enum Error {
     SerdeJson(serde_json::Error),
     StreamingPlatform(streaming_platform::ProcessError),
     SendStreamUnit,
-    OptionIsNone,
+    FileNameIsEmpty,
+    TargetDirNotFoundByAccessKey,
+    NoFilesInTargetDir,
+    OptionIsNone(String),
     CustomError(String)
 }
 

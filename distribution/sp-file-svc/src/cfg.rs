@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::BufReader;
 use std::io::prelude::*;
-use serde_derive::{Deserialize};
+use serde_derive::{Serialize, Deserialize};
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct Config {
@@ -11,7 +11,7 @@ pub struct Config {
     pub dirs: Option<Vec<Dir>>
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Dir {
     pub access_key: String,
     pub path: String

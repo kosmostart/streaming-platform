@@ -20,6 +20,7 @@ fn main() {
     let mut rt = Runtime::new().expect("failed to create runtime");
     let mut hm_config = HashMap::new();
     hm_config.insert("access_key".to_owned(), config.access_key.clone());
+    hm_config.insert("path".to_owned(), config.path.clone());
     rt.block_on(stream_mode(&config.host, &config.addr, access_key, process_stream, startup, hm_config, None));
 }
 
@@ -49,11 +50,12 @@ pub async fn startup(config: HashMap<String, String>, mut mb: MagicBall) {
 }
 
 pub async fn process_stream(config: HashMap<String, String>, mut mb: MagicBall, mut rx: Receiver<ClientMsg>, _: Option<Receiver<RestreamMsg>>) {    
-    let mut stream_layouts = HashMap::new();    
+    let path = config.get("path").expect("path is empty");
+    let mut stream_layouts = HashMap::new();
     loop {        
         let client_msg = rx.recv().await.expect("connection issues acquired");
         let stream_id = client_msg.get_stream_id();
-        match process_client_msg(&mut mb, &mut stream_layouts, client_msg).await {
+        match process_client_msg(&mut mb, &mut stream_layouts, client_msg, path).await {
             Ok(()) => {}
             Err(e) => {
                 match stream_id {
@@ -90,7 +92,7 @@ pub async fn process_stream(config: HashMap<String, String>, mut mb: MagicBall, 
     }
 }
 
-async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64, FileStreamLayout>, client_msg: ClientMsg) -> Result<(), Error> {
+async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64, FileStreamLayout>, client_msg: ClientMsg, path: &str) -> Result<(), Error> {
     match client_msg {
         ClientMsg::MsgMeta(stream_id, msg_meta) => {            
             stream_layouts.insert(stream_id, FileStreamLayout {
@@ -115,9 +117,9 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
             match stream_layout.stream.msg_meta.key.as_ref() {
                 "Download" => {
                     let attachment = stream_layout.stream.msg_meta.attachments.iter().nth(0).ok_or(Error::CustomError("no attachment found in msg meta for upload key".to_owned()))?;
-                    let payload: Value = from_slice(&stream_layout.stream.payload)?;                    
-                    let mut path = String::new();                    
-                    stream_layout.file = Some(File::create(path).await?);
+                    let payload: Value = from_slice(&stream_layout.stream.payload)?;
+                    let file_name = payload["file_name"].as_str().ok_or(Error::CustomError("file name is empty in payload".to_owned()))?;
+                    stream_layout.file = Some(File::create(path.to_owned() + "/" + file_name).await?);
                     stream_layout.payload = Some(payload);
                 }                
                 _ => {}

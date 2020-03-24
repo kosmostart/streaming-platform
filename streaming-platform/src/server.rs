@@ -81,14 +81,14 @@ pub async fn start_future(config: ServerConfig) -> Result<(), ProcessError> {
                             client_state.has_writer = true;
                             tokio::spawn(async move {            
                                 let res = process_write_stream(addr.clone(), &mut stream, client_net_addr, server_tx, &config).await;
-                                error!("{} reader process eneded, {:?}", addr, res);
+                                error!("{} write process ended, {:?}", addr, res);
                             });
                         } else {
                             if !client_state.has_reader {
                                 client_state.has_reader = true;
                                 tokio::spawn(async move {            
                                     let res = process_read_stream(addr.clone(), stream, client_net_addr, server_tx, &config).await;
-                                    error!("{} reader process eneded, {:?}", addr, res);
+                                    error!("{} read process ended, {:?}", addr, res);
                                 });
                             } else {
                                 error!("writer and reader already present");

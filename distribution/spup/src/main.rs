@@ -142,6 +142,8 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
                     let file = stream_layout.file.as_mut().ok_or(Error::CustomError("file is empty for attachment data".to_owned()))?;
                     file.write_all(&buf[..n]).await?;
                     stream_layout.file = None;
+                    println!("file download complete");
+                    println!("{:?}", stream_layout.payload);
                 }
                 _ => {}
             }                                        

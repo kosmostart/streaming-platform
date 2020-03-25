@@ -84,15 +84,11 @@ pub async fn start_future(config: ServerConfig) -> Result<(), ProcessError> {
                                 error!("{} write process ended, {:?}", addr, res);
                             });
                         } else {
-                            if !client_state.has_reader {
-                                client_state.has_reader = true;
-                                tokio::spawn(async move {            
-                                    let res = process_read_stream(addr.clone(), stream, client_net_addr, server_tx, &config).await;
-                                    error!("{} read process ended, {:?}", addr, res);
-                                });
-                            } else {
-                                error!("writer and reader already present");
-                            }                            
+                            client_state.has_writer = false;
+                            tokio::spawn(async move {            
+                                let res = process_read_stream(addr.clone(), stream, client_net_addr, server_tx, &config).await;
+                                error!("{} read process ended, {:?}", addr, res);
+                            });
                         }
                         
                     }
@@ -105,15 +101,13 @@ pub async fn start_future(config: ServerConfig) -> Result<(), ProcessError> {
 }
 
 struct ClientState {
-    has_writer: bool,
-    has_reader: bool
+    has_writer: bool    
 }
 
 impl ClientState {
     pub fn new() -> ClientState {
         ClientState {
-            has_writer: false,
-            has_reader: false
+            has_writer: false            
         }
     }
 }

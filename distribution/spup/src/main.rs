@@ -141,8 +141,10 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
             let stream_layout = stream_layouts.get_mut(&stream_id).ok_or(Error::CustomError("not found stream for attachment finish".to_owned()))?;
             match stream_layout.stream.msg_meta.key.as_ref() {
                 "Download" => {
-                    let file = stream_layout.file.as_mut().ok_or(Error::CustomError("file is empty for attachment data".to_owned()))?;
-                    file.write_all(&buf[..n]).await?;
+                    {
+                        let file = stream_layout.file.as_mut().ok_or(Error::CustomError("file is empty for attachment data".to_owned()))?;
+                        file.write_all(&buf[..n]).await?;
+                    }
                     stream_layout.file = None;
                     let payload = stream_layout.payload.as_ref().ok_or(Error::CustomError("payload is empty".to_owned()))?;
                     let file_name = payload["file_name"].as_str().ok_or(Error::CustomError("file name is empty in payload".to_owned()))?;                    

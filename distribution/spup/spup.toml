@@ -1,4 +1,4 @@
-host = "delivery.sotabpa.com:60000"
+host = "127.0.0.1:60000"
 addr = "Spup.HelloWorld"
-access_key = "bvsdf43VB6r3&pbf"
+access_key = "12345"
 path = "."

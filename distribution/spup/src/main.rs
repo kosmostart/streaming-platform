@@ -14,7 +14,7 @@ struct FileStreamLayout {
     rpc_result: RpcResult
 }
 
-fn main() {
+fn main() {    
     env_logger::init();
     let config = cfg::get_config();    
     let access_key = "";
@@ -25,7 +25,7 @@ fn main() {
     rt.block_on(stream_mode(&config.host, &config.addr, access_key, process_stream, startup, hm_config, None));
 }
 
-pub async fn startup(config: HashMap<String, String>, mut mb: MagicBall) {
+pub async fn startup(config: HashMap<String, String>, mut mb: MagicBall) {    
     let access_key = config.get("access_key").expect("access key is empty");
     let (correlation_id, dto, msg_meta_size, payload_size, attachments_sizes) = rpc_dto_with_correlation_id_sizes(
         mb.addr.clone(),
@@ -130,7 +130,7 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
         ClientMsg::AttachmentData(stream_id, index, n, buf) => {
             let stream_layout = stream_layouts.get_mut(&stream_id).ok_or(Error::CustomError("not found stream for attachment data".to_owned()))?;
             match stream_layout.stream.msg_meta.key.as_ref() {
-                "Dowload" => {
+                "Download" => {
                     let file = stream_layout.file.as_mut().ok_or(Error::CustomError("file is empty for attachment data".to_owned()))?;
                     file.write_all(&buf[..n]).await?;
                 }
@@ -141,15 +141,12 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
             let stream_layout = stream_layouts.get_mut(&stream_id).ok_or(Error::CustomError("not found stream for attachment finish".to_owned()))?;
             match stream_layout.stream.msg_meta.key.as_ref() {
                 "Download" => {
-                    {
-                        let file = stream_layout.file.as_mut().ok_or(Error::CustomError("file is empty for attachment data".to_owned()))?;
-                        file.write_all(&buf[..n]).await?;
-                    }
+                    let file = stream_layout.file.as_mut().ok_or(Error::CustomError("file is empty for attachment data".to_owned()))?;
+                    file.write_all(&buf[..n]).await?;
                     stream_layout.file = None;
                     let payload = stream_layout.payload.as_ref().ok_or(Error::CustomError("payload is empty".to_owned()))?;
                     let file_name = payload["file_name"].as_str().ok_or(Error::CustomError("file name is empty in payload".to_owned()))?;                    
-                    println!("file download complete");
-                    println!("{:?}", stream_layout.payload);
+                    println!("file {} download complete", file_name);
                     unpack(path.to_owned(), file_name.to_owned());                    
                 }
                 _ => {}

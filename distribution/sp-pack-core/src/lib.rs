@@ -111,7 +111,7 @@ pub fn unpack(save_path: String, file_name: String) {
     remove_file(&to)
         .expect("failed to remove temporary file");
 
-    println!("unpack {} {} ok", save_path, file_name);
+    println!("unpack {} ok, path is {}", file_name, save_path);
 }
 
 fn compress(from: &str, to: &str) -> Result<()> {    

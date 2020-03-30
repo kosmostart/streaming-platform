@@ -3,6 +3,7 @@ use serde_json::{json, Value, from_slice, to_vec};
 use log::*;
 use tokio::{io::AsyncWriteExt, fs::File, sync::mpsc::Receiver};
 use streaming_platform::{ServerConfig, stream_mode, tokio::{self, runtime::Runtime, io::AsyncReadExt}, DATA_BUF_SIZE, MagicBall, ClientMsg, RestreamMsg, StreamLayout, StreamUnit, sp_dto::{MsgMeta, MsgKind, reply_to_rpc_dto2_sizes, rpc_dto_with_correlation_id_sizes, Route, Participator, RouteSpec, uuid::Uuid, RpcResult}};
+use sp_pack_core::unpack;
 
 mod cfg;
 
@@ -116,6 +117,7 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
             stream_layout.stream.payload.extend_from_slice(&buf[..n]);
             match stream_layout.stream.msg_meta.key.as_ref() {
                 "Download" => {
+                    // This is file name attachment vs payload issue
                     let attachment = stream_layout.stream.msg_meta.attachments.iter().nth(0).ok_or(Error::CustomError("no attachment found in msg meta for upload key".to_owned()))?;
                     let payload: Value = from_slice(&stream_layout.stream.payload)?;
                     let file_name = payload["file_name"].as_str().ok_or(Error::CustomError("file name is empty in payload".to_owned()))?;
@@ -142,6 +144,9 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
                     let file = stream_layout.file.as_mut().ok_or(Error::CustomError("file is empty for attachment data".to_owned()))?;
                     file.write_all(&buf[..n]).await?;
                     stream_layout.file = None;
+                    let payload = stream_layout.payload.as_ref().ok_or(Error::CustomError("payload is empty".to_owned()))?;
+                    let file_name = payload["file_name"].as_str().ok_or(Error::CustomError("file name is empty in payload".to_owned()))?;                    
+                    unpack(path.to_owned(), file_name.to_owned());
                     println!("file download complete");
                     println!("{:?}", stream_layout.payload);
                 }

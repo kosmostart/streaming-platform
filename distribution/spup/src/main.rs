@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use serde_json::{json, Value, from_slice, to_vec};
 use log::*;
-use tokio::{io::AsyncWriteExt, fs::File, sync::mpsc::Receiver};
+use tokio::{io::AsyncWriteExt, fs::File, sync::mpsc::UnboundedReceiver};
 use streaming_platform::{ServerConfig, stream_mode, tokio::{self, runtime::Runtime, io::AsyncReadExt}, DATA_BUF_SIZE, MagicBall, ClientMsg, RestreamMsg, StreamLayout, StreamUnit, sp_dto::{MsgMeta, MsgKind, reply_to_rpc_dto2_sizes, rpc_dto_with_correlation_id_sizes, Route, Participator, RouteSpec, uuid::Uuid, RpcResult}};
 use sp_pack_core::unpack;
 
@@ -50,7 +50,7 @@ pub async fn startup(config: HashMap<String, String>, mut mb: MagicBall) {
     ).await.expect("failed to write download rpc dto");
 }
 
-pub async fn process_stream(config: HashMap<String, String>, mut mb: MagicBall, mut rx: Receiver<ClientMsg>, _: Option<Receiver<RestreamMsg>>) {    
+pub async fn process_stream(config: HashMap<String, String>, mut mb: MagicBall, mut rx: UnboundedReceiver<ClientMsg>, _: Option<UnboundedReceiver<RestreamMsg>>) {
     let path = config.get("path").expect("path is empty");
     let mut stream_layouts = HashMap::new();
     loop {        
@@ -168,7 +168,7 @@ async fn download_file(mut mb: MagicBall, msg_meta: MsgMeta, path: String, file_
     mb.write_vec(stream_id, dto, msg_meta_size, payload_size, vec![]).await?;        
     match size {
         0 => {
-            mb.write_tx.send(StreamUnit::Empty(stream_id)).await?
+            mb.write_tx.send(StreamUnit::Empty(stream_id))?;
         }
         _ => {
             let mut file_buf = [0; DATA_BUF_SIZE];
@@ -176,7 +176,7 @@ async fn download_file(mut mb: MagicBall, msg_meta: MsgMeta, path: String, file_
                 match file.read(&mut file_buf).await? {
                     0 => break,
                     n => {                
-                        mb.write_tx.send(StreamUnit::Array(stream_id, n, file_buf)).await?
+                        mb.write_tx.send(StreamUnit::Array(stream_id, n, file_buf))?;
                     }
                 }
             }

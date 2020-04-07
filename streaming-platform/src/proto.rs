@@ -13,7 +13,7 @@ use rand::random;
 use bytes::{Buf, BytesMut, BufMut};
 use tokio::io::Take;
 use tokio::net::TcpStream;
-use tokio::sync::{mpsc::{Sender, Receiver, error::{SendError, TrySendError}}, oneshot};
+use tokio::sync::{mpsc::{UnboundedSender, UnboundedReceiver, error::{SendError, TrySendError}}, oneshot};
 use tokio::time::{timeout, Elapsed};
 use tokio::prelude::*;
 use serde_json::{from_slice, Value, to_vec};
@@ -25,9 +25,9 @@ pub const STREAM_ID_BUF_SIZE: usize = 8;
 pub const LEN_BUF_SIZE: usize = 4;
 pub const LENS_BUF_SIZE: usize = 12;
 pub const DATA_BUF_SIZE: usize = 1024;
-pub const MPSC_SERVER_BUF_SIZE: usize = 1000000;
-pub const MPSC_CLIENT_BUF_SIZE: usize = 1000000;
-pub const MPSC_RPC_BUF_SIZE: usize = 1000000;
+//pub const MPSC_SERVER_BUF_SIZE: usize = 1000000;
+//pub const MPSC_CLIENT_BUF_SIZE: usize = 1000000;
+//pub const MPSC_RPC_BUF_SIZE: usize = 1000000;
 pub const RPC_TIMEOUT_MS_AMOUNT: u64 = 30000;
 //pub const STREAM_UNIT_READ_TIMEOUT_MS_AMOUNT: u64 = 1000;
 
@@ -345,11 +345,11 @@ pub struct ServerConfig {
 
 pub struct Client {
     pub net_addr: SocketAddr,
-    pub tx: Sender<StreamUnit>
+    pub tx: UnboundedSender<StreamUnit>
 }
 
 pub enum ServerMsg {
-    AddClient(String, SocketAddr, Sender<StreamUnit>),
+    AddClient(String, SocketAddr, UnboundedSender<StreamUnit>),
     SendUnit(String, StreamUnit),
     RemoveClient(String)
 }
@@ -361,7 +361,7 @@ pub enum StreamUnit {
 }
 
 /// Type for function called on data stream processing
-pub type ProcessStream<T> = fn(HashMap<String, String>, MagicBall, Receiver<ClientMsg>, Option<Receiver<RestreamMsg>>) -> T;
+pub type ProcessStream<T> = fn(HashMap<String, String>, MagicBall, UnboundedReceiver<ClientMsg>, Option<UnboundedReceiver<RestreamMsg>>) -> T;
 /// Type for function called on event processing with json payload
 pub type ProcessEvent<T, R> = fn(HashMap<String, String>, MagicBall, Message<R>) -> T;
 /// Type for function called on rpc processing with json payload
@@ -417,18 +417,18 @@ pub enum StreamCompletion {
     Err
 }
 
-pub async fn write(stream_id: u64, data: Vec<u8>, msg_meta_size: u64, payload_size: u64, attachments_sizes: Vec<u64>, write_tx: &mut Sender<StreamUnit>) -> Result<(), ProcessError> {    
+pub async fn write(stream_id: u64, data: Vec<u8>, msg_meta_size: u64, payload_size: u64, attachments_sizes: Vec<u64>, write_tx: &mut UnboundedSender<StreamUnit>) -> Result<(), ProcessError> {    
     let msg_meta_offset = LEN_BUF_SIZE + msg_meta_size as usize;
     let payload_offset = msg_meta_offset + payload_size as usize;
     debug!("write stream_id {}, data len {}, msg_meta_offset {}, payload_offset {}", stream_id, data.len(), msg_meta_offset, payload_offset);    
     let mut data_buf = [0; DATA_BUF_SIZE];    
 
-    write_tx.try_send(StreamUnit::Vector(stream_id, data[LEN_BUF_SIZE..msg_meta_offset].to_vec()))?;
+    write_tx.send(StreamUnit::Vector(stream_id, data[LEN_BUF_SIZE..msg_meta_offset].to_vec()))?;
 
 
     match payload_size {
         0 => {
-            write_tx.try_send(StreamUnit::Empty(stream_id))?;
+            write_tx.send(StreamUnit::Empty(stream_id))?;
         }
         _ => {
             let mut source = &data[msg_meta_offset..payload_offset];
@@ -437,7 +437,7 @@ pub async fn write(stream_id: u64, data: Vec<u8>, msg_meta_size: u64, payload_si
                 let n = source.read(&mut data_buf).await?;        
                 match n {
                     0 => break,
-                    _ => write_tx.try_send(StreamUnit::Array(stream_id, n, data_buf))?
+                    _ => write_tx.send(StreamUnit::Array(stream_id, n, data_buf))?
                 }
             }
         }
@@ -450,7 +450,7 @@ pub async fn write(stream_id: u64, data: Vec<u8>, msg_meta_size: u64, payload_si
 
         match attachment_size {
             0 => {
-                write_tx.try_send(StreamUnit::Empty(stream_id))?;
+                write_tx.send(StreamUnit::Empty(stream_id))?;
             }
             _ => {
                 let mut source = &data[prev..attachment_offset];
@@ -459,7 +459,7 @@ pub async fn write(stream_id: u64, data: Vec<u8>, msg_meta_size: u64, payload_si
                     let n = source.read(&mut data_buf).await?;        
                     match n {
                         0 => break,
-                        _ => write_tx.try_send(StreamUnit::Array(stream_id, n, data_buf))?
+                        _ => write_tx.send(StreamUnit::Array(stream_id, n, data_buf))?
                     }
                 }
             }
@@ -530,7 +530,7 @@ pub async fn write_to_stream(stream_id: u64, data: Vec<u8>, msg_meta_size: u64, 
     Ok(())
 }
 
-pub async fn write_loop(addr: String, mut client_rx: Receiver<StreamUnit>, socket_write: &mut TcpStream) -> Result<(), ProcessError> {    
+pub async fn write_loop(addr: String, mut client_rx: UnboundedReceiver<StreamUnit>, socket_write: &mut TcpStream) -> Result<(), ProcessError> {    
     loop {       
         match client_rx.recv().await {
             Some(res) => {
@@ -619,13 +619,13 @@ pub struct MagicBall {
     hash_buf: BytesMut,
     addr_bytes_len: usize,
     hasher: SipHasher24,
-    pub write_tx: Sender<StreamUnit>,
-    rpc_inbound_tx: Sender<RpcMsg>
+    pub write_tx: UnboundedSender<StreamUnit>,
+    rpc_inbound_tx: UnboundedSender<RpcMsg>
 }
 
 
 impl MagicBall {
-    pub fn new(addr: String, write_tx: Sender<StreamUnit>, rpc_inbound_tx: Sender<RpcMsg>) -> MagicBall {
+    pub fn new(addr: String, write_tx: UnboundedSender<StreamUnit>, rpc_inbound_tx: UnboundedSender<RpcMsg>) -> MagicBall {
         let mut hash_buf = BytesMut::new();
         let addr_bytes = addr.as_bytes();
         let addr_bytes_len = addr_bytes.len();
@@ -660,13 +660,13 @@ impl MagicBall {
             let n = source.read(&mut data_buf).await?;        
             match n {
                 0 => break,
-                _ => self.write_tx.try_send(StreamUnit::Array(stream_id, n, data_buf))?
+                _ => self.write_tx.send(StreamUnit::Array(stream_id, n, data_buf))?
             }
         }
 
         match payload_size {
             0 => {
-                self.write_tx.try_send(StreamUnit::Empty(stream_id))?
+                self.write_tx.send(StreamUnit::Empty(stream_id))?
             }
             _ => {            
                 let mut source = &data[msg_meta_offset..payload_offset];
@@ -675,7 +675,7 @@ impl MagicBall {
                     let n = source.read(&mut data_buf).await?;        
                     match n {
                         0 => break,
-                        _ => self.write_tx.try_send(StreamUnit::Array(stream_id, n, data_buf))?
+                        _ => self.write_tx.send(StreamUnit::Array(stream_id, n, data_buf))?
                     }
                 }
             }
@@ -688,7 +688,7 @@ impl MagicBall {
 
             match attachment_size {
                 0 => {
-                    self.write_tx.try_send(StreamUnit::Empty(stream_id))?
+                    self.write_tx.send(StreamUnit::Empty(stream_id))?
                 }
                 _ => {
                     let mut source = &data[prev..attachment_offset];
@@ -697,7 +697,7 @@ impl MagicBall {
                         let n = source.read(&mut data_buf).await?;        
                         match n {
                             0 => break,
-                            _ => self.write_tx.try_send(StreamUnit::Array(stream_id, n, data_buf))?
+                            _ => self.write_tx.send(StreamUnit::Array(stream_id, n, data_buf))?
                         }
                     }                    
                 }
@@ -744,7 +744,7 @@ impl MagicBall {
         let (correlation_id, dto, msg_meta_size, payload_size, attachments_sizes) = rpc_dto_with_correlation_id_sizes(self.addr.clone(), addr.to_owned(), key.to_owned(), payload, route)?;
         let (rpc_tx, rpc_rx) = oneshot::channel();
         
-        self.rpc_inbound_tx.try_send(RpcMsg::AddRpc(correlation_id, rpc_tx))?;
+        self.rpc_inbound_tx.send(RpcMsg::AddRpc(correlation_id, rpc_tx))?;
         write(self.get_stream_id(), dto, msg_meta_size, payload_size, attachments_sizes, &mut self.write_tx).await?;        
 
         let (msg_meta, payload, attachments_data) = timeout(Duration::from_millis(RPC_TIMEOUT_MS_AMOUNT), rpc_rx).await??;
@@ -764,7 +764,7 @@ impl MagicBall {
         let (correlation_id, dto, msg_meta_size, payload_size, attachments_sizes) = rpc_dto_with_correlation_id_sizes(self.addr.clone(), addr.to_owned(), key.to_owned(), payload, route)?;
         let (rpc_tx, rpc_rx) = oneshot::channel();
         
-        self.rpc_inbound_tx.try_send(RpcMsg::AddRpc(correlation_id, rpc_tx))?;
+        self.rpc_inbound_tx.send(RpcMsg::AddRpc(correlation_id, rpc_tx))?;
         write(self.get_stream_id(), dto, msg_meta_size, payload_size, attachments_sizes, &mut self.write_tx).await?;
 
         let (msg_meta, payload, attachments_data) = timeout(Duration::from_millis(RPC_TIMEOUT_MS_AMOUNT), rpc_rx).await??;
@@ -850,7 +850,7 @@ impl MagicBall {
 
         let (rpc_tx, rpc_rx) = oneshot::channel();
                 
-        self.rpc_inbound_tx.try_send(RpcMsg::AddRpc(correlation_id, rpc_tx))?;
+        self.rpc_inbound_tx.send(RpcMsg::AddRpc(correlation_id, rpc_tx))?;
         debug!("proxy_rpc write attempt");
         write(self.get_stream_id(), buf, msg_meta_size, payload_size, attachments_sizes, &mut self.write_tx).await?;
         debug!("proxy_rpc write attempt succeeded");

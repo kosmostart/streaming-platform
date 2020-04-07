@@ -6,21 +6,21 @@ use futures::{select, pin_mut, future::FutureExt};
 use bytes::{BytesMut, BufMut};
 use tokio::net::TcpStream;
 use tokio::prelude::*;
-use tokio::sync::mpsc::{self, Sender, Receiver};
+use tokio::sync::mpsc::{self, UnboundedSender, UnboundedReceiver};
 use tokio::time::{timeout, Elapsed};
 use serde_json::{json, Value, from_slice, to_vec};
 use sp_dto::*;
 use crate::proto::*;
 
-pub async fn stream_mode<T: 'static, R: 'static>(host: &str, addr: &str, access_key: &str, process_stream: ProcessStream<T>, startup: Startup<R>, config: HashMap<String, String>, restream_rx: Option<Receiver<RestreamMsg>>)
+pub async fn stream_mode<T: 'static, R: 'static>(host: &str, addr: &str, access_key: &str, process_stream: ProcessStream<T>, startup: Startup<R>, config: HashMap<String, String>, restream_rx: Option<UnboundedReceiver<RestreamMsg>>)
 where 
     T: Future<Output = ()> + Send,
     R: Future<Output = ()> + Send
 {    
-    let (mut read_tx, mut read_rx) = mpsc::channel(MPSC_CLIENT_BUF_SIZE);
-    let (mut write_tx, mut write_rx) = mpsc::channel(MPSC_CLIENT_BUF_SIZE);
-    let (mut rpc_inbound_tx, mut rpc_inbound_rx) = mpsc::channel(MPSC_RPC_BUF_SIZE);
-    let (mut rpc_outbound_tx, mut rpc_outbound_rx) = mpsc::channel(MPSC_RPC_BUF_SIZE);
+    let (mut read_tx, mut read_rx) = mpsc::unbounded_channel();
+    let (mut write_tx, mut write_rx) = mpsc::unbounded_channel();
+    let (mut rpc_inbound_tx, mut rpc_inbound_rx) = mpsc::unbounded_channel();
+    let (mut rpc_outbound_tx, mut rpc_outbound_rx) = mpsc::unbounded_channel();
     let addr = addr.to_owned();
     let addr2 = addr.to_owned();   
     let addr3 = addr.to_owned();
@@ -39,7 +39,7 @@ where
                 RpcMsg::RpcDataRequest(correlation_id) => {
                     match rpcs.remove(&correlation_id) {
                         Some(rpc_tx) => {
-                            match rpc_outbound_tx.try_send(RpcMsg::RpcDataResponse(correlation_id, rpc_tx)) {
+                            match rpc_outbound_tx.send(RpcMsg::RpcDataResponse(correlation_id, rpc_tx)) {
                                 Ok(()) => {}
                                 Err(_) => panic!("rpc outbound tx send failed on rpc data request")
                             }
@@ -66,10 +66,10 @@ where
     R: Future<Output = ()> + Send,
     P: serde::Serialize, for<'de> P: serde::Deserialize<'de> + Send
 {    
-    let (mut read_tx, mut read_rx) = mpsc::channel(MPSC_CLIENT_BUF_SIZE);
-    let (mut write_tx, mut write_rx) = mpsc::channel(MPSC_CLIENT_BUF_SIZE);
-    let (mut rpc_inbound_tx, mut rpc_inbound_rx) = mpsc::channel(MPSC_RPC_BUF_SIZE);
-    let (mut rpc_outbound_tx, mut rpc_outbound_rx) = mpsc::channel(MPSC_RPC_BUF_SIZE);
+    let (mut read_tx, mut read_rx) = mpsc::unbounded_channel();
+    let (mut write_tx, mut write_rx) = mpsc::unbounded_channel();
+    let (mut rpc_inbound_tx, mut rpc_inbound_rx) = mpsc::unbounded_channel();
+    let (mut rpc_outbound_tx, mut rpc_outbound_rx) = mpsc::unbounded_channel();
 
     let addr = addr.to_owned();
     let addr2 = addr.to_owned();
@@ -94,7 +94,7 @@ where
                 RpcMsg::RpcDataRequest(correlation_id) => {
                     match rpcs.remove(&correlation_id) {
                         Some(rpc_tx) => {
-                            match rpc_outbound_tx.try_send(RpcMsg::RpcDataResponse(correlation_id, rpc_tx)) {
+                            match rpc_outbound_tx.send(RpcMsg::RpcDataResponse(correlation_id, rpc_tx)) {
                                 Ok(()) => {}
                                 Err(_) => panic!("rpc outbound tx send failed on rpc data request")
                             }
@@ -167,7 +167,7 @@ where
                         }
                         MsgKind::RpcResponse(_) => {           
                             debug!("client got rpc response {}", msg_meta.display());
-                            match rpc_inbound_tx2.try_send(RpcMsg::RpcDataRequest(msg_meta.correlation_id)) {
+                            match rpc_inbound_tx2.send(RpcMsg::RpcDataRequest(msg_meta.correlation_id)) {
                                 Ok(()) => {
                                     debug!("client RpcDataRequest send succeeded {}", msg_meta.display());
                                 }
@@ -216,7 +216,7 @@ async fn auth(target: String, addr: String, access_key: String, stream: &mut Tcp
 }
 
 
-async fn connect_stream_future(host: &str, addr: String, access_key: String, mut read_tx: Sender<ClientMsg>, mut write_rx: Receiver<StreamUnit>) {    
+async fn connect_stream_future(host: &str, addr: String, access_key: String, mut read_tx: UnboundedSender<ClientMsg>, mut write_rx: UnboundedReceiver<StreamUnit>) {    
     let server = "Server".to_owned();
 
     let mut write_stream = TcpStream::connect(host).await.expect("connection to host failed");
@@ -230,7 +230,7 @@ async fn connect_stream_future(host: &str, addr: String, access_key: String, mut
     info!("{:?}", res);
 }
 
-async fn connect_full_message_future(host: &str, addr: String, access_key: String, mut read_tx: Sender<ClientMsg>, mut write_rx: Receiver<StreamUnit>) {    
+async fn connect_full_message_future(host: &str, addr: String, access_key: String, mut read_tx: UnboundedSender<ClientMsg>, mut write_rx: UnboundedReceiver<StreamUnit>) {    
     let server = "Server".to_owned();
     
     let mut write_stream = TcpStream::connect(host).await.expect("connection to host failed");
@@ -244,7 +244,7 @@ async fn connect_full_message_future(host: &str, addr: String, access_key: Strin
     info!("{:?}", res);
 }
 
-async fn process_message_stream(addr: String, mut write_stream: TcpStream, mut read_stream: TcpStream, mut read_tx: Sender<ClientMsg>, mut write_rx: Receiver<StreamUnit>) -> Result<(), ProcessError> {    
+async fn process_message_stream(addr: String, mut write_stream: TcpStream, mut read_stream: TcpStream, mut read_tx: UnboundedSender<ClientMsg>, mut write_rx: UnboundedReceiver<StreamUnit>) -> Result<(), ProcessError> {    
     //let (auth_msg_meta, auth_payload, auth_attachments) = read_full(&mut socket_read).await?;
     //let auth_payload: Value = from_slice(&auth_payload)?;    
 
@@ -260,30 +260,30 @@ async fn process_message_stream(addr: String, mut write_stream: TcpStream, mut r
 
     loop {
         match read(&mut state, &mut read_stream).await? {
-            ReadResult::MsgMeta(stream_id, msg_meta, _) => read_tx.try_send(ClientMsg::MsgMeta(stream_id, msg_meta))?,
-            ReadResult::PayloadData(stream_id, n, buf) => read_tx.try_send(ClientMsg::PayloadData(stream_id, n, buf))?,
-            ReadResult::PayloadFinished(stream_id, n, buf) => read_tx.try_send(ClientMsg::PayloadFinished(stream_id, n, buf))?,
-            ReadResult::AttachmentData(stream_id, index, n, buf) => read_tx.try_send(ClientMsg::AttachmentData(stream_id, index, n, buf))?,
-            ReadResult::AttachmentFinished(stream_id, index, n, buf) => read_tx.try_send(ClientMsg::AttachmentFinished(stream_id, index, n, buf))?,
+            ReadResult::MsgMeta(stream_id, msg_meta, _) => read_tx.send(ClientMsg::MsgMeta(stream_id, msg_meta))?,
+            ReadResult::PayloadData(stream_id, n, buf) => read_tx.send(ClientMsg::PayloadData(stream_id, n, buf))?,
+            ReadResult::PayloadFinished(stream_id, n, buf) => read_tx.send(ClientMsg::PayloadFinished(stream_id, n, buf))?,
+            ReadResult::AttachmentData(stream_id, index, n, buf) => read_tx.send(ClientMsg::AttachmentData(stream_id, index, n, buf))?,
+            ReadResult::AttachmentFinished(stream_id, index, n, buf) => read_tx.send(ClientMsg::AttachmentFinished(stream_id, index, n, buf))?,
             ReadResult::MessageFinished(stream_id, finish_bytes) => {
                 match finish_bytes {
                     MessageFinishBytes::Payload(n, buf) => {
-                        read_tx.try_send(ClientMsg::PayloadFinished(stream_id, n, buf))?;
+                        read_tx.send(ClientMsg::PayloadFinished(stream_id, n, buf))?;
                     }
                     MessageFinishBytes::Attachment(index, n, buf) => {
-                        read_tx.try_send(ClientMsg::AttachmentFinished(stream_id, index, n, buf))?;
+                        read_tx.send(ClientMsg::AttachmentFinished(stream_id, index, n, buf))?;
                     }                            
                 }
-                read_tx.try_send(ClientMsg::MessageFinished(stream_id))?;
+                read_tx.send(ClientMsg::MessageFinished(stream_id))?;
             }
             ReadResult::MessageAborted(stream_id) => {
-                read_tx.try_send(ClientMsg::MessageAborted(stream_id))?;
+                read_tx.send(ClientMsg::MessageAborted(stream_id))?;
             }
         }
     }
 }
 
-async fn process_full_message(addr: String, mut write_stream: TcpStream, mut read_stream: TcpStream, mut read_tx: Sender<ClientMsg>, mut write_rx: Receiver<StreamUnit>) -> Result<(), ProcessError> {    
+async fn process_full_message(addr: String, mut write_stream: TcpStream, mut read_stream: TcpStream, mut read_tx: UnboundedSender<ClientMsg>, mut write_rx: UnboundedReceiver<StreamUnit>) -> Result<(), ProcessError> {    
     //let (auth_msg_meta, auth_payload, auth_attachments) = read_full(&mut socket_read).await?;
     //let auth_payload: Value = from_slice(&auth_payload)?;    
 
@@ -336,7 +336,7 @@ async fn process_full_message(addr: String, mut write_stream: TcpStream, mut rea
                     }                            
                 }
                 let stream_layout = stream_layouts.remove(&stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
-                read_tx.try_send(ClientMsg::Message(stream_id, stream_layout.msg_meta, stream_layout.payload, stream_layout.attachments_data))?;
+                read_tx.send(ClientMsg::Message(stream_id, stream_layout.msg_meta, stream_layout.payload, stream_layout.attachments_data))?;
             }
             ReadResult::MessageAborted(stream_id) => {
                 match stream_id {
@@ -345,7 +345,7 @@ async fn process_full_message(addr: String, mut write_stream: TcpStream, mut rea
                     }
                     None => {}
                 }
-                read_tx.try_send(ClientMsg::MessageAborted(stream_id))?;
+                read_tx.send(ClientMsg::MessageAborted(stream_id))?;
             }
         };
     }    

@@ -4,7 +4,7 @@ use std::net::SocketAddr;
 use log::*;
 use tokio::runtime::Runtime;
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::mpsc::{self, Sender};
+use tokio::sync::mpsc::{self, UnboundedSender};
 use tokio::prelude::*;
 use serde_json::{Value, from_slice};
 use sp_dto::MsgMeta;    
@@ -17,7 +17,7 @@ pub fn start(config: ServerConfig) {
 
 pub async fn start_future(config: ServerConfig) -> Result<(), ProcessError> {
     let mut listener = TcpListener::bind(config.host.clone()).await?;
-    let (mut server_tx, mut server_rx) = mpsc::channel(MPSC_SERVER_BUF_SIZE);
+    let (mut server_tx, mut server_rx) = mpsc::unbounded_channel();
     tokio::spawn(async move {        
         let mut clients = HashMap::new();
         loop {
@@ -35,19 +35,14 @@ pub async fn start_future(config: ServerConfig) -> Result<(), ProcessError> {
                     match clients.get_mut(&addr) {
                         Some(client) => {
                             //match client.tx.send(stream_unit).await {
-                            match client.tx.try_send(stream_unit) {
+                            match client.tx.send(stream_unit) {
                                 Ok(()) => {}
                                 /*
                                 Err(_) => {
                                     error!("error processing ServerMsg::SendUnit, send failed");
                                 }
                                 */                                
-                                Err(e) => { 
-                                    match e {                                        
-                                        tokio::sync::mpsc::error::TrySendError::Full(_) => panic!("ServerMsg::SendArray processing failed - buffer full"),
-                                        tokio::sync::mpsc::error::TrySendError::Closed(_) => panic!("ServerMsg::SendArray processing failed - client channel closed")
-                                    }                                    
-                                }                                
+                                Err(_) => panic!("ServerMsg::SendArray processing failed - send error")
                             }
                             //info!("sent unit to client {}", addr);
                         }
@@ -180,16 +175,16 @@ async fn auth_stream(stream: &mut TcpStream, client_net_addr: SocketAddr, config
 }
 
 
-async fn process_read_stream(addr: String, mut stream: TcpStream, client_net_addr: SocketAddr, mut server_tx: Sender<ServerMsg>, config: &ServerConfig) -> Result<(), ProcessError> {    
+async fn process_read_stream(addr: String, mut stream: TcpStream, client_net_addr: SocketAddr, mut server_tx: UnboundedSender<ServerMsg>, config: &ServerConfig) -> Result<(), ProcessError> {    
     let mut state = State::new("write stream from Server to ".to_owned() + &addr);    
-    let (mut client_tx, mut client_rx) = mpsc::channel(MPSC_CLIENT_BUF_SIZE);
+    let (mut client_tx, mut client_rx) = mpsc::unbounded_channel();
 
-    server_tx.try_send(ServerMsg::AddClient(addr.clone(), client_net_addr, client_tx))?;    
+    server_tx.send(ServerMsg::AddClient(addr.clone(), client_net_addr, client_tx))?;    
 
     write_loop(addr, client_rx, &mut stream).await
 }
 
-async fn process_write_stream(addr: String, stream: &mut TcpStream, client_net_addr: SocketAddr, mut server_tx: Sender<ServerMsg>, config: &ServerConfig) -> Result<(), ProcessError> {    
+async fn process_write_stream(addr: String, stream: &mut TcpStream, client_net_addr: SocketAddr, mut server_tx: UnboundedSender<ServerMsg>, config: &ServerConfig) -> Result<(), ProcessError> {    
     let mut state = State::new("read stream from Server to ".to_owned() + &addr);        
     let mut client_addrs = HashMap::new();
 
@@ -199,36 +194,36 @@ async fn process_write_stream(addr: String, stream: &mut TcpStream, client_net_a
                 //info!("{} {:?}", stream_id, msg_meta);
                 client_addrs.insert(stream_id, msg_meta.rx.clone());
                 //info!("sending msg meta");
-                server_tx.try_send(ServerMsg::SendUnit(msg_meta.rx.clone(), StreamUnit::Vector(stream_id, buf)))?;
+                server_tx.send(ServerMsg::SendUnit(msg_meta.rx.clone(), StreamUnit::Vector(stream_id, buf)))?;
             }
             ReadResult::PayloadData(stream_id, n, buf) => {                        
                 let client_addr = client_addrs.get(&stream_id).ok_or(ProcessError::ClientAddrNotFound)?;
                 //info!("sending payload data");
-                server_tx.try_send(ServerMsg::SendUnit(client_addr.clone(), StreamUnit::Array(stream_id, n, buf)))?;
+                server_tx.send(ServerMsg::SendUnit(client_addr.clone(), StreamUnit::Array(stream_id, n, buf)))?;
             }
             ReadResult::PayloadFinished(stream_id, n, buf) => {
                 let client_addr = client_addrs.get(&stream_id).ok_or(ProcessError::ClientAddrNotFound)?;
                 //info!("sending payload finished");
-                server_tx.try_send(ServerMsg::SendUnit(client_addr.clone(), StreamUnit::Array(stream_id, n, buf)))?;
+                server_tx.send(ServerMsg::SendUnit(client_addr.clone(), StreamUnit::Array(stream_id, n, buf)))?;
             }
             ReadResult::AttachmentData(stream_id, _, n, buf) => {
                 let client_addr = client_addrs.get(&stream_id).ok_or(ProcessError::ClientAddrNotFound)?;
                 //info!("sending attachment");
-                server_tx.try_send(ServerMsg::SendUnit(client_addr.clone(), StreamUnit::Array(stream_id, n, buf)))?;
+                server_tx.send(ServerMsg::SendUnit(client_addr.clone(), StreamUnit::Array(stream_id, n, buf)))?;
             }
             ReadResult::AttachmentFinished(stream_id, _, n, buf) => {
                 let client_addr = client_addrs.get(&stream_id).ok_or(ProcessError::ClientAddrNotFound)?;
                 //info!("sending attachment finished");
-                server_tx.try_send(ServerMsg::SendUnit(client_addr.clone(), StreamUnit::Array(stream_id, n, buf)))?;
+                server_tx.send(ServerMsg::SendUnit(client_addr.clone(), StreamUnit::Array(stream_id, n, buf)))?;
             }
             ReadResult::MessageFinished(stream_id, finish_bytes) => {
                 let client_addr = client_addrs.remove(&stream_id).ok_or(ProcessError::ClientAddrNotFound)?;
                 match finish_bytes {
                     MessageFinishBytes::Payload(n, buf) => {
-                        server_tx.try_send(ServerMsg::SendUnit(client_addr.clone(), StreamUnit::Array(stream_id, n, buf)))?;
+                        server_tx.send(ServerMsg::SendUnit(client_addr.clone(), StreamUnit::Array(stream_id, n, buf)))?;
                     }
                     MessageFinishBytes::Attachment(_, n, buf) => {
-                        server_tx.try_send(ServerMsg::SendUnit(client_addr.clone(), StreamUnit::Array(stream_id, n, buf)))?;
+                        server_tx.send(ServerMsg::SendUnit(client_addr.clone(), StreamUnit::Array(stream_id, n, buf)))?;
                     }                            
                 }                        
             }

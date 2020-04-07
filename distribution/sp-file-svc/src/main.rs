@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::fs;
 use serde_json::{json, Value, from_slice, to_vec, to_string, from_str};
 use log::*;
-use tokio::{io::AsyncWriteExt, fs::File, sync::mpsc::Receiver};
+use tokio::{io::AsyncWriteExt, fs::File, sync::mpsc::UnboundedReceiver};
 use streaming_platform::{ServerConfig, stream_mode, tokio::{self, runtime::Runtime, io::AsyncReadExt}, DATA_BUF_SIZE, MagicBall, ClientMsg, RestreamMsg, StreamLayout, StreamUnit, sp_dto::{MsgMeta, MsgKind, reply_to_rpc_dto2_sizes, Participator, uuid::Uuid, RpcResult}};
 
 mod cfg;
@@ -28,7 +28,7 @@ fn main() {
 pub async fn startup(config: HashMap<String, String>, mut mb: MagicBall) {
 }
 
-pub async fn process_stream(config: HashMap<String, String>, mut mb: MagicBall, mut rx: Receiver<ClientMsg>, _: Option<Receiver<RestreamMsg>>) {
+pub async fn process_stream(config: HashMap<String, String>, mut mb: MagicBall, mut rx: UnboundedReceiver<ClientMsg>, _: Option<UnboundedReceiver<RestreamMsg>>) {
     let dirs = config.get("dirs").expect("missing dirs config value");
     let dirs: Vec<cfg::Dir> = from_str(dirs).expect("failed to deserialize config directories");
     let mut stream_layouts = HashMap::new();    
@@ -207,7 +207,7 @@ async fn download_file(mut mb: MagicBall, msg_meta: MsgMeta, path: std::path::Pa
     mb.write_vec(stream_id, dto, msg_meta_size, payload_size, vec![]).await?;        
     match size {
         0 => {
-            mb.write_tx.send(StreamUnit::Empty(stream_id)).await?
+            mb.write_tx.send(StreamUnit::Empty(stream_id))?;
         }
         _ => {
             let mut file_buf = [0; DATA_BUF_SIZE];
@@ -215,7 +215,7 @@ async fn download_file(mut mb: MagicBall, msg_meta: MsgMeta, path: std::path::Pa
                 match file.read(&mut file_buf).await? {
                     0 => break,
                     n => {                
-                        mb.write_tx.send(StreamUnit::Array(stream_id, n, file_buf)).await?
+                        mb.write_tx.send(StreamUnit::Array(stream_id, n, file_buf))?;
                     }
                 }
             }

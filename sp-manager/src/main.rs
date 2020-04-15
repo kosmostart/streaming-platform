@@ -54,7 +54,7 @@ struct Config {
     services: Option<Vec<Service>>
 }
 
-fn main() {    
+fn main() {        
     let config_path = std::env::args().nth(1)
         .expect("path to config file not passed as argument");
 
@@ -421,73 +421,81 @@ fn main() {
                 
             }
         })
-        .unwrap();    
+        .unwrap();
 
-    println!("starting command server");
+    match std::env::args().nth(2) {
+        Some(_) => {
+            println!("starting command server");
 
-    let routes = 
-        warp::path("hello")
-            .and(warp::header("user-agent"))
-            .map(|agent: String| {
-                format!("Hello, your agent is {}", agent)
-            })            
-        .or(
-            warp::path("start")
-                .and(warp::path::param())
-                .map(move |name: String| {
-                    let (reply_tx, reply_rx) = crossbeam::channel::unbounded();
+            let routes = 
+                warp::path("hello")
+                    .and(warp::header("user-agent"))
+                    .map(|agent: String| {
+                        format!("Hello, your agent is {}", agent)
+                    })            
+                .or(
+                    warp::path("start")
+                        .and(warp::path::param())
+                        .map(move |name: String| {
+                            let (reply_tx, reply_rx) = crossbeam::channel::unbounded();
 
-                    start_tx.clone().send(Msg::StartServiceProcess(name, reply_tx));
+                            start_tx.clone().send(Msg::StartServiceProcess(name, reply_tx));
 
-                    let reply = reply_rx.recv_timeout(std::time::Duration::from_secs(30)).unwrap();
+                            let reply = reply_rx.recv_timeout(std::time::Duration::from_secs(30)).unwrap();
 
-                    reply
-                })
-        )
-        .or(
-            warp::path("start-hub")
-                .and(warp::path::param())
-                .map(move |name: String| {
-                    let (reply_tx, reply_rx) = crossbeam::channel::unbounded();
+                            reply
+                        })
+                )
+                .or(
+                    warp::path("start-hub")
+                        .and(warp::path::param())
+                        .map(move |name: String| {
+                            let (reply_tx, reply_rx) = crossbeam::channel::unbounded();
 
-                    start_hub_tx.clone().send(Msg::StartHubProcess(name, reply_tx));
+                            start_hub_tx.clone().send(Msg::StartHubProcess(name, reply_tx));
 
-                    let reply = reply_rx.recv_timeout(std::time::Duration::from_secs(30)).unwrap();
+                            let reply = reply_rx.recv_timeout(std::time::Duration::from_secs(30)).unwrap();
 
-                    reply
-                })
-        )
-        .or(
-            warp::path("stop")
-                .and(warp::path::param())
-                .map(move |name: String| {
-                    let (reply_tx, reply_rx) = crossbeam::channel::unbounded();
+                            reply
+                        })
+                )
+                .or(
+                    warp::path("stop")
+                        .and(warp::path::param())
+                        .map(move |name: String| {
+                            let (reply_tx, reply_rx) = crossbeam::channel::unbounded();
 
-                    stop_tx.send(Msg::StopProcess(name, reply_tx));
+                            stop_tx.send(Msg::StopProcess(name, reply_tx));
 
-                    let reply = reply_rx.recv_timeout(std::time::Duration::from_secs(30)).unwrap();
+                            let reply = reply_rx.recv_timeout(std::time::Duration::from_secs(30)).unwrap();
 
-                    reply
-                })
-        )
-        .or(
-            warp::path("stop-all")                
-                .map(move || {
-                    let (reply_tx, reply_rx) = crossbeam::channel::unbounded();
+                            reply
+                        })
+                )
+                .or(
+                    warp::path("stop-all")                
+                        .map(move || {
+                            let (reply_tx, reply_rx) = crossbeam::channel::unbounded();
 
-                    stop_tx2.send(Msg::StopAll(reply_tx));
+                            stop_tx2.send(Msg::StopAll(reply_tx));
 
-                    let reply = reply_rx.recv_timeout(std::time::Duration::from_secs(30)).unwrap();
+                            let reply = reply_rx.recv_timeout(std::time::Duration::from_secs(30)).unwrap();
 
-                    reply
-                })
-        )
-        ;
-	
-    let addr = "0.0.0.0:49999".parse::<SocketAddr>().unwrap();        
-    let mut rt = Runtime::new().expect("failed to create runtime");    
+                            reply
+                        })
+                )
+                ;
+            
+            let addr = "0.0.0.0:49999".parse::<SocketAddr>().unwrap();        
+            let mut rt = Runtime::new().expect("failed to create runtime");    
 
-    rt.block_on(warp::serve(routes).run(addr));
+            rt.block_on(warp::serve(routes).run(addr));
+        }
+        None => {
+            println!("started");
+            std::thread::park();
+        }
+    }
 }
 
 fn fix_running_self(running: &Vec<Process>) {

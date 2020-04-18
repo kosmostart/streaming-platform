@@ -866,7 +866,55 @@ impl MagicBall {
         buf.append(&mut attachments_data);
         
         Ok((msg_meta, buf))
-    }    
+    }
+    pub async fn proxy_rpc_with_payload<T>(&mut self, tx: String, mut data: Vec<u8>) -> Result<(MsgMeta, T, Vec<u8>), ProcessError> where for<'de> T: serde::Deserialize<'de>, T: Debug {
+        let (res, len) = {
+            let mut buf = std::io::Cursor::new(&data);
+            let len = buf.get_u32() as usize;
+
+            match len > data.len() - 4 {
+                true => {
+                    let custom_error = std::io::Error::new(std::io::ErrorKind::Other, "len incosistent with data on proxy rpc request");
+                    return Err(ProcessError::Io(custom_error));
+                }
+                false => (serde_json::from_slice::<MsgMeta>(&data[4..len + 4]), len)
+            }
+        };
+
+        let mut msg_meta = res?;
+
+        let correlation_id = msg_meta.correlation_id;
+
+        msg_meta.tx = tx;
+        msg_meta.route.points.push(Participator::Service(self.addr.to_owned()));
+
+        let payload_size = msg_meta.payload_size;
+        let attachments_sizes = msg_meta.attachments_sizes();
+
+        let mut msg_meta = to_vec(&msg_meta)?;
+        let msg_meta_size = msg_meta.len() as u64;
+                                                      
+        let mut payload_with_attachments: Vec<_> = data.drain(4 + len..).collect();
+        let mut buf = vec![];
+
+        buf.put_u32(msg_meta.len() as u32);
+
+        buf.append(&mut msg_meta);
+        buf.append(&mut payload_with_attachments);
+
+        let (rpc_tx, rpc_rx) = oneshot::channel();
+                
+        self.rpc_inbound_tx.send(RpcMsg::AddRpc(correlation_id, rpc_tx))?;
+        debug!("proxy_rpc write attempt");
+        write(self.get_stream_id(), buf, msg_meta_size, payload_size, attachments_sizes, &mut self.write_tx).await?;
+        debug!("proxy_rpc write attempt succeeded");
+
+        let (msg_meta, mut payload, mut attachments_data) = timeout(Duration::from_millis(RPC_TIMEOUT_MS_AMOUNT), rpc_rx).await??;
+
+        let payload: T = from_slice(&payload)?;                
+        
+        Ok((msg_meta, payload, attachments_data))
+    }
 }
 
 #[derive(Debug)]

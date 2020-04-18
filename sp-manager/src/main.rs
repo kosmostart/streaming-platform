@@ -69,8 +69,7 @@ fn main() {
         .expect("failed to read config");
 
     let config: Config = toml::from_str(&config)
-        .expect("failed to deserialize config");
-    println!("{:#?}", config);
+        .expect("failed to deserialize config");    
 
     println!("quering system data");
     let mut system = sysinfo::System::new();

@@ -125,7 +125,7 @@ pub struct MsgMeta {
     /// Logical message route, receiver are responsible for moving message on.
     pub route: Route,
     /// Size of payload, used for deserialization. Also useful for monitoring.
-    pub payload_size: u64,
+    pub payload_size: u64,    
     /// Attachments to message
 	pub attachments: Vec<Attachment>
 }

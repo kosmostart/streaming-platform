@@ -159,7 +159,7 @@ where
                                     }
                                 };                                
                                 route.points.push(Participator::Service(mb.addr.clone()));
-                                let (res, msg_meta_size, payload_size, attacchments_size) = reply_to_rpc_dto2_sizes(mb.addr.clone(), tx, key, correlation_id, payload, attachments, attachments_data, rpc_result, route).expect("failed to create rpc reply");
+                                let (res, msg_meta_size, payload_size, attacchments_size) = reply_to_rpc_dto2_sizes(mb.addr.clone(), tx, key, correlation_id, payload, attachments, attachments_data, rpc_result, route, None, None).expect("failed to create rpc reply");
                                 debug!("client {} attempt to write rpc response", mb.addr);
                                 write(mb.get_stream_id(), res, msg_meta_size, payload_size, attacchments_size, &mut write_tx3).await.expect("failed to write rpc response");                                
                                 debug!("client {} write rpc response succeded", mb.addr);
@@ -210,7 +210,7 @@ async fn auth(target: String, addr: String, access_key: String, stream: &mut Tcp
 
     let (dto, msg_meta_size, payload_size, attachments_size) = rpc_dto_with_sizes(addr.clone(), target.to_owned(), "Auth".to_owned(), json!({
         "access_key": access_key
-    }), route).unwrap();
+    }), route, None, None).unwrap();
 
     write_to_stream(get_stream_id_onetime(&addr), dto, msg_meta_size, payload_size, attachments_size, stream).await
 }

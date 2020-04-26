@@ -616,6 +616,8 @@ pub enum RpcMsg {
 #[derive(Clone)]
 pub struct MagicBall {    
     pub addr: String,
+    pub auth_token: Option<String>,
+    pub auth_data: Option<Value>,
     hash_buf: BytesMut,
     addr_bytes_len: usize,
     hasher: SipHasher24,
@@ -633,6 +635,8 @@ impl MagicBall {
         let mut hasher = get_hasher();
         MagicBall {            
             addr,
+            auth_token: None,
+            auth_data: None,
             hash_buf,
             addr_bytes_len,
             hasher,
@@ -715,7 +719,7 @@ impl MagicBall {
             points: vec![Participator::Service(self.addr.to_owned())]
         };
 
-        let (dto, msg_meta_size, payload_size, attachments_sizes) = event_dto_with_sizes(self.addr.clone(), addr.to_owned(), key.to_owned(), payload, route)?;
+        let (dto, msg_meta_size, payload_size, attachments_sizes) = event_dto_with_sizes(self.addr.clone(), addr.to_owned(), key.to_owned(), payload, route, self.cfg.auth_token.clone(), self.cfg.auth_data.clone())?;
 
         write(self.get_stream_id(), dto, msg_meta_size, payload_size, attachments_sizes, &mut self.write_tx).await?;
         
@@ -726,7 +730,7 @@ impl MagicBall {
 
         route.points.push(Participator::Service(self.addr.clone()));
 
-        let (dto, msg_meta_size, payload_size, attachments_sizes) = event_dto_with_sizes(self.addr.clone(), addr.to_owned(), key.to_owned(), payload, route)?;
+        let (dto, msg_meta_size, payload_size, attachments_sizes) = event_dto_with_sizes(self.addr.clone(), addr.to_owned(), key.to_owned(), payload, route, self.cfg.auth_token.clone(), self.cfg.auth_data.clone())?;
 
         write(self.get_stream_id(), dto, msg_meta_size, payload_size, attachments_sizes, &mut self.write_tx).await?;
         
@@ -741,7 +745,7 @@ impl MagicBall {
 
 		//info!("send_rpc, route {:?}, target addr {}, key {}, payload {:?}, ", route, addr, key, payload);
 		
-        let (correlation_id, dto, msg_meta_size, payload_size, attachments_sizes) = rpc_dto_with_correlation_id_sizes(self.addr.clone(), addr.to_owned(), key.to_owned(), payload, route)?;
+        let (correlation_id, dto, msg_meta_size, payload_size, attachments_sizes) = rpc_dto_with_correlation_id_sizes(self.addr.clone(), addr.to_owned(), key.to_owned(), payload, route, self.cfg.auth_token.clone(), self.cfg.auth_data.clone())?;
         let (rpc_tx, rpc_rx) = oneshot::channel();
         
         self.rpc_inbound_tx.send(RpcMsg::AddRpc(correlation_id, rpc_tx))?;
@@ -761,7 +765,7 @@ impl MagicBall {
 
         route.points.push(Participator::Service(self.addr.to_owned()));
 		
-        let (correlation_id, dto, msg_meta_size, payload_size, attachments_sizes) = rpc_dto_with_correlation_id_sizes(self.addr.clone(), addr.to_owned(), key.to_owned(), payload, route)?;
+        let (correlation_id, dto, msg_meta_size, payload_size, attachments_sizes) = rpc_dto_with_correlation_id_sizes(self.addr.clone(), addr.to_owned(), key.to_owned(), payload, route, self.cfg.auth_token.clone(), self.cfg.auth_data.clone())?;
         let (rpc_tx, rpc_rx) = oneshot::channel();
         
         self.rpc_inbound_tx.send(RpcMsg::AddRpc(correlation_id, rpc_tx))?;

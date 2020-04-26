@@ -33,7 +33,7 @@ pub enum Response {
 pub struct Hub {
     hub: Box<dyn Bridge<Worker>>,
     pub spec: CmpSpec,
-    pub cfg: HubCfg
+    pub cfg: HubCfg    
 }
 
 #[derive(Clone, PartialEq)]
@@ -43,7 +43,9 @@ pub struct HubCfg {
     pub host: Option<String>,
     pub fetch_url: Option<String>,
     pub ws_url: Option<String>,
-    pub domain: Option<String>
+    pub domain: Option<String>,
+    pub auth_token: Option<String>,
+    pub auth_data: Option<Value>
 }
 
 impl Default for HubCfg {
@@ -54,7 +56,9 @@ impl Default for HubCfg {
             host: None,
             fetch_url: None,
             ws_url: None,
-            domain: None
+            domain: None,
+            auth_token: None,
+            auth_data: None
         }        
     }
 }
@@ -66,14 +70,14 @@ impl Hub {
         Hub {
             hub,
             spec,
-            cfg
+            cfg            
         }        
     }
     pub fn new_no_auth(spec: CmpSpec, cfg: HubCfg, callback: Callback<Response>) -> Hub {
         Hub {
             hub: Worker::bridge(callback),
             spec,
-            cfg
+            cfg            
         }        
     }
     pub fn auth(&mut self, spec: CmpSpec, cfg: HubCfg) {
@@ -87,7 +91,7 @@ impl Hub {
             spec: RouteSpec::Simple,
             points: vec![Participator::Component(self.spec.addr.clone(), self.cfg.app_addr.clone(), self.cfg.client_addr.clone())]
         };
-        let (correlation_id, dto) = rpc_dto_with_correlation_id(self.spec.addr.clone(), addr.to_owned(), key.to_owned(), payload, route).expect("failed to create rpc dto with correlation id on server rpc");
+        let (correlation_id, dto) = rpc_dto_with_correlation_id(self.spec.addr.clone(), addr.to_owned(), key.to_owned(), payload, route, self.cfg.auth_token.clone(), self.cfg.auth_data.clone()).expect("failed to create rpc dto with correlation id on server rpc");
         let url = self.cfg.fetch_url.clone().expect("fetch host is empty on server rpc");
         self.hub.send(Request::Rpc(url, correlation_id, dto));
     }
@@ -97,7 +101,7 @@ impl Hub {
             spec: RouteSpec::Client(Participator::Component(client_addr, self.cfg.app_addr.clone(), self.cfg.client_addr.clone())),
             points: vec![Participator::Component(self.spec.addr.clone(), self.cfg.app_addr.clone(), self.cfg.client_addr.clone())]
         };
-        let (correlation_id, dto) = rpc_dto_with_correlation_id(self.spec.addr.clone(), addr.to_owned(), key.to_owned(), payload, route).expect("failed to create rpc dto with correlation id on server rpc");
+        let (correlation_id, dto) = rpc_dto_with_correlation_id(self.spec.addr.clone(), addr.to_owned(), key.to_owned(), payload, route, self.cfg.auth_token.clone(), self.cfg.auth_data.clone()).expect("failed to create rpc dto with correlation id on server rpc");
         let host = self.cfg.fetch_url.clone().expect("fetch host is empty on server rpc");
         self.hub.send(Request::Rpc(host, correlation_id, dto));
     }
@@ -110,7 +114,7 @@ impl Hub {
                     spec: RouteSpec::Simple,
                     points: vec![Participator::Component(self.spec.addr.clone(), self.cfg.app_addr.clone(), self.cfg.client_addr.clone())]
                 };
-                let (correlation_id, dto) = rpc_dto_with_correlation_id(self.spec.addr.clone(), addr, key.to_owned(), payload, route).expect("failed to create rpc dto with correlation id on server rpc");
+                let (correlation_id, dto) = rpc_dto_with_correlation_id(self.spec.addr.clone(), addr, key.to_owned(), payload, route, self.cfg.auth_token.clone(), self.cfg.auth_data.clone()).expect("failed to create rpc dto with correlation id on server rpc");
                 let host = self.cfg.fetch_url.clone().expect("fetch host is empty on server rpc");
 
                 self.hub.send(Request::Rpc(host, correlation_id, dto));
@@ -124,7 +128,7 @@ impl Hub {
             spec: RouteSpec::Simple,
             points: vec![Participator::Component(self.spec.addr.clone(), self.cfg.app_addr.clone(), self.cfg.client_addr.clone())]
         };
-        let (correlation_id, dto) = rpc_dto_with_correlation_id(self.spec.addr.clone(), addr.to_owned(), key.to_owned(), payload, route).expect("failed to create rpc dto with correlation id on server rpc");
+        let (correlation_id, dto) = rpc_dto_with_correlation_id(self.spec.addr.clone(), addr.to_owned(), key.to_owned(), payload, route, self.cfg.auth_token.clone(), self.cfg.auth_data.clone()).expect("failed to create rpc dto with correlation id on server rpc");
         let url = self.cfg.host.clone().expect("fetch host is empty on server rpc") + "/" + segment + "/";
         self.hub.send(Request::Rpc(url, correlation_id, dto));
     }
@@ -142,6 +146,8 @@ impl Hub {
                     points: vec![Participator::Component(self.spec.addr.clone(), self.cfg.app_addr.clone(), self.cfg.client_addr.clone())]
                 },
                 payload_size: 0,
+                auth_token: self.cfg.auth_token.clone(),
+                auth_data: self.cfg.auth_data.clone(),
                 attachments: vec![]
             }, 
             payload
@@ -161,6 +167,8 @@ impl Hub {
                     points: vec![Participator::Component(self.spec.addr.clone(), self.cfg.app_addr.clone(), self.cfg.client_addr.clone())]
                 },
                 payload_size: 0,
+                auth_token: self.cfg.auth_token.clone(),
+                auth_data: self.cfg.auth_data.clone(),
                 attachments: vec![]
             },
             payload
@@ -178,6 +186,8 @@ impl Hub {
                 correlation_id: msg_meta.correlation_id,
                 route: msg_meta.route,
                 payload_size: 0,
+                auth_token: self.cfg.auth_token.clone(),
+                auth_data: self.cfg.auth_data.clone(),
                 attachments: vec![]
             },
             payload
@@ -197,6 +207,8 @@ impl Hub {
                     points: vec![Participator::Component(self.spec.addr.clone(), self.cfg.app_addr.clone(), self.cfg.client_addr.clone())]
                 },
                 payload_size: 0,
+                auth_token: self.cfg.auth_token.clone(),
+                auth_data: self.cfg.auth_data.clone(),
                 attachments: vec![]
             }, 
             payload
@@ -216,6 +228,8 @@ impl Hub {
                     points: vec![Participator::Component(self.spec.addr.clone(), self.cfg.app_addr.clone(), self.cfg.client_addr.clone())]
                 },
                 payload_size: 0,
+                auth_token: self.cfg.auth_token.clone(),
+                auth_data: self.cfg.auth_data.clone(),
                 attachments: vec![]
             },
             payload
@@ -232,6 +246,8 @@ impl Hub {
                 correlation_id: msg_meta.correlation_id,
                 route: msg_meta.route,
                 payload_size: 0,
+                auth_token: self.cfg.auth_token.clone(),
+                auth_data: self.cfg.auth_data.clone(),
                 attachments: vec![]
             },
             payload

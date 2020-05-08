@@ -16,4 +16,4 @@ toml = "*"
 bytes = "*"
 futures = { version = "0.3", features = ["async-await"] }
 tokio = { version = "0.2", features = ["rt-core"] }
-warp = { git = "https://github.com/seanmonstar/warp", features = ["tls"] }
+warp = { version = "*", features = ["tls"] }

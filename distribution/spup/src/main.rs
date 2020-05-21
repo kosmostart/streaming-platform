@@ -38,7 +38,9 @@ pub async fn startup(config: HashMap<String, String>, mut mb: MagicBall) {
             source: Participator::Service(mb.addr.clone()),
             spec: RouteSpec::Simple,
             points: vec![Participator::Service(mb.addr.clone())]
-        }
+        },
+        mb.auth_token.clone(), 
+        mb.auth_data.clone()
     ).expect("failed to create download rpc dto");    
     let stream_id = mb.get_stream_id();
     mb.write_vec(
@@ -75,7 +77,9 @@ pub async fn process_stream(config: HashMap<String, String>, mut mb: MagicBall, 
                                             vec![],
                                             vec![], vec![],
                                             RpcResult::Err,
-                                            route
+                                            route,
+                                            mb.auth_token.clone(),
+                                            mb.auth_data.clone()
                                         ).expect("failed to create rpc reply");
                                         mb.write_vec(stream_layout.stream.id, res, msg_meta_size, payload_size, attachments_size).await.expect("failed to write response to upload");
                                     }
@@ -163,7 +167,7 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
 async fn download_file(mut mb: MagicBall, msg_meta: MsgMeta, path: String, file_name: String) -> Result<(), Error> {
     let mut file = File::open(&path).await?;
     let size = file.metadata().await?.len();
-    let (dto, msg_meta_size, payload_size, _) = reply_to_rpc_dto2_sizes(mb.addr.clone(), msg_meta.tx.clone(), msg_meta.key.clone(), msg_meta.correlation_id, vec![], vec![(file_name, size)], vec![], RpcResult::Ok, msg_meta.route.clone())?;    
+    let (dto, msg_meta_size, payload_size, _) = reply_to_rpc_dto2_sizes(mb.addr.clone(), msg_meta.tx.clone(), msg_meta.key.clone(), msg_meta.correlation_id, vec![], vec![(file_name, size)], vec![], RpcResult::Ok, msg_meta.route.clone(), mb.auth_token.clone(), mb.auth_data.clone())?;
     let stream_id = mb.get_stream_id();
     mb.write_vec(stream_id, dto, msg_meta_size, payload_size, vec![]).await?;        
     match size {

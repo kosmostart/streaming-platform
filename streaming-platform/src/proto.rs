@@ -835,6 +835,8 @@ impl MagicBall {
 
         let correlation_id = msg_meta.correlation_id;
 
+        let initiator_tx = msg_meta.tx;
+        
         msg_meta.tx = tx;
         msg_meta.route.points.push(Participator::Service(self.addr.to_owned()));
 
@@ -859,7 +861,9 @@ impl MagicBall {
         write(self.get_stream_id(), buf, msg_meta_size, payload_size, attachments_sizes, &mut self.write_tx).await?;
         debug!("proxy_rpc write attempt succeeded");
 
-        let (msg_meta, mut payload, mut attachments_data) = timeout(Duration::from_millis(RPC_TIMEOUT_MS_AMOUNT), rpc_rx).await??;
+        let (mut msg_meta, mut payload, mut attachments_data) = timeout(Duration::from_millis(RPC_TIMEOUT_MS_AMOUNT), rpc_rx).await??;
+
+        msg_meta.rx = initiator_tx;
 
         let mut buf = vec![];
         let mut msg_meta_buf = to_vec(&msg_meta)?;
@@ -889,6 +893,8 @@ impl MagicBall {
 
         let correlation_id = msg_meta.correlation_id;
 
+        let initiator_tx = msg_meta.tx;
+
         msg_meta.tx = tx;
         msg_meta.route.points.push(Participator::Service(self.addr.to_owned()));
 
@@ -913,7 +919,9 @@ impl MagicBall {
         write(self.get_stream_id(), buf, msg_meta_size, payload_size, attachments_sizes, &mut self.write_tx).await?;
         debug!("proxy_rpc write attempt succeeded");
 
-        let (msg_meta, mut payload, mut attachments_data) = timeout(Duration::from_millis(RPC_TIMEOUT_MS_AMOUNT), rpc_rx).await??;
+        let (mut msg_meta, mut payload, mut attachments_data) = timeout(Duration::from_millis(RPC_TIMEOUT_MS_AMOUNT), rpc_rx).await??;
+
+        msg_meta.rx = initiator_tx;
 
         let payload: T = from_slice(&payload)?;                
         

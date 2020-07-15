@@ -12,6 +12,5 @@ anyhow = "*"
 serde = "*"
 serde_json = "*"
 serde_derive = "*"
-stdweb = "*"
-yew = { version = "0.14", features = ["std_web"] }
+yew = { version = "*", features = ["web_sys"] }
 sp-dto = { path = "../sp-dto" }

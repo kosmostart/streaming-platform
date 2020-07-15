@@ -11,9 +11,7 @@ use sp_dto::{Participator, MsgKind, uuid::Uuid, MsgMeta, Route, RouteSpec, CmpSp
 
 pub struct Worker {
     link: AgentLink<Worker>,
-    clients: HashMap<String, HandlerId>,
-    console: ConsoleService,
-    fetch_service: FetchService,
+    clients: HashMap<String, HandlerId>,    
     fetch_cb: yew::Callback<fetch::Response<Result<Vec<u8>, Error>>>,
     fetch_tasks: HashMap<Uuid, FetchTask>
 }
@@ -265,14 +263,13 @@ impl Agent for Worker {
     // - `Job` (one per bridge)
     // - `Context` (shared in the same thread)
     // - `Public` (separate thread).
-    type Reach = Context;
+    type Reach = Context<Self>;
     type Message = Msg;
     type Input = Request;
     type Output = Response;
     // Create an instance with a link to agent's environment.
-    fn create(link: AgentLink<Self>) -> Self {
-        let mut console = ConsoleService::new(); 
-        console.log("hub created");
+    fn create(link: AgentLink<Self>) -> Self {        
+        ConsoleService::log("hub created");
         let fetch_cb = link.callback(move |response: fetch::Response<Result<Vec<u8>, Error>>| {
             let (meta, data) = response.into_parts();
             println!("{:?}", meta);
@@ -284,8 +281,6 @@ impl Agent for Worker {
         Worker { 
             link,
             clients: HashMap::new(),            
-            console,
-            fetch_service: FetchService::new(),
             fetch_cb,
             fetch_tasks: HashMap::new()
         }
@@ -306,11 +301,11 @@ impl Agent for Worker {
                                     Some(addr) => {
                                         match self.clients.get(addr) {
                                             Some(client_id) => self.link.respond(*client_id, Response::Msg(msg_meta, payload)),
-                                            None => self.console.log(&format!("hub: missing client {}", msg_meta.rx))
+                                            None => ConsoleService::log(&format!("hub: missing client {}", msg_meta.rx))
                                         }
                                     }
                                     None => {
-                                        self.console.log("error: source cmp empty for this rpc");
+                                        ConsoleService::log("error: source cmp empty for this rpc");
                                     }
                                 }
                             }
@@ -319,11 +314,11 @@ impl Agent for Worker {
                                     Some(addr) => {
                                         match self.clients.get(&addr) {
                                             Some(client_id) => self.link.respond(*client_id, Response::Msg(msg_meta, payload)),
-                                            None => self.console.log(&format!("hub: missing client {}", addr))
+                                            None => ConsoleService::log(&format!("hub: missing client {}", addr))
                                         }
                                     }
                                     None => {
-                                        self.console.log("error: client cmp empty for this rpc");
+                                        ConsoleService::log("error: client cmp empty for this rpc");
                                     }
                                 }
                             }
@@ -333,7 +328,7 @@ impl Agent for Worker {
                 }                
             }
             Msg::FetchError(err) => {
-                self.console.log(&format!("error: fetch, {:?}", err));
+                ConsoleService::log(&format!("error: fetch, {:?}", err));
             }
         }
     }
@@ -342,24 +337,24 @@ impl Agent for Worker {
         //self.console.log(&format!("hub: {:?}", msg));        
         match msg {
             Request::Auth(addr) => {
-                self.console.log(&format!("hub auth: {}", addr));
+                ConsoleService::log(&format!("hub auth: {}", addr));
                 self.clients.insert(addr, who);
             }
             Request::Msg(msg_meta, payload) => {
                 match self.clients.get(&msg_meta.rx) {
                     Some(client_id) => self.link.respond(*client_id, Response::Msg(msg_meta, payload)),
-                    None => self.console.log(&format!("hub: missing client {}", msg_meta.rx))
+                    None => ConsoleService::log(&format!("hub: missing client {}", msg_meta.rx))
                 }
             }
             Request::Rpc(url, correlation_id, data) => {
                 let request = fetch::Request::post(url)        
                     .body(Ok(data))
                     .expect("Failed to build request.");
-                match self.fetch_service.fetch_binary(request, self.fetch_cb.clone()) {
+                match FetchService::fetch_binary(request, self.fetch_cb.clone()) {
                     Ok(task) => {
                         let _ = self.fetch_tasks.insert(correlation_id, task);
                     }
-                    Err(e) => self.console.log(&format!("error: error on fetch, {}", e))
+                    Err(e) => ConsoleService::log(&format!("error: error on fetch, {}", e))
                 }
             }
         }

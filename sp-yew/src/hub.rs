@@ -7,12 +7,12 @@ use yew::prelude::worker::*;
 use yew::services::console::ConsoleService;
 use yew::services::fetch::{self, FetchService, FetchTask};
 use yew::agent::HandlerId;
+use yew::format::Nothing;
 use sp_dto::{Participator, MsgKind, uuid::Uuid, MsgMeta, Route, RouteSpec, CmpSpec, rpc_dto_with_correlation_id, get_msg};
 
 pub struct Worker {
     link: AgentLink<Worker>,
     clients: HashMap<String, HandlerId>,    
-    fetch_cb: yew::Callback<fetch::Response<Result<Vec<u8>, Error>>>,
     fetch_tasks: HashMap<Uuid, FetchTask>
 }
 
@@ -20,12 +20,262 @@ pub struct Worker {
 pub enum Request {
     Auth(String),
     Msg(MsgMeta, Value),
-    Rpc(String, Uuid, Vec<u8>)
+    Rpc(String, Uuid, Vec<u8>),
+    PostStringRpc(String, Uuid, String),
+    PostBinaryRpc(String, Uuid, Vec<u8>),
+    GetStringRpc(String, Uuid),
+    GetBinaryRpc(String, Uuid)
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum Response {
-    Msg(MsgMeta, Value)    
+    Msg(MsgMeta, Value),
+    StringRpc(Uuid, String),
+    BinaryRpc(Uuid, Vec<u8>)
+}
+
+pub enum Msg {    
+    RpcReady(Vec<u8>, Uuid, String),
+    StringRpcReady(String, Uuid, String),
+    BinaryRpcReady(Vec<u8>, Uuid, String),
+    FetchError(Error)
+}
+
+impl Worker {
+    pub fn get_cb(&self, correlation_id: Uuid, client_addr: String) -> yew::Callback<fetch::Response<Result<Vec<u8>, Error>>> {
+
+        self.link.callback(move |response: fetch::Response<Result<Vec<u8>, Error>>| {            
+            let (meta, data) = response.into_parts();            
+            match data {
+                Ok(data) => Msg::RpcReady(data, correlation_id, client_addr.clone()),
+                Err(err) => Msg::FetchError(err)
+            }            
+        })
+    }
+    pub fn get_string_cb(&self, correlation_id: Uuid, client_addr: String) -> yew::Callback<fetch::Response<Result<String, Error>>> {
+
+        self.link.callback(move |response: fetch::Response<Result<String, Error>>| {            
+            let (meta, data) = response.into_parts();            
+            match data {
+                Ok(data) => Msg::StringRpcReady(data, correlation_id, client_addr.clone()),
+                Err(err) => Msg::FetchError(err)
+            }            
+        })
+    }
+    pub fn get_binary_cb(&self, correlation_id: Uuid, client_addr: String) -> yew::Callback<fetch::Response<Result<Vec<u8>, Error>>> {
+
+        self.link.callback(move |response: fetch::Response<Result<Vec<u8>, Error>>| {
+            let (meta, data) = response.into_parts();            
+            match data {
+                Ok(data) => Msg::BinaryRpcReady(data, correlation_id, client_addr.clone()),
+                Err(err) => Msg::FetchError(err)
+            }            
+        })
+    }
+}
+
+impl Agent for Worker {
+    // Available:
+    // - `Job` (one per bridge)
+    // - `Context` (shared in the same thread)
+    // - `Public` (separate thread).
+    type Reach = Context<Self>;
+    type Message = Msg;
+    type Input = Request;
+    type Output = Response;
+    // Create an instance with a link to agent's environment.
+    fn create(link: AgentLink<Self>) -> Self {        
+        ConsoleService::log("hub created");
+
+        Worker { 
+            link,
+            clients: HashMap::new(),                        
+            fetch_tasks: HashMap::new()
+        }
+    }
+    // Handle inner messages (of services of `send_back` callbacks)
+    fn update(&mut self, msg: Self::Message) {
+        //self.console.log("hub: got update");
+        match msg {
+            Msg::RpcReady(data, correlation_id, addr) => {
+                let (msg_meta, payload, _) = get_msg::<Value>(&data).expect("failed to get msg on FetchReady");
+                self.fetch_tasks.remove(&correlation_id);
+                match msg_meta.kind {
+                    MsgKind::RpcResponse(_) => {
+                        match msg_meta.route.spec {
+                            RouteSpec::Simple => {
+                                match msg_meta.source_cmp_addr() {
+                                    Some(source_addr) => {
+                                        match source_addr == addr {
+                                            true => {
+                                                match self.clients.get(&addr) {
+                                                    Some(client_id) => self.link.respond(*client_id, Response::Msg(msg_meta, payload)),
+                                                    None => ConsoleService::log(&format!("hub: missing client {}", addr))
+                                                }
+                                            }
+                                            false => {
+                                                ConsoleService::log(&format!("error: message source addr differ from real source, message not delivered, {} vs {} (real one). This is possible security issue, please note.", source_addr, addr));
+                                            }
+                                        }                                        
+                                    }
+                                    None => {
+                                        ConsoleService::log("error: source cmp empty for this rpc");
+                                    }
+                                }
+                            }
+                            RouteSpec::Client(_) => {
+                                match msg_meta.client_cmp_addr() {
+                                    Some(addr) => {
+                                        match self.clients.get(&addr) {
+                                            Some(client_id) => self.link.respond(*client_id, Response::Msg(msg_meta, payload)),
+                                            None => ConsoleService::log(&format!("hub: missing client {}", addr))
+                                        }
+                                    }
+                                    None => {
+                                        ConsoleService::log("error: client cmp empty for this rpc");
+                                    }
+                                }
+                            }
+                        }                                                
+                    }
+                    _ => {}
+                }                
+            }
+            Msg::StringRpcReady(data, correlation_id, addr) => {
+                self.fetch_tasks.remove(&correlation_id);
+                match self.clients.get(&addr) {
+                    Some(client_id) => self.link.respond(*client_id, Response::StringRpc(correlation_id, data)),
+                    None => ConsoleService::log(&format!("hub: missing client {}", addr))
+                }
+            }
+            Msg::BinaryRpcReady(data, correlation_id, addr) => {
+                self.fetch_tasks.remove(&correlation_id);
+                match self.clients.get(&addr) {
+                    Some(client_id) => self.link.respond(*client_id, Response::BinaryRpc(correlation_id, data)),
+                    None => ConsoleService::log(&format!("hub: missing client {}", addr))
+                }
+            }
+            Msg::FetchError(err) => {
+                ConsoleService::log(&format!("error: fetch, {:?}", err));
+            }
+        }
+    }
+    // Handle incoming messages form components of other agents.
+    fn handle_input(&mut self, msg: Self::Input, who: HandlerId) {
+        //self.console.log(&format!("hub: {:?}", msg));        
+        match msg {
+            Request::Auth(addr) => {
+                ConsoleService::log(&format!("hub auth: {}", addr));
+                self.clients.insert(addr, who);
+            }
+            Request::Msg(msg_meta, payload) => {
+                match self.clients.get(&msg_meta.rx) {
+                    Some(client_id) => self.link.respond(*client_id, Response::Msg(msg_meta, payload)),
+                    None => ConsoleService::log(&format!("hub: missing client {}", msg_meta.rx))
+                }
+            }
+            Request::Rpc(url, correlation_id, data) => {
+                match self.clients.iter().find(|(_, x)| **x == who) {
+                    Some((addr, _)) => {
+
+                        let request = fetch::Request::post(url)        
+                            .body(Ok(data))
+                            .expect("Failed to build request.");
+
+                        match FetchService::fetch_binary(request, self.get_cb(correlation_id, addr.clone())) {
+                            Ok(task) => {
+                                let _ = self.fetch_tasks.insert(correlation_id, task);
+                            }
+                            Err(e) => ConsoleService::log(&format!("error: error on fetch, {}", e))
+                        }
+                    }
+                    None => {
+                        ConsoleService::log("error: client not found by handler id")
+                    }
+                }                
+            }
+            Request::PostStringRpc(url, correlation_id, data) => {
+                match self.clients.iter().find(|(_, x)| **x == who) {
+                    Some((addr, _)) => {
+
+                        let request = fetch::Request::post(url)        
+                            .body(Ok(data))
+                            .expect("Failed to build request.");
+                            
+                        match FetchService::fetch(request, self.get_string_cb(correlation_id, addr.clone())) {
+                            Ok(task) => {
+                                let _ = self.fetch_tasks.insert(correlation_id, task);
+                            }
+                            Err(e) => ConsoleService::log(&format!("error: error on fetch, simple string rpc, {}", e))
+                        }
+                    }
+                    None => {
+                        ConsoleService::log("error: client not found by handler id")
+                    }
+                }
+            }
+            Request::PostBinaryRpc(url, correlation_id, data) => {
+                match self.clients.iter().find(|(_, x)| **x == who) {
+                    Some((addr, _)) => {
+
+                        let request = fetch::Request::post(url)        
+                            .body(Ok(data))
+                            .expect("Failed to build request.");
+
+                        match FetchService::fetch_binary(request, self.get_binary_cb(correlation_id, addr.clone())) {
+                            Ok(task) => {
+                                let _ = self.fetch_tasks.insert(correlation_id, task);
+                            }
+                            Err(e) => ConsoleService::log(&format!("error: error on fetch, simple string rpc, {}", e))
+                        }
+                    }
+                    None => {
+                        ConsoleService::log("error: client not found by handler id")
+                    }
+                }
+            }
+            Request::GetStringRpc(url, correlation_id) => {
+                match self.clients.iter().find(|(_, x)| **x == who) {
+                    Some((addr, _)) => {
+
+                        let request = fetch::Request::get(url)
+                            .body(Nothing)
+                            .expect("Failed to build request.");
+                            
+                        match FetchService::fetch(request, self.get_string_cb(correlation_id, addr.clone())) {
+                            Ok(task) => {
+                                let _ = self.fetch_tasks.insert(correlation_id, task);
+                            }
+                            Err(e) => ConsoleService::log(&format!("error: error on fetch, simple string rpc, {}", e))
+                        }
+                    }
+                    None => {
+                        ConsoleService::log("error: client not found by handler id")
+                    }
+                }
+            }
+            Request::GetBinaryRpc(url, correlation_id) => {
+                match self.clients.iter().find(|(_, x)| **x == who) {
+                    Some((addr, _)) => {
+
+                        let request = fetch::Request::post(url)        
+                            .body(Nothing)
+                            .expect("Failed to build request.");
+
+                        match FetchService::fetch_binary(request, self.get_binary_cb(correlation_id, addr.clone())) {
+                            Ok(task) => {
+                                let _ = self.fetch_tasks.insert(correlation_id, task);
+                            }
+                            Err(e) => ConsoleService::log(&format!("error: error on fetch, simple string rpc, {}", e))
+                        }
+                    }
+                    None => {
+                        ConsoleService::log("error: client not found by handler id")
+                    }
+                }
+            }
+        }
+    }
 }
 
 pub struct Hub {
@@ -61,7 +311,7 @@ impl Default for HubCfg {
     }
 }
 
-impl Hub {    
+impl Hub {
     pub fn new(spec: CmpSpec, cfg: HubCfg, callback: Callback<Response>) -> Hub {
         let mut hub = Worker::bridge(callback);
         hub.send(Request::Auth(spec.addr.clone()));
@@ -250,113 +500,31 @@ impl Hub {
             },
             payload
         ));
-    }    
-}
-
-pub enum Msg {    
-    FetchReady(Vec<u8>),
-    FetchError(Error)
-}
-
-impl Agent for Worker {
-    // Available:
-    // - `Job` (one per bridge)
-    // - `Context` (shared in the same thread)
-    // - `Public` (separate thread).
-    type Reach = Context<Self>;
-    type Message = Msg;
-    type Input = Request;
-    type Output = Response;
-    // Create an instance with a link to agent's environment.
-    fn create(link: AgentLink<Self>) -> Self {        
-        ConsoleService::log("hub created");
-        let fetch_cb = link.callback(move |response: fetch::Response<Result<Vec<u8>, Error>>| {
-            let (meta, data) = response.into_parts();
-            println!("{:?}", meta);
-            match data {
-                Ok(data) => Msg::FetchReady(data),
-                Err(err) => Msg::FetchError(err)
-            }            
-        });
-        Worker { 
-            link,
-            clients: HashMap::new(),            
-            fetch_cb,
-            fetch_tasks: HashMap::new()
-        }
     }
-    // Handle inner messages (of services of `send_back` callbacks)
-    fn update(&mut self, msg: Self::Message) { /* ... */ 
-        //self.console.log("hub: got update");
-        match msg {
-            Msg::FetchReady(data) => {
-                let (msg_meta, payload, _) = get_msg::<Value>(&data).expect("failed to get msg on FetchReady");
-                self.fetch_tasks.remove(&msg_meta.correlation_id);
-                //self.console.log(&msg_meta.display());
-                match msg_meta.kind {
-                    MsgKind::RpcResponse(_) => {
-                        match msg_meta.route.spec {
-                            RouteSpec::Simple => {
-                                match msg_meta.source_cmp_addr() {
-                                    Some(addr) => {
-                                        match self.clients.get(addr) {
-                                            Some(client_id) => self.link.respond(*client_id, Response::Msg(msg_meta, payload)),
-                                            None => ConsoleService::log(&format!("hub: missing client {}", msg_meta.rx))
-                                        }
-                                    }
-                                    None => {
-                                        ConsoleService::log("error: source cmp empty for this rpc");
-                                    }
-                                }
-                            }
-                            RouteSpec::Client(_) => {
-                                match msg_meta.client_cmp_addr() {
-                                    Some(addr) => {
-                                        match self.clients.get(&addr) {
-                                            Some(client_id) => self.link.respond(*client_id, Response::Msg(msg_meta, payload)),
-                                            None => ConsoleService::log(&format!("hub: missing client {}", addr))
-                                        }
-                                    }
-                                    None => {
-                                        ConsoleService::log("error: client cmp empty for this rpc");
-                                    }
-                                }
-                            }
-                        }                                                
-                    }
-                    _ => {}
-                }                
-            }
-            Msg::FetchError(err) => {
-                ConsoleService::log(&format!("error: fetch, {:?}", err));
-            }
-        }
+
+    pub fn rpc_post_string(&mut self, payload: String) {
+        let url = self.cfg.fetch_url.clone().expect("fetch host is empty on server rpc");
+        self.hub.send(Request::PostStringRpc(url, Uuid::new_v4(), payload));
     }
-    // Handle incoming messages form components of other agents.
-    fn handle_input(&mut self, msg: Self::Input, who: HandlerId) {
-        //self.console.log(&format!("hub: {:?}", msg));        
-        match msg {
-            Request::Auth(addr) => {
-                ConsoleService::log(&format!("hub auth: {}", addr));
-                self.clients.insert(addr, who);
-            }
-            Request::Msg(msg_meta, payload) => {
-                match self.clients.get(&msg_meta.rx) {
-                    Some(client_id) => self.link.respond(*client_id, Response::Msg(msg_meta, payload)),
-                    None => ConsoleService::log(&format!("hub: missing client {}", msg_meta.rx))
-                }
-            }
-            Request::Rpc(url, correlation_id, data) => {
-                let request = fetch::Request::post(url)        
-                    .body(Ok(data))
-                    .expect("Failed to build request.");
-                match FetchService::fetch_binary(request, self.fetch_cb.clone()) {
-                    Ok(task) => {
-                        let _ = self.fetch_tasks.insert(correlation_id, task);
-                    }
-                    Err(e) => ConsoleService::log(&format!("error: error on fetch, {}", e))
-                }
-            }
-        }
+
+    pub fn rpc_post_binary(&mut self, payload: Vec<u8>) {
+        let url = self.cfg.fetch_url.clone().expect("fetch host is empty on server rpc");
+        self.hub.send(Request::PostBinaryRpc(url, Uuid::new_v4(), payload));
+    }
+
+    pub fn rpc_post_string_custom_url(&mut self, url: String, payload: String) {        
+        self.hub.send(Request::PostStringRpc(url, Uuid::new_v4(), payload));
+    }
+
+    pub fn rpc_post_binary_custom_url(&mut self, url: String, payload: Vec<u8>) {        
+        self.hub.send(Request::PostBinaryRpc(url, Uuid::new_v4(), payload));
+    }
+
+    pub fn rpc_get_string_custom_url(&mut self, url: String) {
+        self.hub.send(Request::GetStringRpc(url, Uuid::new_v4()));
+    }
+
+    pub fn rpc_get_binary_custom_url(&mut self, url: String) {        
+        self.hub.send(Request::GetBinaryRpc(url, Uuid::new_v4()));
     }
 }

@@ -118,7 +118,7 @@ pub struct MsgMeta {
     pub rx: String,
     /// Logic key for message processing
     pub key: String,
-    /// Defines what kind of message is is
+    /// Defines what kind of message it is
     pub kind: MsgKind,
     /// Correlation id is needed for rpc and for message chains
     pub correlation_id: Uuid,

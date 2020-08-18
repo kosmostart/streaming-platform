@@ -1,13 +1,9 @@
-  use std::collections::HashMap;
-use std::io::{Cursor, BufReader, Read};
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use log::*;
 use tokio::runtime::Runtime;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc::{self, UnboundedSender};
-use tokio::prelude::*;
-use serde_json::{Value, from_slice};
-use sp_dto::MsgMeta;    
 use crate::proto::*;
 
 /// Starts the server based on provided ServerConfig struct. Creates new runtime and blocks.
@@ -19,7 +15,7 @@ pub fn start(config: ServerConfig) {
 /// Future for new server start based on provided ServerConfig struct, in case you want to create runtime by yourself.
 pub async fn start_future(config: ServerConfig) -> Result<(), ProcessError> {
     let mut listener = TcpListener::bind(config.host.clone()).await?;
-    let (mut server_tx, mut server_rx) = mpsc::unbounded_channel();
+    let (server_tx, mut server_rx) = mpsc::unbounded_channel();
     tokio::spawn(async move {        
         let mut clients = HashMap::new();
         loop {
@@ -109,10 +105,10 @@ impl ClientState {
     }
 }
 
-async fn auth_stream(stream: &mut TcpStream, client_net_addr: SocketAddr, config: &ServerConfig) -> Result<String, ProcessError> {    
+async fn auth_stream(stream: &mut TcpStream, _client_net_addr: SocketAddr, _config: &ServerConfig) -> Result<String, ProcessError> {    
     let mut state = State::new("Server".to_owned());
     let mut stream_layouts = HashMap::new();
-    let mut auth_stream_layout = None;
+    let auth_stream_layout;
 
     loop {
         match read(&mut state, stream).await? {
@@ -177,16 +173,16 @@ async fn auth_stream(stream: &mut TcpStream, client_net_addr: SocketAddr, config
 }
 
 
-async fn process_read_stream(addr: String, mut stream: TcpStream, client_net_addr: SocketAddr, mut server_tx: UnboundedSender<ServerMsg>) -> Result<(), ProcessError> {    
-    let mut state = State::new("write stream from Server to ".to_owned() + &addr);    
-    let (mut client_tx, mut client_rx) = mpsc::unbounded_channel();
+async fn process_read_stream(addr: String, mut stream: TcpStream, client_net_addr: SocketAddr, server_tx: UnboundedSender<ServerMsg>) -> Result<(), ProcessError> {
+    let mut _state = State::new("write stream from Server to ".to_owned() + &addr);    
+    let (client_tx, client_rx) = mpsc::unbounded_channel();
 
     server_tx.send(ServerMsg::AddClient(addr.clone(), client_net_addr, client_tx))?;    
 
     write_loop(addr, client_rx, &mut stream).await
 }
 
-async fn process_write_stream(addr: String, stream: &mut TcpStream, _client_net_addr: SocketAddr, mut server_tx: UnboundedSender<ServerMsg>) -> Result<(), ProcessError> {    
+async fn process_write_stream(addr: String, stream: &mut TcpStream, _client_net_addr: SocketAddr, server_tx: UnboundedSender<ServerMsg>) -> Result<(), ProcessError> {    
     let mut state = State::new("read stream from Server to ".to_owned() + &addr);        
     let mut client_addrs = HashMap::new();
 

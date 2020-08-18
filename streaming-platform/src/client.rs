@@ -2,13 +2,9 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::error::Error;
 use log::*;
-use futures::{select, pin_mut, future::FutureExt};
-use bytes::{BytesMut, BufMut};
 use tokio::runtime::Runtime;
 use tokio::net::TcpStream;
-use tokio::prelude::*;
 use tokio::sync::mpsc::{self, UnboundedSender, UnboundedReceiver};
-use tokio::time::{timeout, Elapsed};
 use serde_json::{json, Value, from_slice, to_vec};
 use sp_dto::*;
 use crate::proto::*;
@@ -26,15 +22,15 @@ where
     T: Future<Output = ()> + Send,
     R: Future<Output = ()> + Send
 {    
-    let (mut read_tx, mut read_rx) = mpsc::unbounded_channel();
-    let (mut write_tx, mut write_rx) = mpsc::unbounded_channel();
-    let (mut rpc_inbound_tx, mut rpc_inbound_rx) = mpsc::unbounded_channel();
-    let (mut rpc_outbound_tx, mut _rpc_outbound_rx) = mpsc::unbounded_channel();
+    let (read_tx, read_rx) = mpsc::unbounded_channel();
+    let (write_tx, write_rx) = mpsc::unbounded_channel();
+    let (rpc_inbound_tx, mut rpc_inbound_rx) = mpsc::unbounded_channel();
+    let (rpc_outbound_tx, mut _rpc_outbound_rx) = mpsc::unbounded_channel();
     let addr = addr.to_owned();
     let addr2 = addr.to_owned();   
     let addr3 = addr.to_owned();
     let access_key = access_key.to_owned();        
-    let mut write_tx2 = write_tx.clone();    
+    let write_tx2 = write_tx.clone();    
     tokio::spawn(async move {
         let mut rpcs = HashMap::new();        
 
@@ -62,7 +58,7 @@ where
             }
         }
     });    
-    let mut mb = MagicBall::new(addr2, write_tx2, rpc_inbound_tx);
+    let mb = MagicBall::new(addr2, write_tx2, rpc_inbound_tx);
     tokio::spawn(process_stream(config.clone(), mb.clone(), read_rx, restream_rx));
     tokio::spawn(startup(config, mb));
     connect_stream_future(host, addr3, access_key, read_tx, write_rx).await;
@@ -82,19 +78,19 @@ where
     R: Future<Output = ()> + Send,
     P: serde::Serialize, for<'de> P: serde::Deserialize<'de> + Send
 {    
-    let (mut read_tx, mut read_rx) = mpsc::unbounded_channel();
-    let (mut write_tx, mut write_rx) = mpsc::unbounded_channel();
-    let (mut rpc_inbound_tx, mut rpc_inbound_rx) = mpsc::unbounded_channel();
-    let (mut rpc_outbound_tx, mut rpc_outbound_rx) = mpsc::unbounded_channel();
+    let (read_tx, mut read_rx) = mpsc::unbounded_channel();
+    let (write_tx, write_rx) = mpsc::unbounded_channel();
+    let (rpc_inbound_tx, mut rpc_inbound_rx) = mpsc::unbounded_channel();
+    let (rpc_outbound_tx, mut rpc_outbound_rx) = mpsc::unbounded_channel();
 
     let addr = addr.to_owned();
     let addr2 = addr.to_owned();
     let addr3 = addr.to_owned();
     let access_key = access_key.to_owned();
-    let mut rpc_inbound_tx2 = rpc_inbound_tx.clone();
+    let rpc_inbound_tx2 = rpc_inbound_tx.clone();
     
-    let mut write_tx2 = write_tx.clone();
-    let mut write_tx3 = write_tx.clone();
+    let write_tx2 = write_tx.clone();
+    let write_tx3 = write_tx.clone();
 
     tokio::spawn(async move {
         let mut rpcs = HashMap::new();        
@@ -126,7 +122,7 @@ where
     });    
 
     tokio::spawn(async move {
-        let mut mb = MagicBall::new(addr2, write_tx2, rpc_inbound_tx);        
+        let mb = MagicBall::new(addr2, write_tx2, rpc_inbound_tx);        
         tokio::spawn(startup(config.clone(), mb.clone()));
         loop {                        
             let msg = match read_rx.recv().await {
@@ -140,7 +136,7 @@ where
             let config = config.clone();
             let mut write_tx3 = write_tx3.clone();
             match msg {
-                ClientMsg::Message(_, mut msg_meta, payload, attachments_data) => {
+                ClientMsg::Message(_, msg_meta, payload, attachments_data) => {
                     match msg_meta.kind {
                         MsgKind::Event => {          
                             debug!("client got event {}", msg_meta.display());
@@ -232,7 +228,7 @@ async fn auth(target: String, addr: String, access_key: String, stream: &mut Tcp
 }
 
 
-async fn connect_stream_future(host: &str, addr: String, access_key: String, mut read_tx: UnboundedSender<ClientMsg>, mut write_rx: UnboundedReceiver<StreamUnit>) {    
+async fn connect_stream_future(host: &str, addr: String, access_key: String, read_tx: UnboundedSender<ClientMsg>, write_rx: UnboundedReceiver<StreamUnit>) {    
     let server = "Server".to_owned();
 
     let mut write_stream = TcpStream::connect(host).await.expect("connection to host failed");
@@ -246,7 +242,7 @@ async fn connect_stream_future(host: &str, addr: String, access_key: String, mut
     info!("{:?}", res);
 }
 
-async fn connect_full_message_future(host: &str, addr: String, access_key: String, mut read_tx: UnboundedSender<ClientMsg>, mut write_rx: UnboundedReceiver<StreamUnit>) {    
+async fn connect_full_message_future(host: &str, addr: String, access_key: String, read_tx: UnboundedSender<ClientMsg>, write_rx: UnboundedReceiver<StreamUnit>) {    
     let server = "Server".to_owned();
     
     let mut write_stream = TcpStream::connect(host).await.expect("connection to host failed");
@@ -260,7 +256,7 @@ async fn connect_full_message_future(host: &str, addr: String, access_key: Strin
     info!("{:?}", res);
 }
 
-async fn process_message_stream(addr: String, mut write_stream: TcpStream, mut read_stream: TcpStream, mut read_tx: UnboundedSender<ClientMsg>, mut write_rx: UnboundedReceiver<StreamUnit>) -> Result<(), ProcessError> {    
+async fn process_message_stream(addr: String, mut write_stream: TcpStream, mut read_stream: TcpStream, read_tx: UnboundedSender<ClientMsg>, write_rx: UnboundedReceiver<StreamUnit>) -> Result<(), ProcessError> {
     //let (auth_msg_meta, auth_payload, auth_attachments) = read_full(&mut socket_read).await?;
     //let auth_payload: Value = from_slice(&auth_payload)?;    
 
@@ -299,7 +295,7 @@ async fn process_message_stream(addr: String, mut write_stream: TcpStream, mut r
     }
 }
 
-async fn process_full_message(addr: String, mut write_stream: TcpStream, mut read_stream: TcpStream, mut read_tx: UnboundedSender<ClientMsg>, mut write_rx: UnboundedReceiver<StreamUnit>) -> Result<(), ProcessError> {    
+async fn process_full_message(addr: String, mut write_stream: TcpStream, mut read_stream: TcpStream, read_tx: UnboundedSender<ClientMsg>, write_rx: UnboundedReceiver<StreamUnit>) -> Result<(), ProcessError> {    
     //let (auth_msg_meta, auth_payload, auth_attachments) = read_full(&mut socket_read).await?;
     //let auth_payload: Value = from_slice(&auth_payload)?;    
 

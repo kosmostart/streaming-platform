@@ -45,7 +45,7 @@ impl Worker {
     pub fn get_cb(&self, correlation_id: Uuid, client_addr: String) -> yew::Callback<fetch::Response<Result<Vec<u8>, Error>>> {
 
         self.link.callback(move |response: fetch::Response<Result<Vec<u8>, Error>>| {            
-            let (meta, data) = response.into_parts();            
+            let (_, data) = response.into_parts();
             match data {
                 Ok(data) => Msg::RpcReady(data, correlation_id, client_addr.clone()),
                 Err(err) => Msg::FetchError(err)
@@ -55,7 +55,7 @@ impl Worker {
     pub fn get_string_cb(&self, correlation_id: Uuid, client_addr: String) -> yew::Callback<fetch::Response<Result<String, Error>>> {
 
         self.link.callback(move |response: fetch::Response<Result<String, Error>>| {            
-            let (meta, data) = response.into_parts();            
+            let (_, data) = response.into_parts();
             match data {
                 Ok(data) => Msg::StringRpcReady(data, correlation_id, client_addr.clone()),
                 Err(err) => Msg::FetchError(err)
@@ -65,7 +65,7 @@ impl Worker {
     pub fn get_binary_cb(&self, correlation_id: Uuid, client_addr: String) -> yew::Callback<fetch::Response<Result<Vec<u8>, Error>>> {
 
         self.link.callback(move |response: fetch::Response<Result<Vec<u8>, Error>>| {
-            let (meta, data) = response.into_parts();            
+            let (_, data) = response.into_parts();
             match data {
                 Ok(data) => Msg::BinaryRpcReady(data, correlation_id, client_addr.clone()),
                 Err(err) => Msg::FetchError(err)

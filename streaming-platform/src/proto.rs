@@ -1,9 +1,7 @@
 use std::collections::HashMap;
-use std::pin::Pin;
 use std::error::Error;
 use std::fmt::{Debug, Display};
 use std::option;
-use std::sync::atomic::{AtomicU32, Ordering};
 use std::io::Cursor;
 use std::net::SocketAddr;
 use std::hash::Hasher;
@@ -11,7 +9,6 @@ use std::time::Duration;
 use log::*;
 use rand::random;
 use bytes::{Buf, BytesMut, BufMut};
-use tokio::io::Take;
 use tokio::net::TcpStream;
 use tokio::sync::{mpsc::{UnboundedSender, UnboundedReceiver, error::{SendError, TrySendError}}, oneshot};
 use tokio::time::{timeout, Elapsed};
@@ -182,7 +179,7 @@ pub async fn read(state: &mut State, socket_read: &mut TcpStream) -> Result<Read
         Step::MsgMeta => {
             let mut buf = vec![];
             let mut adapter = socket_read.take(unit_size as u64);
-            let n = adapter.read_to_end(&mut buf).await?;
+            let _n = adapter.read_to_end(&mut buf).await?;
             let msg_meta: MsgMeta = from_slice(&buf)?;            
             for attachment in msg_meta.attachments.iter() {
                 stream_state.attachments.push(attachment.size);
@@ -274,15 +271,12 @@ pub async fn read(state: &mut State, socket_read: &mut TcpStream) -> Result<Read
                 stream_state.step = Step::Attachment(index, attachment_size, bytes_read);
                 Ok(ReadResult::AttachmentData(stream_id, index, n, data_buf))
             } else if bytes_read == attachment_size {                
-                match stream_state.attachments.len() {
-                    index => {                        
-                        let _ = state.stream_states.remove(&stream_id);
-                        Ok(ReadResult::MessageFinished(stream_id, MessageFinishBytes::Attachment(index, n, data_buf)))
-                    }
-                    _ => {
-                        stream_state.step = Step::Attachment(index + 1, stream_state.attachments[index + 1], 0);
-                        Ok(ReadResult::AttachmentFinished(stream_id, index, n, data_buf))
-                    }
+                if stream_state.attachments.len() == index {
+                    let _ = state.stream_states.remove(&stream_id);
+                    Ok(ReadResult::MessageFinished(stream_id, MessageFinishBytes::Attachment(index, n, data_buf)))
+                } else {
+                    stream_state.step = Step::Attachment(index + 1, stream_state.attachments[index + 1], 0);
+                    Ok(ReadResult::AttachmentFinished(stream_id, index, n, data_buf))                
                 }              
             } else if bytes_read > attachment_size {
                 error!("read error {:#?}, stream_id {}", ProcessError::BytesReadAmountExceededAttachmentSize, stream_id);
@@ -913,7 +907,7 @@ impl MagicBall {
         write(self.get_stream_id(), buf, msg_meta_size, payload_size, attachments_sizes, &mut self.write_tx).await?;
         debug!("proxy_rpc write attempt succeeded");
 
-        let (mut msg_meta, mut payload, mut attachments_data) = timeout(Duration::from_millis(RPC_TIMEOUT_MS_AMOUNT), rpc_rx).await??;
+        let (mut msg_meta, payload, attachments_data) = timeout(Duration::from_millis(RPC_TIMEOUT_MS_AMOUNT), rpc_rx).await??;
 
         msg_meta.rx = initiator_tx;
 
@@ -989,31 +983,31 @@ impl From<serde_json::Error> for ProcessError {
 }
 
 impl From<option::NoneError> for ProcessError {
-	fn from(e: option::NoneError) -> ProcessError {
+	fn from(_: option::NoneError) -> ProcessError {
 		ProcessError::NoneError
 	}
 }
 
 impl From<SendError<StreamUnit>> for ProcessError {
-	fn from(e: SendError<StreamUnit>) -> ProcessError {
+	fn from(_: SendError<StreamUnit>) -> ProcessError {
 		ProcessError::SendStreamUnitError
 	}
 }
 
 impl From<SendError<ServerMsg>> for ProcessError {
-	fn from(e: SendError<ServerMsg>) -> ProcessError {
+	fn from(_: SendError<ServerMsg>) -> ProcessError {
 		ProcessError::SendServerMsgError
 	}
 }
 
 impl From<SendError<ClientMsg>> for ProcessError {
-	fn from(e: SendError<ClientMsg>) -> ProcessError {
+	fn from(_: SendError<ClientMsg>) -> ProcessError {
 		ProcessError::SendClientMsgError
 	}
 }
 
 impl From<SendError<RpcMsg>> for ProcessError {
-	fn from(e: SendError<RpcMsg>) -> ProcessError {
+	fn from(_: SendError<RpcMsg>) -> ProcessError {
 		ProcessError::SendRpcMsgError
 	}
 }
@@ -1025,31 +1019,31 @@ impl From<oneshot::error::RecvError> for ProcessError {
 }
 
 impl From<Elapsed> for ProcessError {
-	fn from(e: Elapsed) -> ProcessError {
+	fn from(_: Elapsed) -> ProcessError {
 		ProcessError::Timeout
 	}
 }
 
 impl From<TrySendError<ServerMsg>> for ProcessError {
-	fn from(e: TrySendError<ServerMsg>) -> ProcessError {
+	fn from(_: TrySendError<ServerMsg>) -> ProcessError {
 		ProcessError::TrySendServerMsg
 	}
 }
 
 impl From<TrySendError<ClientMsg>> for ProcessError {
-	fn from(e: TrySendError<ClientMsg>) -> ProcessError {
+	fn from(_: TrySendError<ClientMsg>) -> ProcessError {
 		ProcessError::TrySendClientMsg
 	}
 }
 
 impl From<TrySendError<StreamUnit>> for ProcessError {
-	fn from(e: TrySendError<StreamUnit>) -> ProcessError {
+	fn from(_: TrySendError<StreamUnit>) -> ProcessError {
 		ProcessError::TrySendStreamUnit
 	}
 }
 
 impl From<TrySendError<RpcMsg>> for ProcessError {
-	fn from(e: TrySendError<RpcMsg>) -> ProcessError {
+	fn from(_: TrySendError<RpcMsg>) -> ProcessError {
 		ProcessError::TrySendRpcMsg
 	}
 }

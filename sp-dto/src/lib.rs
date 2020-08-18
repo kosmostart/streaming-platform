@@ -85,6 +85,8 @@ pub enum Response<T> {
     Full(T, Vec<(String, u64)>, Vec<u8>)
 }
 
+
+/// Helper function for creating responses.
 pub fn resp<T>(payload: T) -> Result<Response<T>, Box<dyn std::error::Error>> {
     Ok(Response::Simple(payload))
 }

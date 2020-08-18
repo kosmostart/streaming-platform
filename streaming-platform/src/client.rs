@@ -13,6 +13,14 @@ use serde_json::{json, Value, from_slice, to_vec};
 use sp_dto::*;
 use crate::proto::*;
 
+/// Future for stream based client based on provided config.
+/// "addr" value will be used as address for endpoint, "host" value - network addr for the server (in host:port format)
+/// "access_key" value will be send for optional authorization, more information about this feature will be provided later.
+/// process_event is used for processing incoming message, which are marked as events via message kind.
+/// process_rpc is used for processing incoming message, which are marked as rpc request via message kind.
+/// startup is executed on the start of this function.
+/// restream_rx can be used for restreaming data somewhere else, for example returning data for incoming web request
+/// The protocol message format is in sp-dto crate.
 pub async fn stream_mode<T: 'static, R: 'static>(host: &str, addr: &str, access_key: &str, process_stream: ProcessStream<T>, startup: Startup<R>, config: HashMap<String, String>, restream_rx: Option<UnboundedReceiver<RestreamMsg>>)
 where 
     T: Future<Output = ()> + Send,
@@ -60,6 +68,13 @@ where
     connect_stream_future(host, addr3, access_key, read_tx, write_rx).await;
 }
 
+/// Future for message based client based on provided config.
+/// "addr" value will be used as address for endpoint, "host" value - network addr for the server (in host:port format)
+/// "access_key" value will be send for optional authorization, more information about this feature will be provided later.
+/// process_stream is used for stream of incoming data processing.
+/// startup is executed on the start of this function.
+/// restream_rx can be used for restreaming data somewhere else, for example returning data for incoming web request
+/// The protocol message format is in sp-dto crate.
 pub async fn full_message_mode<P: 'static, T: 'static, Q: 'static, R: 'static>(host: &str, addr: &str, access_key: &str, process_event: ProcessEvent<T, P>, process_rpc: ProcessRpc<Q, P>, startup: Startup<R>, config: HashMap<String, String>)
 where 
     T: Future<Output = Result<(), Box<dyn Error>>> + Send,
@@ -352,18 +367,31 @@ async fn process_full_message(addr: String, mut write_stream: TcpStream, mut rea
     }    
 }
 
+/// Starts a stream based client based on provided config. Creates new runtime and blocks.
+/// Config must have "addr" key, this will be used as address for endpoint, and "host" key - network addr for the server (in host:port format)
+/// Config must have "access_key" key, this will be send for optional authorization, more information about this feature will be provided later.
+/// process_stream is used for stream of incoming data processing.
+/// startup is executed on the start of this function.
+/// restream_rx can be used for restreaming data somewhere else, for example returning data for incoming web request
+/// The protocol message format is in sp-dto crate.
 pub fn start_stream<T: 'static, R: 'static>(config: HashMap<String, String>, process_stream: ProcessStream<T>, startup: Startup<R>, restream_rx: Option<UnboundedReceiver<RestreamMsg>>) 
 where 
     T: Future<Output = ()> + Send,
     R: Future<Output = ()> + Send
 {        
     let addr = config.get("addr").expect("missing addr config value").to_owned();
-    let host = config.get("host").expect("missing host config value").to_owned();
-    let access_key = "";
+    let host = config.get("host").expect("missing host config value").to_owned();    
+    let access_key = config.get("access_key").expect("missing access_key config value").to_owned();
     let mut rt = Runtime::new().expect("failed to create runtime");
-    rt.block_on(stream_mode(&host, &addr, access_key, process_stream, startup, config, restream_rx));
+    rt.block_on(stream_mode(&host, &addr, &access_key, process_stream, startup, config, restream_rx));
 }
 
+/// Starts a message based client based on provided config. Creates new runtime and blocks.
+/// Config must have "addr" key, this will be used as address for endpoint, and "host" key - network addr for the server (in host:port format)
+/// process_event is used for processing incoming message, which are marked as events via message kind.
+/// process_rpc is used for processing incoming message, which are marked as rpc request via message kind.
+/// startup is executed on the start of this function.
+/// The protocol message format is in sp-dto crate.
 pub fn start<T: 'static, Q: 'static, R: 'static>(config: HashMap<String, String>, process_event: ProcessEvent<T, Value>, process_rpc: ProcessRpc<Q, Value>, startup: Startup<R>) 
 where 
     T: Future<Output = Result<(), Box<dyn Error>>> + Send,
@@ -372,7 +400,7 @@ where
 {    
     let addr = config.get("addr").expect("missing addr config value").to_owned();
     let host = config.get("host").expect("missing host config value").to_owned();
-    let access_key = "";
+    let access_key = config.get("access_key").expect("missing access_key config value").to_owned();
     let mut rt = Runtime::new().expect("failed to create runtime");
-    rt.block_on(full_message_mode(&host, &addr, access_key, process_event, process_rpc, startup, config));
+    rt.block_on(full_message_mode(&host, &addr, &access_key, process_event, process_rpc, startup, config));
 }

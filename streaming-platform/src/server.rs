@@ -10,11 +10,13 @@ use serde_json::{Value, from_slice};
 use sp_dto::MsgMeta;    
 use crate::proto::*;
 
+/// Starts the server based on provided ServerConfig struct. Creates new runtime and blocks.
 pub fn start(config: ServerConfig) {
     let mut rt = Runtime::new().expect("failed to create runtime"); 
     rt.block_on(start_future(config));
 }
 
+/// Future for new server start based on provided ServerConfig struct, in case you want to create runtime by yourself.
 pub async fn start_future(config: ServerConfig) -> Result<(), ProcessError> {
     let mut listener = TcpListener::bind(config.host.clone()).await?;
     let (mut server_tx, mut server_rx) = mpsc::unbounded_channel();

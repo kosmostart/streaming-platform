@@ -278,12 +278,14 @@ impl Agent for Worker {
     }
 }
 
+/// This struct is attached to components and used for communication between components and also a sever.
 pub struct Hub {
     hub: Box<dyn Bridge<Worker>>,
     pub spec: CmpSpec,
     pub cfg: HubCfg    
 }
 
+/// Configuration for various communication scenarios.
 #[derive(Clone, PartialEq)]
 pub struct HubCfg {
     pub app_addr: Option<String>,
@@ -333,6 +335,7 @@ impl Hub {
         self.cfg = cfg;
         self.hub.send(Request::Auth(self.spec.addr.clone()));
     }
+    /// Sends rpc request to the server
     pub fn rpc(&mut self, addr: &str, key: &str, payload: Value) {
         let route = Route {
             source: Participator::Component(self.spec.addr.clone(), self.cfg.app_addr.clone(), self.cfg.client_addr.clone()),
@@ -343,6 +346,7 @@ impl Hub {
         let url = self.cfg.fetch_url.clone().expect("fetch host is empty on server rpc");
         self.hub.send(Request::Rpc(url, correlation_id, dto));
     }
+    /// Sends rpc request to the server, but result will forwarded to component with client_addr
     pub fn rpc_with_client(&mut self, addr: &str, key: &str, payload: Value, client_addr: String) {
         let route = Route {
             source: Participator::Component(self.spec.addr.clone(), self.cfg.app_addr.clone(), self.cfg.client_addr.clone()),
@@ -353,6 +357,7 @@ impl Hub {
         let host = self.cfg.fetch_url.clone().expect("fetch host is empty on server rpc");
         self.hub.send(Request::Rpc(host, correlation_id, dto));
     }
+    /// Sends rpc request to the server, iserting domain value form config in to target addr.
     pub fn rpc_with_domain(&mut self, addr: &str, key: &str, payload: Value) {
         match &self.cfg.domain {
             Some(domain) => {
@@ -370,6 +375,7 @@ impl Hub {
             None => panic!(format!("domain is empty on server rpc with domain call {}", self.spec.addr))
         }        
     }
+    /// Sends rpc request to the server, iserting url segment to the resulting url.
     pub fn rpc_with_segment(&mut self, segment: &str, addr: &str, key: &str, payload: Value) {
         let route = Route {
             source: Participator::Component(self.spec.addr.clone(), self.cfg.app_addr.clone(), self.cfg.client_addr.clone()),
@@ -380,6 +386,7 @@ impl Hub {
         let url = self.cfg.host.clone().expect("fetch host is empty on server rpc") + "/" + segment + "/";
         self.hub.send(Request::Rpc(url, correlation_id, dto));
     }
+    /// Sends message marked as event to other component.
     pub fn send_event_local(&mut self, addr: &str, key: &str, payload: Value) {
         self.hub.send(Request::Msg(
             MsgMeta {
@@ -401,6 +408,7 @@ impl Hub {
             payload
         ));
     }
+    /// Sends message marked as rpc request to other component.
     pub fn send_rpc_local(&mut self, rx: &str, key: &str, payload: Value) {
         self.hub.send(Request::Msg(
             MsgMeta {
@@ -421,7 +429,8 @@ impl Hub {
             },
             payload
         ));
-    }    
+    }
+    /// Forwards current message to other component.
     pub fn proxy_msg_local(&mut self, rx: &str, mut msg_meta: MsgMeta, payload: Value) {
         msg_meta.route.points.push(Participator::Component(self.spec.addr.clone(), self.cfg.app_addr.clone(), self.cfg.client_addr.clone()));
 
@@ -441,6 +450,7 @@ impl Hub {
             payload
         ));
     }
+    /// Sends message marked as event to component with addr held inside tx variable of component spec (which is stored in a hub struct).
     pub fn send_event_tx(&mut self, key: &str, payload: Value) {
         self.hub.send(Request::Msg(
             MsgMeta {
@@ -461,7 +471,8 @@ impl Hub {
             }, 
             payload
         ));
-    }    
+    }
+    /// Sends message marked as rpc request to component with addr held inside tx variable of component spec (which is stored in a hub struct).
     pub fn send_rpc_tx(&mut self, key: &str, payload: Value) {
         self.hub.send(Request::Msg(
             MsgMeta {
@@ -482,7 +493,8 @@ impl Hub {
             },
             payload
         ));
-    }    
+    }
+    /// Forwards current message to component with addr held inside tx variable of component spec (which is stored in a hub struct).
     pub fn proxy_msg_tx(&mut self, mut msg_meta: MsgMeta, payload: Value) {
         msg_meta.route.points.push(Participator::Component(self.spec.addr.clone(), self.cfg.app_addr.clone(), self.cfg.client_addr.clone()));
         self.hub.send(Request::Msg(
@@ -502,28 +514,34 @@ impl Hub {
         ));
     }
 
+    /// Function for making request without using protocol described in sp-dto crate. Simple wrapper around fetch API.
     pub fn rpc_post_string(&mut self, payload: String) {
         let url = self.cfg.fetch_url.clone().expect("fetch host is empty on server rpc");
         self.hub.send(Request::PostStringRpc(url, Uuid::new_v4(), payload));
     }
 
+    /// Function for making request without using protocol described in sp-dto crate. Simple wrapper around fetch API.
     pub fn rpc_post_binary(&mut self, payload: Vec<u8>) {
         let url = self.cfg.fetch_url.clone().expect("fetch host is empty on server rpc");
         self.hub.send(Request::PostBinaryRpc(url, Uuid::new_v4(), payload));
     }
 
+    /// Function for making request without using protocol described in sp-dto crate. Simple wrapper around fetch API.
     pub fn rpc_post_string_custom_url(&mut self, url: String, payload: String) {        
         self.hub.send(Request::PostStringRpc(url, Uuid::new_v4(), payload));
     }
 
+    /// Function for making request without using protocol described in sp-dto crate. Simple wrapper around fetch API.
     pub fn rpc_post_binary_custom_url(&mut self, url: String, payload: Vec<u8>) {        
         self.hub.send(Request::PostBinaryRpc(url, Uuid::new_v4(), payload));
     }
 
+    /// Function for making request without using protocol described in sp-dto crate. Simple wrapper around fetch API.
     pub fn rpc_get_string_custom_url(&mut self, url: String) {
         self.hub.send(Request::GetStringRpc(url, Uuid::new_v4()));
     }
 
+    /// Function for making request without using protocol described in sp-dto crate. Simple wrapper around fetch API.
     pub fn rpc_get_binary_custom_url(&mut self, url: String) {        
         self.hub.send(Request::GetBinaryRpc(url, Uuid::new_v4()));
     }

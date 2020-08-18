@@ -2,7 +2,20 @@ use std::{fmt::Debug, collections::HashMap};
 use std::io::BufReader;
 use std::io::prelude::*;
 use streaming_platform::ServerConfig;
-pub use streaming_platform;
+use streaming_platform::server;
+
+pub fn main() {
+    env_logger::init();
+
+    let config = get_config_from_str();
+
+    server::start(config);
+}
+
+pub fn get_config_from_str() -> ServerConfig {    
+    toml::from_str(r#"host = "localhost:11001""#)
+       .expect("failed to deserialize config")
+}
 
 pub fn get_config_from_file() -> ServerConfig {
     let config_path = std::env::args().nth(1)
@@ -27,15 +40,4 @@ pub fn get_config_from_arg() -> ServerConfig {
 
      toml::from_str(&config)
         .expect("failed to deserialize config")
-}
-
-pub fn get_config_from_str() -> ServerConfig {    
-     toml::from_str(r#"host = "localhost:10001""#)
-        .expect("failed to deserialize config")
-}
-
-pub fn main() {    
-    let config = get_config_from_str();
-
-    streaming_platform::start(config);
 }

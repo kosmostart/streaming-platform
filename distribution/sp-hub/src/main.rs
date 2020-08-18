@@ -1,7 +1,7 @@
 use std::fs::File;
 use std::io::BufReader;
 use std::io::prelude::*;
-use streaming_platform::{ServerConfig, start};
+use streaming_platform::{ServerConfig, server::start};
 
 pub fn get_config_from_arg() -> ServerConfig {
     let config_path = std::env::args().nth(1)

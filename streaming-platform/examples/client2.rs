@@ -1,20 +1,31 @@
 use std::collections::HashMap;
-use serde_json::{Value, json};
-use streaming_platform::{magic_ball, Mode, MagicBall, sp_dto::MsgMeta};
+use serde_json::{json, Value, from_value};
+use streaming_platform::{client, MagicBall, sp_dto::{MsgMeta, Message, Response, resp}};
 
-fn main() {
-    let host = "127.0.0.1:60000";
-    let addr = "SuperService2";
-    let access_key = "";
-    let config = HashMap::new();
-    let mode = Mode::FullMessageSimple(process_event, process_rpc_request);
-
-    magic_ball(config, host, addr, access_key, mode, config);
+pub async fn process_event(config: HashMap<String, String>, mut mb: MagicBall, msg: Message<Value>) -> Result<(), Box<dyn std::error::Error>>  {
+    Ok(())
 }
 
-fn process_event(config: &HashMap<String, String>, mb: &mut MagicBall, msg_meta: &MsgMeta, payload: Value, attachments: Vec<u8>) {
+pub async fn process_rpc(config: HashMap<String, String>, mut mb: MagicBall, msg: Message<Value>) -> Result<Response<Value>, Box<dyn std::error::Error>> {    
+    resp(json!({}))
+}
 
+pub async fn startup(config: HashMap<String, String>, mut mb: MagicBall) {
+    let msg = mb.rpc::<_, Value>("Client", "Hi", json!({
+        "data": "hello"
+    })).await;
+
+    println!("{:#?}", msg);	    
 }
-fn process_rpc_request(config: &HashMap<String, String>, mb: &mut MagicBall, msg_meta: &MsgMeta, payload: Value, attachments: Vec<u8>) -> Value {
-    json!({})
-}
+
+pub fn main() {
+    env_logger::init();
+
+    let mut config = HashMap::new();
+
+    config.insert("addr".to_owned(), "Client2".to_owned());
+    config.insert("host".to_owned(), "localhost:11001".to_owned());
+    config.insert("access_key".to_owned(), "".to_owned());
+ 
+    client::start(config, process_event, process_rpc, startup);
+ }

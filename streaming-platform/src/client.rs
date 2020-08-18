@@ -4,6 +4,7 @@ use std::error::Error;
 use log::*;
 use futures::{select, pin_mut, future::FutureExt};
 use bytes::{BytesMut, BufMut};
+use tokio::runtime::Runtime;
 use tokio::net::TcpStream;
 use tokio::prelude::*;
 use tokio::sync::mpsc::{self, UnboundedSender, UnboundedReceiver};
@@ -349,4 +350,29 @@ async fn process_full_message(addr: String, mut write_stream: TcpStream, mut rea
             }
         };
     }    
+}
+
+pub fn start_stream<T: 'static, R: 'static>(config: HashMap<String, String>, process_stream: ProcessStream<T>, startup: Startup<R>, restream_rx: Option<UnboundedReceiver<RestreamMsg>>) 
+where 
+    T: Future<Output = ()> + Send,
+    R: Future<Output = ()> + Send
+{        
+    let addr = config.get("addr").expect("missing addr config value").to_owned();
+    let host = config.get("host").expect("missing host config value").to_owned();
+    let access_key = "";
+    let mut rt = Runtime::new().expect("failed to create runtime");
+    rt.block_on(stream_mode(&host, &addr, access_key, process_stream, startup, config, restream_rx));
+}
+
+pub fn start<T: 'static, Q: 'static, R: 'static>(config: HashMap<String, String>, process_event: ProcessEvent<T, Value>, process_rpc: ProcessRpc<Q, Value>, startup: Startup<R>) 
+where 
+    T: Future<Output = Result<(), Box<dyn Error>>> + Send,
+    Q: Future<Output = Result<Response<Value>, Box<dyn Error>>> + Send,
+    R: Future<Output = ()> + Send
+{    
+    let addr = config.get("addr").expect("missing addr config value").to_owned();
+    let host = config.get("host").expect("missing host config value").to_owned();
+    let access_key = "";
+    let mut rt = Runtime::new().expect("failed to create runtime");
+    rt.block_on(full_message_mode(&host, &addr, access_key, process_event, process_rpc, startup, config));
 }

@@ -1,22 +1,41 @@
-use std::io::{Cursor, BufReader, Read};
-use streaming_platform::{start, Config};
+use std::{fmt::Debug, collections::HashMap};
+use std::io::BufReader;
+use std::io::prelude::*;
+use streaming_platform::ServerConfig;
+pub use streaming_platform;
 
-fn main() {
+pub fn get_config_from_file() -> ServerConfig {
     let config_path = std::env::args().nth(1)
-        .expect("path to config file not passed as argument");
+    .expect("path to config file not passed as argument");
 
     let file = std::fs::File::open(config_path)
         .expect("failed to open config");
 
     let mut buf_reader = BufReader::new(file);
+    let mut config = String::new();
 
-    let mut config_string = String::new();
-
-    buf_reader.read_to_string(&mut config_string)
+    buf_reader.read_to_string(&mut config)
         .expect("failed to read config");
 
-    let config: Config = toml::from_str(&config_string)
-        .expect("failed to deserialize config");
+     toml::from_str(&config)
+        .expect("failed to deserialize config")
+}
 
-    start(config);
+pub fn get_config_from_arg() -> ServerConfig {
+    let config = std::env::args().nth(1)
+    .expect("config not passed as argument");    
+
+     toml::from_str(&config)
+        .expect("failed to deserialize config")
+}
+
+pub fn get_config_from_str() -> ServerConfig {    
+     toml::from_str(r#"host = "localhost:10001""#)
+        .expect("failed to deserialize config")
+}
+
+pub fn main() {    
+    let config = get_config_from_str();
+
+    streaming_platform::start(config);
 }

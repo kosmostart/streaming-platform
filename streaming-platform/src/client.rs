@@ -29,7 +29,7 @@ where
     let (mut read_tx, mut read_rx) = mpsc::unbounded_channel();
     let (mut write_tx, mut write_rx) = mpsc::unbounded_channel();
     let (mut rpc_inbound_tx, mut rpc_inbound_rx) = mpsc::unbounded_channel();
-    let (mut rpc_outbound_tx, mut rpc_outbound_rx) = mpsc::unbounded_channel();
+    let (mut rpc_outbound_tx, mut _rpc_outbound_rx) = mpsc::unbounded_channel();
     let addr = addr.to_owned();
     let addr2 = addr.to_owned();   
     let addr3 = addr.to_owned();

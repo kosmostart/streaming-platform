@@ -56,13 +56,6 @@ pub fn get_stream_id_onetime(addr: &str) -> u64 {
     hasher.finish()
 }
 
-#[derive(Debug, Clone)]
-pub enum ClientKind {
-    App,
-    Service,
-    Hub
-}
-
 /// The result of reading function
 pub enum ReadResult {    
     /// Message data stream is prepended with MsgMeta struct
@@ -632,7 +625,8 @@ impl MagicBall {
         let addr_bytes = addr.as_bytes();
         let addr_bytes_len = addr_bytes.len();
         hash_buf.put(addr_bytes);
-        let mut hasher = get_hasher();
+        let hasher = get_hasher();
+        
         MagicBall {            
             addr,
             auth_token: None,

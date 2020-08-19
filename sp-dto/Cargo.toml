@@ -2,6 +2,15 @@
 name = "sp-dto"
 version = "0.1.0"
 authors = ["Maximb <sprayrules@gmail.com>"]
+license = "MIT"
+readme = "README.md"
+keywords = ["message", "broker", "stream"]
+categories = ["network-programming", "asynchronous"]
+repository = "https://github.com/astromq/streaming-platform/sp-dto"
+documentation = "https://docs.rs/sp-dto"
+description = """
+Message format and types for data transfer used by https://github.com/astromq/streaming-platform/streaming-platform
+"""
 edition = "2018"
 
 [dependencies]

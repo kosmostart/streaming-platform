@@ -1,0 +1,1 @@
+Message format and types for data transfer used by https://github.com/astromq/streaming-platform

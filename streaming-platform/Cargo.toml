@@ -2,6 +2,15 @@
 name = "streaming-platform"
 version = "0.1.0"
 authors = ["Maximb <sprayrules@gmail.com>"]
+license = "MIT"
+readme = "README.md"
+keywords = ["message", "broker", "stream"]
+categories = ["network-programming", "asynchronous"]
+repository = "https://github.com/astromq/streaming-platform/streaming-platform"
+documentation = "https://docs.rs/streaming-platform"
+description = """
+Data streaming platform and message broker with concurrent data transfer capabilities.
+"""
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

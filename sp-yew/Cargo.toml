@@ -2,6 +2,15 @@
 name = "sp-yew"
 version = "0.1.0"
 authors = ["Maximb <sprayrules@gmail.com>"]
+license = "MIT"
+readme = "README.md"
+keywords = ["yew", "wasm"]
+categories = ["web-programming", "wasm"]
+repository = "https://github.com/astromq/streaming-platform/sp-yew"
+documentation = "https://docs.rs/sp-yew"
+description = """
+Component communication tool for Yew framework.
+"""
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

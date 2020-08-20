@@ -6,7 +6,7 @@ license = "MIT"
 readme = "README.md"
 keywords = ["message", "broker", "stream"]
 categories = ["network-programming", "asynchronous"]
-repository = "https://github.com/astromq/streaming-platform/streaming-platform"
+repository = "https://github.com/astromq/streaming-platform"
 documentation = "https://docs.rs/streaming-platform"
 description = """
 Data streaming platform and message broker with concurrent data transfer capabilities.

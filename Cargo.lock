@@ -1011,7 +1011,7 @@ version = "0.7.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "234f71a15de2288bcb7e3b6515828d22af7ec8598ee6d24c3b526fa0a80b67a0"
 dependencies = [
- "siphasher 0.2.3",
+ "siphasher",
  "unicase 1.4.2",
 ]
 
@@ -1467,12 +1467,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b8de496cf83d4ed58b6be86c3a275b8602f6ffe98d3024a869e124147a9a3ac"
 
 [[package]]
-name = "siphasher"
-version = "0.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fa8f3741c7372e75519bd9346068370c9cdaabcc1f9599cbcf2a2719352286b7"
-
-[[package]]
 name = "slab"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1500,6 +1494,19 @@ dependencies = [
 [[package]]
 name = "sp-dto"
 version = "0.1.0"
+dependencies = [
+ "bytes",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
+name = "sp-dto"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c8c7709c29d11e59ea1424b53d67003da3baf9deaf692488385a57163097c1c1"
 dependencies = [
  "bytes",
  "serde",
@@ -1581,7 +1588,7 @@ dependencies = [
  "serde",
  "serde_derive",
  "serde_json",
- "sp-dto",
+ "sp-dto 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "yew",
 ]
 
@@ -1669,8 +1676,8 @@ dependencies = [
  "serde",
  "serde_derive",
  "serde_json",
- "siphasher 0.3.3",
- "sp-dto",
+ "siphasher",
+ "sp-dto 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio",
  "toml",
 ]

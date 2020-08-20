@@ -17,9 +17,9 @@ edition = "2018"
 
 [dependencies]
 
-anyhow = "*"
-serde = "*"
-serde_json = "*"
-serde_derive = "*"
-yew = { version = "*", features = ["web_sys"] }
-sp-dto = { path = "../sp-dto" }
+anyhow = "1.0"
+serde = "1.0"
+serde_derive = "1.0"
+serde_json = "1.0"
+yew = { version = "0.17", features = ["web_sys"] }
+sp-dto = "0.1"

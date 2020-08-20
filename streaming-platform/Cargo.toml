@@ -36,4 +36,4 @@ default = []
 http = ["hyper"]
 
 [dev-dependencies]
-env_logger = "*"
+env_logger = "0.7"

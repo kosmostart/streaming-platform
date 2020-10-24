@@ -1,20 +1,33 @@
 use std::{fmt::Debug, collections::HashMap};
 use std::io::BufReader;
 use std::io::prelude::*;
-use streaming_platform::ServerConfig;
-use streaming_platform::server;
+use log::*;
+use streaming_platform::{server, ServerConfig};
 
 pub fn main() {
     env_logger::init();
 
     let config = get_config_from_str();
+    let mut subscribes = HashMap::new();
 
-    server::start(config);
+    subscribes.insert("HiRpc".to_owned(), vec![
+        "Client1".to_owned()        
+    ]);
+
+    subscribes.insert("HiEvent".to_owned(), vec![
+        "Client1".to_owned(),
+        "Client2".to_owned()
+    ]);
+
+    info!("{:#?}", config);
+
+    server::start(config, subscribes);
 }
 
 pub fn get_config_from_str() -> ServerConfig {    
-    toml::from_str(r#"host = "localhost:11001""#)
-       .expect("failed to deserialize config")
+    toml::from_str(r#"
+        host = "localhost:11001"        
+    "#).expect("failed to deserialize config")
 }
 
 pub fn get_config_from_file() -> ServerConfig {

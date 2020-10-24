@@ -8,14 +8,14 @@ use std::hash::Hasher;
 use std::time::Duration;
 use log::*;
 use rand::random;
-use bytes::{Buf, BytesMut, BufMut};
 use tokio::net::TcpStream;
 use tokio::sync::{mpsc::{UnboundedSender, UnboundedReceiver, error::{SendError, TrySendError}}, oneshot};
-use tokio::time::{timeout, Elapsed};
+use tokio::time::{timeout, error::Elapsed};
 use tokio::prelude::*;
 use serde_json::{from_slice, Value, to_vec};
 use serde_derive::{Deserialize};
 use siphasher::sip::SipHasher24;
+use sp_dto::bytes::{Buf, BytesMut, BufMut};
 use sp_dto::{*, uuid::Uuid};
 
 pub const STREAM_ID_BUF_SIZE: usize = 8;
@@ -327,7 +327,7 @@ pub async fn read(state: &mut State, socket_read: &mut TcpStream) -> Result<Read
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct ServerConfig {
-    pub host: String    
+    pub host: String
 }
 
 pub struct Client {

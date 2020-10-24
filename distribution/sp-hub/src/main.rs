@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::BufReader;
 use std::io::prelude::*;
@@ -26,5 +27,7 @@ fn main() {
     
     let config = get_config_from_arg();
 
-    start(config);
+    let subscribes = HashMap::new();    
+
+    start(config, subscribes);
 }

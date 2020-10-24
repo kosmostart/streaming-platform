@@ -18,15 +18,14 @@ edition = "2018"
 [dependencies]
 
 log = "0.4"
-bytes = "0.5"
 futures = { version = "0.3", features = ["async-await"] }
 rand = "0.7"
-siphasher = "0.2"
+siphasher = "0.3"
 serde = "1.0"
 serde_derive = "1.0"
 serde_json = "1.0"
 toml = "0.5"
-tokio = { version = "0.2", features = ["full"] }
+tokio = { version = "0.3.1", features = ["full"] }
 hyper = { version = "0.13", optional = true }
 sp-dto = "0.1"
 
@@ -36,4 +35,5 @@ default = []
 http = ["hyper"]
 
 [dev-dependencies]
+
 env_logger = "0.7"

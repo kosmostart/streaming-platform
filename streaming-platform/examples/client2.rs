@@ -3,19 +3,20 @@ use serde_json::{json, Value, from_value};
 use streaming_platform::{client, MagicBall, sp_dto::{MsgMeta, Message, Response, resp}};
 
 pub async fn process_event(config: HashMap<String, String>, mut mb: MagicBall, msg: Message<Value>) -> Result<(), Box<dyn std::error::Error>>  {
+    println!("{:#?}", msg);
+    
     Ok(())
 }
 
 pub async fn process_rpc(config: HashMap<String, String>, mut mb: MagicBall, msg: Message<Value>) -> Result<Response<Value>, Box<dyn std::error::Error>> {    
-    resp(json!({}))
+    println!("{:#?}", msg);
+
+    resp(json!({
+        "data": "hi"
+    }))
 }
 
-pub async fn startup(config: HashMap<String, String>, mut mb: MagicBall) {
-    let msg = mb.rpc::<_, Value>("Client", "Hi", json!({
-        "data": "hello"
-    })).await;
-
-    println!("{:#?}", msg);	    
+pub async fn startup(config: HashMap<String, String>, mut mb: MagicBall) {    
 }
 
 pub fn main() {

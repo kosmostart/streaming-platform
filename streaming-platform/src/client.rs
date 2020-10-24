@@ -101,7 +101,7 @@ where
             match msg {
                 RpcMsg::AddRpc(correlation_id, rpc_tx) => {
                     rpcs.insert(correlation_id, rpc_tx);
-                    //info!("add rpc ok {}", correlation_id);
+                    info!("add rpc ok {}", correlation_id);
                 }                
                 RpcMsg::RpcDataRequest(correlation_id) => {
                     match rpcs.remove(&correlation_id) {

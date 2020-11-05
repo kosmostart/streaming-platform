@@ -354,9 +354,9 @@ pub type ProcessEvent<T, R> = fn(HashMap<String, String>, MagicBall, Message<R>)
 /// Type for function called on rpc processing with json payload
 pub type ProcessRpc<T, R> = fn(HashMap<String, String>, MagicBall, Message<R>) -> T;
 /// Type for function called on stream client starting
-pub type StreamStartup<T> = fn(HashMap<String, String>) -> T;
+pub type StreamStartup<T> = fn(HashMap<String, String>, Option<Value>) -> T;
 /// Type for function called on client starting
-pub type Startup<T> = fn(HashMap<String, String>, MagicBall) -> T;
+pub type Startup<T> = fn(HashMap<String, String>, MagicBall, Option<Value>) -> T;
 
 /// Messages received from client
 pub enum ClientMsg {    

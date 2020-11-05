@@ -1,0 +1,18 @@
+[package]
+name = "sp-web"
+version = "0.1.0"
+authors = ["Maximb <sprayrules@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+
+log = "*"
+env_logger = "*"
+serde_json = "*"
+base64 = "*"
+cookie = "*"
+warp = { version = "*", features = ["tls"] }
+streaming-platform = { path = "../streaming-platform", features = ["http"] }
+sp-auth = { path = "../sp-auth"}

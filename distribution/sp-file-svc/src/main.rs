@@ -22,10 +22,10 @@ fn main() {
     let mut rt = Runtime::new().expect("failed to create runtime");
     let mut hm_config = HashMap::new();
     hm_config.insert("dirs".to_owned(), to_string(&json!(config.dirs.expect("config directories are empty"))).expect("failed to serialize config directories"));
-    rt.block_on(stream_mode(&config.host, &config.addr, access_key, process_stream, startup, hm_config, None));
+    rt.block_on(stream_mode(&config.host, &config.addr, access_key, process_stream, startup, hm_config, None, None));
 }
 
-pub async fn startup(config: HashMap<String, String>, mut mb: MagicBall) {
+pub async fn startup(config: HashMap<String, String>, mut mb: MagicBall, startup_data: Option<Value>) {
 }
 
 pub async fn process_stream(config: HashMap<String, String>, mut mb: MagicBall, mut rx: UnboundedReceiver<ClientMsg>, _: Option<UnboundedReceiver<RestreamMsg>>) {

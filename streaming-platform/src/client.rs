@@ -17,7 +17,7 @@ use crate::proto::*;
 /// startup is executed on the start of this function.
 /// restream_rx can be used for restreaming data somewhere else, for example returning data for incoming web request
 /// The protocol message format is in sp-dto crate.
-pub async fn stream_mode<T: 'static, R: 'static>(host: &str, addr: &str, access_key: &str, process_stream: ProcessStream<T>, startup: Startup<R>, config: HashMap<String, String>, restream_rx: Option<UnboundedReceiver<RestreamMsg>>)
+pub async fn stream_mode<T: 'static, R: 'static>(host: &str, addr: &str, access_key: &str, process_stream: ProcessStream<T>, startup: Startup<R>, config: HashMap<String, String>, startup_data: Option<Value>, restream_rx: Option<UnboundedReceiver<RestreamMsg>>)
 where 
     T: Future<Output = ()> + Send,
     R: Future<Output = ()> + Send
@@ -60,7 +60,7 @@ where
     });    
     let mb = MagicBall::new(addr2, write_tx2, rpc_inbound_tx);
     tokio::spawn(process_stream(config.clone(), mb.clone(), read_rx, restream_rx));
-    tokio::spawn(startup(config, mb));
+    tokio::spawn(startup(config, mb, startup_data));
     connect_stream_future(host, addr3, access_key, read_tx, write_rx).await;
 }
 
@@ -71,7 +71,7 @@ where
 /// startup is executed on the start of this function.
 /// restream_rx can be used for restreaming data somewhere else, for example returning data for incoming web request
 /// The protocol message format is in sp-dto crate.
-pub async fn full_message_mode<P: 'static, T: 'static, Q: 'static, R: 'static>(host: &str, addr: &str, access_key: &str, process_event: ProcessEvent<T, P>, process_rpc: ProcessRpc<Q, P>, startup: Startup<R>, config: HashMap<String, String>)
+pub async fn full_message_mode<P: 'static, T: 'static, Q: 'static, R: 'static>(host: &str, addr: &str, access_key: &str, process_event: ProcessEvent<T, P>, process_rpc: ProcessRpc<Q, P>, startup: Startup<R>, config: HashMap<String, String>, startup_data: Option<Value>)
 where 
     T: Future<Output = Result<(), Box<dyn Error>>> + Send,
     Q: Future<Output = Result<Response<P>, Box<dyn Error>>> + Send,
@@ -123,7 +123,7 @@ where
 
     tokio::spawn(async move {
         let mb = MagicBall::new(addr2, write_tx2, rpc_inbound_tx);        
-        tokio::spawn(startup(config.clone(), mb.clone()));
+        tokio::spawn(startup(config.clone(), mb.clone(), startup_data));
         loop {                        
             let msg = match read_rx.recv().await {
                 Some(msg) => msg,
@@ -370,7 +370,7 @@ async fn process_full_message(addr: String, mut write_stream: TcpStream, mut rea
 /// startup is executed on the start of this function.
 /// restream_rx can be used for restreaming data somewhere else, for example returning data for incoming web request
 /// The protocol message format is in sp-dto crate.
-pub fn start_stream<T: 'static, R: 'static>(config: HashMap<String, String>, process_stream: ProcessStream<T>, startup: Startup<R>, restream_rx: Option<UnboundedReceiver<RestreamMsg>>) 
+pub fn start_stream<T: 'static, R: 'static>(config: HashMap<String, String>, process_stream: ProcessStream<T>, startup: Startup<R>, startup_data: Option<Value>, restream_rx: Option<UnboundedReceiver<RestreamMsg>>) 
 where 
     T: Future<Output = ()> + Send,
     R: Future<Output = ()> + Send
@@ -379,7 +379,7 @@ where
     let host = config.get("host").expect("missing host config value").to_owned();    
     let access_key = config.get("access_key").expect("missing access_key config value").to_owned();
     let mut rt = Runtime::new().expect("failed to create runtime");
-    rt.block_on(stream_mode(&host, &addr, &access_key, process_stream, startup, config, restream_rx));
+    rt.block_on(stream_mode(&host, &addr, &access_key, process_stream, startup, config, startup_data, restream_rx));
 }
 
 /// Starts a message based client based on provided config. Creates new runtime and blocks.
@@ -388,7 +388,7 @@ where
 /// process_rpc is used for processing incoming message, which are marked as rpc request via message kind.
 /// startup is executed on the start of this function.
 /// The protocol message format is in sp-dto crate.
-pub fn start<T: 'static, Q: 'static, R: 'static>(config: HashMap<String, String>, process_event: ProcessEvent<T, Value>, process_rpc: ProcessRpc<Q, Value>, startup: Startup<R>) 
+pub fn start<T: 'static, Q: 'static, R: 'static>(config: HashMap<String, String>, process_event: ProcessEvent<T, Value>, process_rpc: ProcessRpc<Q, Value>, startup: Startup<R>, startup_data: Option<Value>) 
 where 
     T: Future<Output = Result<(), Box<dyn Error>>> + Send,
     Q: Future<Output = Result<Response<Value>, Box<dyn Error>>> + Send,
@@ -398,5 +398,5 @@ where
     let host = config.get("host").expect("missing host config value").to_owned();
     let access_key = config.get("access_key").expect("missing access_key config value").to_owned();
     let mut rt = Runtime::new().expect("failed to create runtime");
-    rt.block_on(full_message_mode(&host, &addr, &access_key, process_event, process_rpc, startup, config));
+    rt.block_on(full_message_mode(&host, &addr, &access_key, process_event, process_rpc, startup, config, startup_data));
 }

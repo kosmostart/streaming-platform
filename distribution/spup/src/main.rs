@@ -22,10 +22,10 @@ fn main() {
     let mut hm_config = HashMap::new();
     hm_config.insert("access_key".to_owned(), config.access_key.clone());
     hm_config.insert("path".to_owned(), config.path.clone());
-    rt.block_on(stream_mode(&config.host, &config.addr, access_key, process_stream, startup, hm_config, None));
+    rt.block_on(stream_mode(&config.host, &config.addr, access_key, process_stream, startup, hm_config, None, None));
 }
 
-pub async fn startup(config: HashMap<String, String>, mut mb: MagicBall) {    
+pub async fn startup(config: HashMap<String, String>, mut mb: MagicBall, startup_data: Option<Value>) {
     let access_key = config.get("access_key").expect("access key is empty");
     let (correlation_id, dto, msg_meta_size, payload_size, attachments_sizes) = rpc_dto_with_correlation_id_sizes(
         mb.addr.clone(),

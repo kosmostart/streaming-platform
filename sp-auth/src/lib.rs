@@ -20,8 +20,8 @@ pub fn create_auth_token(auth_token_key: &[u8], payload: &Value) -> Result<Vec<u
     Ok(code_bytes.to_vec())
 }
 
-pub fn verify_auth_token(auth_token_key: &[u8], cookie: &str) -> Result<Value, Error> {
-    let split: Vec<&str> = cookie.split(".").collect();
+pub fn verify_auth_token(auth_token_key: &[u8], auth_token: &str) -> Result<Value, Error> {
+    let split: Vec<&str> = auth_token.split(".").collect();
 
     if split.len() != 2 {
         return Err(Error::IncorrectSplitLen);

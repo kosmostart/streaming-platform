@@ -1,32 +1,27 @@
 #![feature(proc_macro_hygiene)]
 #![feature(async_closure)]
 use std::collections::HashMap;
-use std::io::prelude::*;
 use std::net::SocketAddr;
-use std::env::current_dir;
 use log::*;
-use serde_json::{json, Value, to_vec, to_string, from_value, from_slice};
-use cookie::Cookie;
-use warp::{hyper, Filter, path, http::{Response, StatusCode, header::SET_COOKIE}, reply::{Reply, with::header}, query, fs::{dir, File}, http::header::HeaderValue};
-use streaming_platform::{MagicBall, client::stream_mode, ClientMsg, StreamCompletion, tokio::{self, io::AsyncReadExt, sync::{mpsc::{self, UnboundedReceiver, UnboundedSender}, oneshot}}, RestreamMsg, StreamLayout};
-use streaming_platform::{futures::{self, Future, stream::{Stream, StreamExt}}};
-use streaming_platform::sp_dto::reply_to_rpc_dto2_sizes;
-use streaming_platform::sp_dto::{Message, resp, rpc_dto_with_correlation_id_sizes, Route, RouteSpec};
-use streaming_platform::sp_dto::{MsgMeta, get_msg_meta, get_payload, MsgKind, uuid::Uuid, get_msg, get_msg_meta_and_payload, reply_to_rpc_dto, Participator, RpcResult};
+use serde_json::{json, Value, to_vec};
+use warp::{Filter, http::{Response, header::SET_COOKIE}};
+use streaming_platform::{MagicBall, tokio::{io::AsyncReadExt}};
+use streaming_platform::sp_dto::{Message, resp};
+use streaming_platform::sp_dto::MsgMeta;
 use sp_auth::verify_auth_token;
 
 mod authorize;
 mod hub;
 
-pub async fn process_event(config: HashMap<String, String>, mut mb: MagicBall, msg: Message<Value>) -> Result<(), Box<dyn std::error::Error>>  {
+pub async fn process_event(_config: HashMap<String, String>, mut _mb: MagicBall, _msg: Message<Value>) -> Result<(), Box<dyn std::error::Error>>  {
     Ok(())
 }
 
-pub async fn process_rpc(config: HashMap<String, String>, mut mb: MagicBall, msg: Message<Value>) -> Result<streaming_platform::sp_dto::Response<Value>, Box<dyn std::error::Error>> {    
+pub async fn process_rpc(_config: HashMap<String, String>, mut _mb: MagicBall, _msg: Message<Value>) -> Result<streaming_platform::sp_dto::Response<Value>, Box<dyn std::error::Error>> {    
     resp(json!({}))    
 }
 
-pub async fn startup(config: HashMap<String, String>, mut mb: MagicBall, startup_data: Option<Value>) {
+pub async fn startup(config: HashMap<String, String>, mb: MagicBall, _startup_data: Option<Value>) {
     let listen_addr = config.get("listen_addr").expect("missing listen_addr config value");    
     let cert_path = config.get("cert_path");
     let key_path = config.get("key_path");
@@ -44,7 +39,7 @@ pub async fn startup(config: HashMap<String, String>, mut mb: MagicBall, startup
             .and(warp::body::bytes())
             .and_then(move |body: warp::hyper::body::Bytes| {
                 let aca_origin = aca_origin.clone();
-                let mut mb = mb.clone();
+                let mb = mb.clone();
                 
                 crate::authorize::go(aca_origin, body, mb)
             }
@@ -54,7 +49,7 @@ pub async fn startup(config: HashMap<String, String>, mut mb: MagicBall, startup
                 .and(warp::path::param())
                 .and(warp::header::optional("cookie"))
                 .and(warp::path::end())                                
-                .map(move |prm: String, cookie_header: Option<String>| {
+                .map(move |_prm: String, _cookie_header: Option<String>| {
 
                     Response::builder()
                         .header("content-type", "text/html")
@@ -67,17 +62,17 @@ pub async fn startup(config: HashMap<String, String>, mut mb: MagicBall, startup
                 .and(warp::path::param())
                 .and(warp::header::optional("cookie"))
                 .and(warp::path::param())                                
-                .and_then(move |prm: String, cookie_header: Option<String>, prm2: String| {
+                .and_then(move |_prm: String, _cookie_header: Option<String>, _prm2: String| {
 
                     async move {
                         let mut file = streaming_platform::tokio::fs::File::open("").await.unwrap();
 
                         let mut file_buf = [0; 1024];
 
-                        let stream = loop {
+                        let _stream = loop {
                             match file.read(&mut file_buf).await.unwrap() {
                                 0 => break,
-                                n => {
+                                _n => {
 
                                 }
                             }
@@ -98,7 +93,7 @@ pub async fn startup(config: HashMap<String, String>, mut mb: MagicBall, startup
                 .and_then(move |body: warp::hyper::body::Bytes| {
                     let aca_origin = aca_origin2.clone();
                     let auth_key = auth_key.clone();
-                    let mut mb = mb2.clone();
+                    let mb = mb2.clone();
                     
                     crate::hub::go(aca_origin, auth_key, body, mb)
                 }

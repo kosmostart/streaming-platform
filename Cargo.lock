@@ -194,7 +194,7 @@ dependencies = [
  "libc",
  "num-integer",
  "num-traits",
- "time 0.1.44",
+ "time",
  "winapi 0.3.9",
 ]
 
@@ -231,16 +231,6 @@ name = "const_fn"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c478836e029dcef17fb47c89023448c64f781a046e0300e257ad8225ae59afab"
-
-[[package]]
-name = "cookie"
-version = "0.14.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1373a16a4937bc34efec7b391f9c1500c30b8478a701a4f44c9165cc0475a6e0"
-dependencies = [
- "time 0.2.22",
- "version_check",
-]
 
 [[package]]
 name = "cpuid-bool"
@@ -662,7 +652,7 @@ dependencies = [
  "http",
  "mime",
  "sha-1 0.8.2",
- "time 0.1.44",
+ "time",
 ]
 
 [[package]]
@@ -1740,9 +1730,7 @@ dependencies = [
 name = "sp-public-host"
 version = "0.1.0"
 dependencies = [
- "bytes 0.6.0",
  "env_logger 0.8.1",
- "futures",
  "log",
  "serde",
  "serde_derive",
@@ -1755,8 +1743,6 @@ dependencies = [
 name = "sp-web"
 version = "0.1.0"
 dependencies = [
- "base64 0.13.0",
- "cookie",
  "env_logger 0.8.1",
  "log",
  "serde_json",
@@ -1795,15 +1781,6 @@ dependencies = [
  "sp-pack-core",
  "streaming-platform",
  "toml",
-]
-
-[[package]]
-name = "standback"
-version = "0.2.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f4e0831040d2cf2bdfd51b844be71885783d489898a192f254ae25d57cce725c"
-dependencies = [
- "version_check",
 ]
 
 [[package]]
@@ -1980,44 +1957,6 @@ dependencies = [
  "libc",
  "wasi 0.10.0+wasi-snapshot-preview1",
  "winapi 0.3.9",
-]
-
-[[package]]
-name = "time"
-version = "0.2.22"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "55b7151c9065e80917fbf285d9a5d1432f60db41d170ccafc749a136b41a93af"
-dependencies = [
- "const_fn",
- "libc",
- "standback",
- "stdweb",
- "time-macros",
- "version_check",
- "winapi 0.3.9",
-]
-
-[[package]]
-name = "time-macros"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "957e9c6e26f12cb6d0dd7fc776bb67a706312e7299aed74c8dd5b17ebb27e2f1"
-dependencies = [
- "proc-macro-hack",
- "time-macros-impl",
-]
-
-[[package]]
-name = "time-macros-impl"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e5c3be1edfad6027c69f5491cf4cb310d1a71ecd6af742788c6ff8bced86b8fa"
-dependencies = [
- "proc-macro-hack",
- "proc-macro2",
- "quote",
- "standback",
- "syn",
 ]
 
 [[package]]

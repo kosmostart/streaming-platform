@@ -1,7 +1,6 @@
-use std::env;
 use std::fs::{File, remove_file};
 use std::io::{self, Result};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::io::BufReader;
 use std::io::prelude::*;
 use rand::{Rng, thread_rng};

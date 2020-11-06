@@ -11,8 +11,6 @@ edition = "2018"
 log = "*"
 env_logger = "*"
 serde_json = "*"
-base64 = "*"
-cookie = "*"
 warp = { version = "*", features = ["tls"] }
 streaming-platform = { path = "../streaming-platform", features = ["http"] }
 sp-auth = { path = "../sp-auth"}

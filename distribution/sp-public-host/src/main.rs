@@ -3,12 +3,8 @@ use std::io::prelude::*;
 use std::io::BufReader;
 use std::net::SocketAddr;
 use serde_derive::Deserialize;
-use futures::stream::TryStreamExt;
-use futures::future::TryFutureExt;
-use bytes::buf::BufMut;
 use tokio::runtime::Runtime;
-use warp::{Filter, fs};
-use warp::{multipart, http::{Response}};
+use warp::fs;
 
 #[derive(Debug, Deserialize)]
 struct Config {

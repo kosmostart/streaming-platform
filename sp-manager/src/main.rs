@@ -90,7 +90,7 @@ fn main() {
 
     match config.hubs {
         Some(ref hubs) => {
-            let hub_path = config.hub_path.clone()
+            let _hub_path = config.hub_path.clone()
                 .expect("hub path is empty, but hubs are present");
 
             for hub in hubs {
@@ -110,7 +110,7 @@ fn main() {
 
     match config.services {
         Some(ref services) => {
-            let service_path = config.service_path.clone()
+            let _service_path = config.service_path.clone()
                 .expect("service path is empty, but services are present");
 
             for service in services {
@@ -142,7 +142,7 @@ fn main() {
     let stop_tx = started_tx.clone();
     let stop_tx2 = started_tx.clone();
 
-    let started_processes_handle = std::thread::Builder::new()
+    let _started_processes_handle = std::thread::Builder::new()
         .name("started-processes".to_owned())
         .spawn(move || {
             println!("quering system data");
@@ -324,7 +324,7 @@ fn main() {
                             None => println!("empty config for services")
                         }
 
-                        reply_tx.send("Ok".to_owned());
+                        let _ = reply_tx.send("Ok".to_owned());
                     }
                     Msg::StartHubProcess(name, reply_tx) => {
                         system.refresh_all();
@@ -387,7 +387,7 @@ fn main() {
                             None => println!("empty config for hubs")
                         }
 
-                        reply_tx.send("Ok".to_owned());
+                        let _ = reply_tx.send("Ok".to_owned());
                     }
                     Msg::StopProcess(name, reply_tx) => {
                         println!("stopping {}", name);
@@ -403,7 +403,7 @@ fn main() {
                             }
                         }
 
-                        reply_tx.send("Ok".to_owned());
+                        let _ = reply_tx.send("Ok".to_owned());
                     }
                     Msg::StopAll(reply_tx) => {
                         println!("stopping all started processes");
@@ -414,7 +414,7 @@ fn main() {
                             println!("stop result for {} {:?}", name, res);
                         }
                             
-                        reply_tx.send("Ok".to_owned());
+                        let _ = reply_tx.send("Ok".to_owned());
                     }
                 }
                 
@@ -438,7 +438,7 @@ fn main() {
                         .map(move |name: String| {
                             let (reply_tx, reply_rx) = crossbeam::channel::unbounded();
 
-                            start_tx.clone().send(Msg::StartServiceProcess(name, reply_tx));
+                            let _ = start_tx.clone().send(Msg::StartServiceProcess(name, reply_tx));
 
                             let reply = reply_rx.recv_timeout(std::time::Duration::from_secs(30)).unwrap();
 
@@ -451,7 +451,7 @@ fn main() {
                         .map(move |name: String| {
                             let (reply_tx, reply_rx) = crossbeam::channel::unbounded();
 
-                            start_hub_tx.clone().send(Msg::StartHubProcess(name, reply_tx));
+                            let _ = start_hub_tx.clone().send(Msg::StartHubProcess(name, reply_tx));
 
                             let reply = reply_rx.recv_timeout(std::time::Duration::from_secs(30)).unwrap();
 
@@ -464,7 +464,7 @@ fn main() {
                         .map(move |name: String| {
                             let (reply_tx, reply_rx) = crossbeam::channel::unbounded();
 
-                            stop_tx.send(Msg::StopProcess(name, reply_tx));
+                            let _ = stop_tx.send(Msg::StopProcess(name, reply_tx));
 
                             let reply = reply_rx.recv_timeout(std::time::Duration::from_secs(30)).unwrap();
 
@@ -476,7 +476,7 @@ fn main() {
                         .map(move || {
                             let (reply_tx, reply_rx) = crossbeam::channel::unbounded();
 
-                            stop_tx2.send(Msg::StopAll(reply_tx));
+                            let _ = stop_tx2.send(Msg::StopAll(reply_tx));
 
                             let reply = reply_rx.recv_timeout(std::time::Duration::from_secs(30)).unwrap();
 

@@ -3,7 +3,7 @@ use std::fs;
 use serde_json::{json, Value, from_slice, to_vec, to_string, from_str};
 use log::*;
 use tokio::{io::AsyncWriteExt, fs::File, sync::mpsc::UnboundedReceiver};
-use streaming_platform::{client::stream_mode, tokio::{self, runtime::Runtime, io::AsyncReadExt}, DATA_BUF_SIZE, MagicBall, ClientMsg, RestreamMsg, StreamLayout, StreamUnit, sp_dto::{MsgMeta, MsgKind, reply_to_rpc_dto2_sizes, Participator, uuid::Uuid, RpcResult}};
+use streaming_platform::{client::stream_mode, tokio::{self, runtime::Runtime, io::AsyncReadExt}, DATA_BUF_SIZE, MagicBall, ClientMsg, RestreamMsg, StreamLayout, StreamUnit, sp_dto::{MsgMeta, MsgKind, reply_to_rpc_dto2_sizes, Participator, RpcResult}};
 
 mod cfg;
 
@@ -19,13 +19,13 @@ fn main() {
     env_logger::init();
     let config = cfg::get_config();    
     let access_key = "";
-    let mut rt = Runtime::new().expect("failed to create runtime");
+    let rt = Runtime::new().expect("failed to create runtime");
     let mut hm_config = HashMap::new();
     hm_config.insert("dirs".to_owned(), to_string(&json!(config.dirs.expect("config directories are empty"))).expect("failed to serialize config directories"));
     rt.block_on(stream_mode(&config.host, &config.addr, access_key, process_stream, startup, hm_config, None, None));
 }
 
-pub async fn startup(config: HashMap<String, String>, mut mb: MagicBall, startup_data: Option<Value>) {
+pub async fn startup(_config: HashMap<String, String>, mut _mb: MagicBall, _startup_data: Option<Value>) {
 }
 
 pub async fn process_stream(config: HashMap<String, String>, mut mb: MagicBall, mut rx: UnboundedReceiver<ClientMsg>, _: Option<UnboundedReceiver<RestreamMsg>>) {
@@ -99,9 +99,9 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
             stream_layout.stream.payload.extend_from_slice(&buf[..n]);
             match stream_layout.stream.msg_meta.key.as_ref() {
                 "Upload" => {
-                    let attachment = stream_layout.stream.msg_meta.attachments.iter().nth(0).ok_or(Error::CustomError("no attachment found in msg meta for upload key".to_owned()))?;
+                    let _attachment = stream_layout.stream.msg_meta.attachments.iter().nth(0).ok_or(Error::CustomError("no attachment found in msg meta for upload key".to_owned()))?;
                     let payload: Value = from_slice(&stream_layout.stream.payload)?;                    
-                    let mut path = String::new();                    
+                    let path = String::new();
                     stream_layout.file = Some(File::create(path).await?);
                     stream_layout.payload = Some(payload);
                 }
@@ -112,7 +112,7 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
                 _ => {}
             }                        
         }
-        ClientMsg::AttachmentData(stream_id, index, n, buf) => {
+        ClientMsg::AttachmentData(stream_id, _index, n, buf) => {
             let stream_layout = stream_layouts.get_mut(&stream_id).ok_or(Error::CustomError("not found stream for attachment data".to_owned()))?;
             match stream_layout.stream.msg_meta.key.as_ref() {
                 "Upload" => {
@@ -122,7 +122,7 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
                 _ => {}
             }                                                
         }
-        ClientMsg::AttachmentFinished(stream_id, index, n, buf) => {
+        ClientMsg::AttachmentFinished(stream_id, _index, n, buf) => {
             let stream_layout = stream_layouts.get_mut(&stream_id).ok_or(Error::CustomError("not found stream for attachment finish".to_owned()))?;
             match stream_layout.stream.msg_meta.key.as_ref() {
                 "Upload" => {
@@ -137,7 +137,7 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
             let stream_layout = stream_layouts.remove(&stream_id).ok_or(Error::CustomError("not found stream for message finish".to_owned()))?;
             match stream_layout.stream.msg_meta.key.as_ref() {                            
                 "Upload" => {                                        
-                    let payload = stream_layout.payload.ok_or(Error::CustomError("empty payload for upload message finish".to_owned()))?;                                        
+                    let _payload = stream_layout.payload.ok_or(Error::CustomError("empty payload for upload message finish".to_owned()))?;                                        
                     let reponse_payload = to_vec(&json!({
 
                     }))?;
@@ -260,7 +260,7 @@ impl From<streaming_platform::ProcessError> for Error {
 }
 
 impl From<tokio::sync::mpsc::error::SendError<streaming_platform::StreamUnit>> for Error {
-    fn from(e: tokio::sync::mpsc::error::SendError<streaming_platform::StreamUnit>) -> Error {
+    fn from(_: tokio::sync::mpsc::error::SendError<streaming_platform::StreamUnit>) -> Error {
         Error::SendStreamUnit
     }
 }

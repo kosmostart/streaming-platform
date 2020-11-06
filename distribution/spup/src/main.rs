@@ -1,8 +1,8 @@
 use std::collections::HashMap;
-use serde_json::{json, Value, from_slice, to_vec};
+use serde_json::{json, Value, from_slice};
 use log::*;
 use tokio::{io::AsyncWriteExt, fs::File, sync::mpsc::UnboundedReceiver};
-use streaming_platform::{client::stream_mode, tokio::{self, runtime::Runtime, io::AsyncReadExt}, DATA_BUF_SIZE, MagicBall, ClientMsg, RestreamMsg, StreamLayout, StreamUnit, sp_dto::{MsgMeta, MsgKind, reply_to_rpc_dto2_sizes, rpc_dto_with_correlation_id_sizes, Route, Participator, RouteSpec, uuid::Uuid, RpcResult}};
+use streaming_platform::{client::stream_mode, tokio::{self, runtime::Runtime}, MagicBall, ClientMsg, RestreamMsg, StreamLayout, sp_dto::{MsgKind, reply_to_rpc_dto2_sizes, rpc_dto_with_correlation_id_sizes, Route, Participator, RouteSpec, RpcResult}};
 use sp_pack_core::unpack;
 
 mod cfg;
@@ -10,24 +10,24 @@ mod cfg;
 struct FileStreamLayout {
     stream: StreamLayout,
     payload: Option<Value>,    
-    file: Option<File>,
-    rpc_result: RpcResult
+    file: Option<File>
+    //rpc_result: RpcResult
 }
 
 fn main() {    
     env_logger::init();
     let config = cfg::get_config();    
     let access_key = "";
-    let mut rt = Runtime::new().expect("failed to create runtime");
+    let rt = Runtime::new().expect("failed to create runtime");
     let mut hm_config = HashMap::new();
     hm_config.insert("access_key".to_owned(), config.access_key.clone());
     hm_config.insert("path".to_owned(), config.path.clone());
     rt.block_on(stream_mode(&config.host, &config.addr, access_key, process_stream, startup, hm_config, None, None));
 }
 
-pub async fn startup(config: HashMap<String, String>, mut mb: MagicBall, startup_data: Option<Value>) {
+pub async fn startup(config: HashMap<String, String>, mut mb: MagicBall, _startup_data: Option<Value>) {
     let access_key = config.get("access_key").expect("access key is empty");
-    let (correlation_id, dto, msg_meta_size, payload_size, attachments_sizes) = rpc_dto_with_correlation_id_sizes(
+    let (_correlation_id, dto, msg_meta_size, payload_size, attachments_sizes) = rpc_dto_with_correlation_id_sizes(
         mb.addr.clone(),
         "SpFileSvc".to_owned(),
         "Download".to_owned(),
@@ -97,7 +97,7 @@ pub async fn process_stream(config: HashMap<String, String>, mut mb: MagicBall, 
     }
 }
 
-async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64, FileStreamLayout>, client_msg: ClientMsg, path: &str) -> Result<(), Error> {
+async fn process_client_msg(_mb: &mut MagicBall, stream_layouts: &mut HashMap<u64, FileStreamLayout>, client_msg: ClientMsg, path: &str) -> Result<(), Error> {
     match client_msg {
         ClientMsg::MsgMeta(stream_id, msg_meta) => {            
             stream_layouts.insert(stream_id, FileStreamLayout {
@@ -108,8 +108,8 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
                     attachments_data: vec![]
                 },
                 payload: None,                
-                file: None,
-                rpc_result: RpcResult::Ok
+                file: None
+                //rpc_result: RpcResult::Ok
             });
         }
         ClientMsg::PayloadData(stream_id, n, buf) => {
@@ -121,8 +121,7 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
             stream_layout.stream.payload.extend_from_slice(&buf[..n]);
             match stream_layout.stream.msg_meta.key.as_ref() {
                 "Download" => {
-                    // This is file name attachment vs payload issue
-                    let attachment = stream_layout.stream.msg_meta.attachments.iter().nth(0).ok_or(Error::CustomError("no attachment found in msg meta for upload key".to_owned()))?;
+                    let _attachment = stream_layout.stream.msg_meta.attachments.iter().nth(0).ok_or(Error::CustomError("no attachment found in msg meta for upload key".to_owned()))?;
                     let payload: Value = from_slice(&stream_layout.stream.payload)?;
                     let file_name = payload["file_name"].as_str().ok_or(Error::CustomError("file name is empty in payload".to_owned()))?;
                     stream_layout.file = Some(File::create(path.to_owned() + "/" + file_name).await?);
@@ -131,7 +130,7 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
                 _ => {}
             }                        
         }
-        ClientMsg::AttachmentData(stream_id, index, n, buf) => {
+        ClientMsg::AttachmentData(stream_id, _index, n, buf) => {
             let stream_layout = stream_layouts.get_mut(&stream_id).ok_or(Error::CustomError("not found stream for attachment data".to_owned()))?;
             match stream_layout.stream.msg_meta.key.as_ref() {
                 "Download" => {
@@ -141,7 +140,7 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
                 _ => {}
             }                                                
         }
-        ClientMsg::AttachmentFinished(stream_id, index, n, buf) => {
+        ClientMsg::AttachmentFinished(stream_id, _index, n, buf) => {
             let stream_layout = stream_layouts.get_mut(&stream_id).ok_or(Error::CustomError("not found stream for attachment finish".to_owned()))?;
             match stream_layout.stream.msg_meta.key.as_ref() {
                 "Download" => {
@@ -157,13 +156,14 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
             }                                        
         }
         ClientMsg::MessageFinished(stream_id) => {                                
-            let stream_layout = stream_layouts.remove(&stream_id).ok_or(Error::CustomError("not found stream for message finish".to_owned()))?;            
+            let _stream_layout = stream_layouts.remove(&stream_id).ok_or(Error::CustomError("not found stream for message finish".to_owned()))?;            
         }
         _ => {}
     }
     Ok(())
 }
 
+/*
 async fn download_file(mut mb: MagicBall, msg_meta: MsgMeta, path: String, file_name: String) -> Result<(), Error> {
     let mut file = File::open(&path).await?;
     let size = file.metadata().await?.len();
@@ -188,6 +188,7 @@ async fn download_file(mut mb: MagicBall, msg_meta: MsgMeta, path: String, file_
     }        
     Ok(())
 }
+*/
 
 #[derive(Debug)]
 pub enum Error {    
@@ -218,7 +219,7 @@ impl From<streaming_platform::ProcessError> for Error {
 }
 
 impl From<tokio::sync::mpsc::error::SendError<streaming_platform::StreamUnit>> for Error {
-    fn from(e: tokio::sync::mpsc::error::SendError<streaming_platform::StreamUnit>) -> Error {
+    fn from(_: tokio::sync::mpsc::error::SendError<streaming_platform::StreamUnit>) -> Error {
         Error::SendStreamUnit
     }
 }

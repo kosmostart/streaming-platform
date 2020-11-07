@@ -12,13 +12,15 @@ use sp_dto::{Participator, MsgKind, uuid::Uuid, MsgMeta, Route, RouteSpec, CmpSp
 
 pub struct Worker {
     link: AgentLink<Worker>,
-    clients: HashMap<String, HandlerId>,    
+    clients: HashMap<String, HandlerId>,
+    subscribes: HashMap<String, Vec<String>>,
     fetch_tasks: HashMap<Uuid, FetchTask>
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum Request {
     Auth(String),
+    SetSubscribes(HashMap<String, Vec<String>>),
     Msg(MsgMeta, Value),
     Rpc(String, Uuid, Vec<u8>),
     PostStringRpc(String, Uuid, String),
@@ -85,11 +87,12 @@ impl Agent for Worker {
     type Output = Response;
     // Create an instance with a link to agent's environment.
     fn create(link: AgentLink<Self>) -> Self {        
-        ConsoleService::log("hub created");
+        ConsoleService::log("Hub created");
 
-        Worker { 
+        Worker {
             link,
-            clients: HashMap::new(),                        
+            clients: HashMap::new(),
+            subscribes: HashMap::new(),
             fetch_tasks: HashMap::new()
         }
     }
@@ -99,7 +102,7 @@ impl Agent for Worker {
         match msg {
             Msg::RpcReady(data, correlation_id, addr) => {
                 let (msg_meta, payload, _) = get_msg::<Value>(&data).expect("failed to get msg on FetchReady");
-                self.fetch_tasks.remove(&correlation_id);
+                self.fetch_tasks.remove(&correlation_id);                
                 match msg_meta.kind {
                     MsgKind::RpcResponse(_) => {
                         match msg_meta.route.spec {
@@ -110,7 +113,7 @@ impl Agent for Worker {
                                             true => {
                                                 match self.clients.get(&addr) {
                                                     Some(client_id) => self.link.respond(*client_id, Response::Msg(msg_meta, payload)),
-                                                    None => ConsoleService::log(&format!("hub: missing client {}", addr))
+                                                    None => ConsoleService::log(&format!("Hub: missing client {}", addr))
                                                 }
                                             }
                                             false => {
@@ -119,7 +122,7 @@ impl Agent for Worker {
                                         }                                        
                                     }
                                     None => {
-                                        ConsoleService::log("error: source cmp empty for this rpc");
+                                        ConsoleService::log("Error: source cmp empty for this rpc");
                                     }
                                 }
                             }
@@ -128,11 +131,11 @@ impl Agent for Worker {
                                     Some(addr) => {
                                         match self.clients.get(&addr) {
                                             Some(client_id) => self.link.respond(*client_id, Response::Msg(msg_meta, payload)),
-                                            None => ConsoleService::log(&format!("hub: missing client {}", addr))
+                                            None => ConsoleService::log(&format!("Hub: missing client {}", addr))
                                         }
                                     }
                                     None => {
-                                        ConsoleService::log("error: client cmp empty for this rpc");
+                                        ConsoleService::log("Error: client cmp empty for this rpc");
                                     }
                                 }
                             }
@@ -145,18 +148,18 @@ impl Agent for Worker {
                 self.fetch_tasks.remove(&correlation_id);
                 match self.clients.get(&addr) {
                     Some(client_id) => self.link.respond(*client_id, Response::StringRpc(correlation_id, data)),
-                    None => ConsoleService::log(&format!("hub: missing client {}", addr))
+                    None => ConsoleService::log(&format!("Hub: missing client {}", addr))
                 }
             }
             Msg::BinaryRpcReady(data, correlation_id, addr) => {
                 self.fetch_tasks.remove(&correlation_id);
                 match self.clients.get(&addr) {
                     Some(client_id) => self.link.respond(*client_id, Response::BinaryRpc(correlation_id, data)),
-                    None => ConsoleService::log(&format!("hub: missing client {}", addr))
+                    None => ConsoleService::log(&format!("Hub: missing client {}", addr))
                 }
             }
             Msg::FetchError(err) => {
-                ConsoleService::log(&format!("error: fetch, {:?}", err));
+                ConsoleService::log(&format!("Error: fetch, {:?}", err));
             }
         }
     }
@@ -165,14 +168,25 @@ impl Agent for Worker {
         //self.console.log(&format!("hub: {:?}", msg));        
         match msg {
             Request::Auth(addr) => {
-                ConsoleService::log(&format!("hub auth: {}", addr));
+                ConsoleService::log(&format!("Hub auth: {}", addr));
                 self.clients.insert(addr, who);
             }
+            Request::SetSubscribes(subscribes) => {
+                self.subscribes = subscribes;
+                ConsoleService::log("Subscribes set");
+            }
             Request::Msg(msg_meta, payload) => {
-                match self.clients.get(&msg_meta.rx) {
-                    Some(client_id) => self.link.respond(*client_id, Response::Msg(msg_meta, payload)),
-                    None => ConsoleService::log(&format!("hub: missing client {}", msg_meta.rx))
-                }
+                match self.subscribes.get(&msg_meta.key) {
+                    Some(targets) => {
+                        for target in targets {     
+                            match self.clients.get(target) {
+                                Some(client_id) => self.link.respond(*client_id, Response::Msg(msg_meta.clone(), payload.clone())),
+                                None => ConsoleService::log(&format!("Hub: missing client {}", target))
+                            }
+                        }
+                    }
+                    None => ConsoleService::log(&format!("No subscribes found for key {}", msg_meta.key))
+                }                
             }
             Request::Rpc(url, correlation_id, data) => {
                 match self.clients.iter().find(|(_, x)| **x == who) {
@@ -334,6 +348,9 @@ impl Hub {
         self.spec = spec;
         self.cfg = cfg;
         self.hub.send(Request::Auth(self.spec.addr.clone()));
+    }
+    pub fn set_subscribes(&mut self, subscribes: HashMap<String, Vec<String>>) {
+        self.hub.send(Request::SetSubscribes(subscribes));
     }
     /// Sends rpc request to the server
     pub fn rpc(&mut self, addr: &str, key: &str, payload: Value) {

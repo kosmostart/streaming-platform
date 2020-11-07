@@ -69,7 +69,7 @@ impl From<base64::DecodeError> for Error {
 
 #[test]
 fn check_auth_token_length() {
-    let res = create_auth_token(&json!({
+    let res = create_auth_token(b"asdqwe", &json!({
         "user_id": 123321123
     })).unwrap();
 

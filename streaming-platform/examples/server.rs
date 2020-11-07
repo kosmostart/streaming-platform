@@ -8,6 +8,7 @@ pub fn main() {
     env_logger::init();
 
     let config = get_config_from_str();
+    
     let mut subscribes = HashMap::new();
 
     subscribes.insert("HiRpc".to_owned(), vec![

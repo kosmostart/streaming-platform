@@ -1,14 +1,14 @@
 [workspace]
 
 members = [
-	"streaming-platform",	
+	"streaming-platform",
 	#"sp-tokio-tls",
 	"sp-dto",
 	"sp-auth",
-	"sp-auth",	
-	"sp-manager",
+	"sp-cfg",
 	"sp-web",
-	"sp-yew",	
+	"sp-yew",
+	"sp-manager",
 	"distribution/sp-pack-core",
 	"distribution/sp-build",
 	"distribution/sp-public-host",

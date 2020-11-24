@@ -5,6 +5,7 @@ use tokio::runtime::Runtime;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc::{self, UnboundedSender};
 use sp_dto::MsgKind;
+use sp_cfg::ServerConfig;
 use crate::proto::*;
 
 /// Starts the server based on provided ServerConfig struct. Creates new runtime and blocks.

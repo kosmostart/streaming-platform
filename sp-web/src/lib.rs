@@ -9,6 +9,7 @@ use streaming_platform::{MagicBall, tokio::{io::AsyncReadExt}};
 use streaming_platform::sp_dto::{Message, resp};
 use streaming_platform::sp_dto::MsgMeta;
 use sp_auth::verify_auth_token;
+pub use streaming_platform;
 
 mod authorize;
 mod hub;

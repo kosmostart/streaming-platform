@@ -2,7 +2,8 @@ use std::{fmt::Debug, collections::HashMap};
 use std::io::BufReader;
 use std::io::prelude::*;
 use log::*;
-use streaming_platform::{server, ServerConfig};
+use streaming_platform::server;
+use streaming_platform::sp_cfg::ServerConfig;
 
 pub fn main() {
     env_logger::init();

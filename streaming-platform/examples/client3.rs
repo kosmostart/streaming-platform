@@ -31,5 +31,5 @@ pub fn main() {
     config.insert("host".to_owned(), "localhost:11001".to_owned());
     config.insert("access_key".to_owned(), "".to_owned());
  
-    client::start(config, process_event, process_rpc, startup);
+    client::start(config, process_event, process_rpc, startup, None);
  }

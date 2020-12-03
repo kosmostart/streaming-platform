@@ -22,7 +22,7 @@ pub async fn process_rpc(_config: HashMap<String, String>, mut _mb: MagicBall, _
     resp(json!({}))    
 }
 
-pub async fn startup(config: HashMap<String, String>, mb: MagicBall, _startup_data: Option<Value>) {
+pub async fn startup(config: HashMap<String, String>, mb: MagicBall, startup_data: Option<Value>) {
     let listen_addr = config.get("listen_addr").expect("missing listen_addr config value");    
     let cert_path = config.get("cert_path");
     let key_path = config.get("key_path");
@@ -34,27 +34,62 @@ pub async fn startup(config: HashMap<String, String>, mb: MagicBall, _startup_da
 
     let auth_key = config.get("auth_key").map(|x| x.to_owned()).unwrap();
 
-    let routes =                    
-        warp::path("authorize")
-            .and(warp::post())                
-            .and(warp::body::bytes())
-            .and_then(move |body: warp::hyper::body::Bytes| {
-                let aca_origin = aca_origin.clone();
-                let mb = mb.clone();
-                
-                crate::authorize::go(aca_origin, body, mb)
+    let apps = match startup_data {
+        Some(startup_data) =>
+            match startup_data["apps"].as_array() {
+                Some(apps) => Some(apps.to_owned()),
+                None => None
             }
+        None => None
+    };
+
+    let routes =                    
+        warp::path("hi")
+            .map(move || {
+                Response::builder()
+                    .header("content-type", "text/html")
+                    .body("hi")
+            })
+        .or(
+            warp::path("authorize")
+                .and(warp::post())                
+                .and(warp::body::bytes())
+                .and_then(move |body: warp::hyper::body::Bytes| {
+                    let aca_origin = aca_origin.clone();
+                    let mb = mb.clone();
+                    
+                    crate::authorize::go(aca_origin, body, mb)
+                }
+            )
         )
         .or(
             warp::path("app")
                 .and(warp::path::param())
                 .and(warp::header::optional("cookie"))
                 .and(warp::path::end())                                
-                .map(move |_prm: String, _cookie_header: Option<String>| {
+                .map(move |name: String, _cookie_header: Option<String>| {
+                    let apps = apps.clone();                    
+                    
+                    let index = match apps {
+                        Some(apps) => {
+                            match apps.into_iter().find(|x| x["name"] == name) {
+                                Some(app) => app["index"].as_str().map(|x| x.to_owned()),
+                                None => None
+                            }                            
+                        }
+                        None => None
+                    };
 
-                    Response::builder()
-                        .header("content-type", "text/html")
-                        .body("")
+                    match index {
+                        Some(index) => 
+                            Response::builder()
+                                .header("content-type", "text/html")
+                                .body(index),
+                        None => 
+                            Response::builder()
+                                .header("content-type", "text/html")
+                                .body("".to_owned())
+                    }                    
                 }
             )
         )

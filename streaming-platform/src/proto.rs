@@ -10,7 +10,8 @@ use log::*;
 use rand::random;
 use tokio::net::TcpStream;
 use tokio::sync::{mpsc::{UnboundedSender, UnboundedReceiver, error::{SendError, TrySendError}}, oneshot};
-use tokio::time::{timeout, error::Elapsed};
+//use tokio::time::{timeout, error::Elapsed};
+use tokio::time::timeout;
 use tokio::prelude::*;
 use serde_json::{from_slice, Value, to_vec};
 use siphasher::sip::SipHasher24;
@@ -1012,8 +1013,16 @@ impl From<oneshot::error::RecvError> for ProcessError {
 	}
 }
 
+/*
 impl From<Elapsed> for ProcessError {
 	fn from(_: Elapsed) -> ProcessError {
+		ProcessError::Timeout
+	}
+}
+*/
+
+impl From<tokio::time::Elapsed> for ProcessError {
+	fn from(_: tokio::time::Elapsed) -> ProcessError {
 		ProcessError::Timeout
 	}
 }

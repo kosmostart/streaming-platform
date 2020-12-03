@@ -10,13 +10,13 @@ use crate::proto::*;
 
 /// Starts the server based on provided ServerConfig struct. Creates new runtime and blocks.
 pub fn start(config: ServerConfig, subscribes: HashMap<String, Vec<String>>) {
-    let rt = Runtime::new().expect("failed to create runtime"); 
+    let mut rt = Runtime::new().expect("failed to create runtime"); 
     let _ = rt.block_on(start_future(config, subscribes));
 }
 
 /// Future for new server start based on provided ServerConfig struct, in case you want to create runtime by yourself.
 pub async fn start_future(config: ServerConfig, subscribes: HashMap<String, Vec<String>>) -> Result<(), ProcessError> {
-    let listener = TcpListener::bind(config.host.clone()).await?;
+    let mut listener = TcpListener::bind(config.host.clone()).await?;
     let (server_tx, mut server_rx) = mpsc::unbounded_channel();
     tokio::spawn(async move {        
         let mut clients = HashMap::new();

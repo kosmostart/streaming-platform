@@ -2,6 +2,7 @@
 #![feature(async_closure)]
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::env::current_dir;
 use log::*;
 use serde_json::{json, Value, to_vec};
 use warp::{Filter, http::{Response, header::SET_COOKIE}};
@@ -41,6 +42,11 @@ pub async fn startup(config: HashMap<String, String>, mb: MagicBall, startup_dat
                 None => None
             }
         None => None
+    };
+
+    let deploy_path = match config.get("deploy_path") {
+        Some(path) => path.to_owned(),
+        None => current_dir().expect("failed to get current dir").to_str().expect("failed to get current dir str (for deploy path)").to_owned()
     };
 
     let routes =                    
@@ -98,26 +104,31 @@ pub async fn startup(config: HashMap<String, String>, mb: MagicBall, startup_dat
                 .and(warp::path::param())
                 .and(warp::header::optional("cookie"))
                 .and(warp::path::param())                                
-                .and_then(move |_prm: String, _cookie_header: Option<String>, _prm2: String| {
+                .and_then(move |app_name: String, _cookie_header: Option<String>, file_name: String| {
+                    let deploy_path = deploy_path.clone();
+
+                    let (mut tx, body) = warp::hyper::body::Body::channel();
 
                     async move {
-                        let mut file = streaming_platform::tokio::fs::File::open("").await.unwrap();
+                        let mut file = streaming_platform::tokio::fs::File::open(deploy_path + "/" + &app_name + "/" + &file_name).await.unwrap();
 
                         let mut file_buf = [0; 1024];
 
                         let _stream = loop {
                             match file.read(&mut file_buf).await.unwrap() {
                                 0 => break,
-                                _n => {
-
-                                }
+                                _n => 
+                                    match tx.send_data(warp::hyper::body::Bytes::copy_from_slice(&file_buf)).await {
+                                        Ok(_) => {}
+                                        Err(_) => {
+                                            break;                                         
+                                        }
+                                    }                                
                             }
-                        };                                
+                        };                        
 
-                        //let body = hyper::Body::wrap_stream(stream);
-
-                        let res = Response::builder().body(vec![]).expect("failed to build response");
-                        Ok::<Response<Vec<u8>>, warp::Rejection>(res)
+                        let res = Response::builder().body(body).expect("failed to build response");
+                        Ok::<Response<_>, warp::Rejection>(res)
                     }
                 }
             )

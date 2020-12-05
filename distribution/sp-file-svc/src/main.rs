@@ -19,7 +19,7 @@ fn main() {
     env_logger::init();
     let config = cfg::get_config();    
     let access_key = "";
-    let rt = Runtime::new().expect("failed to create runtime");
+    let mut rt = Runtime::new().expect("failed to create runtime");
     let mut hm_config = HashMap::new();
     hm_config.insert("dirs".to_owned(), to_string(&json!(config.dirs.expect("config directories are empty"))).expect("failed to serialize config directories"));
     rt.block_on(stream_mode(&config.host, &config.addr, access_key, process_stream, startup, hm_config, None, None));

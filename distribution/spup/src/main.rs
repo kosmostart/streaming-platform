@@ -18,7 +18,7 @@ fn main() {
     env_logger::init();
     let config = cfg::get_config();    
     let access_key = "";
-    let rt = Runtime::new().expect("failed to create runtime");
+    let mut rt = Runtime::new().expect("failed to create runtime");
     let mut hm_config = HashMap::new();
     hm_config.insert("access_key".to_owned(), config.access_key.clone());
     hm_config.insert("path".to_owned(), config.path.clone());

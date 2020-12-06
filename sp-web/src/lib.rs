@@ -103,33 +103,30 @@ pub async fn startup(config: HashMap<String, String>, mb: MagicBall, startup_dat
             warp::path("app")
                 .and(warp::path::param())
                 .and(warp::header::optional("cookie"))
-                .and(warp::path::param())                                
-                .and_then(move |app_name: String, _cookie_header: Option<String>, file_name: String| {
+                .and(warp::path::tail())                                
+                .map(move |app_name: String, _cookie_header: Option<String>, tail: warp::path::Tail| {
                     let deploy_path = deploy_path.clone();
 
                     let (mut tx, body) = warp::hyper::body::Body::channel();
 
-                    async move {
-                        let mut file = streaming_platform::tokio::fs::File::open(deploy_path + "/" + &app_name + "/" + &file_name).await.unwrap();
+                    streaming_platform::tokio::spawn(async move {                        
+                        let mut file = streaming_platform::tokio::fs::File::open(deploy_path + "/" + &app_name + "/" + tail.as_str()).await.unwrap();
 
                         let mut file_buf = [0; 1024];
 
-                        let _stream = loop {
+                        loop {
                             match file.read(&mut file_buf).await.unwrap() {
                                 0 => break,
-                                _n => 
+                                _ =>                                 
                                     match tx.send_data(warp::hyper::body::Bytes::copy_from_slice(&file_buf)).await {
                                         Ok(_) => {}
-                                        Err(_) => {
-                                            break;                                         
-                                        }
+                                        Err(_) => break
                                     }                                
                             }
-                        };                        
+                        }
+                    });                        
 
-                        let res = Response::builder().body(body).expect("failed to build response");
-                        Ok::<Response<_>, warp::Rejection>(res)
-                    }
+                    Response::builder().body(body)                    
                 }
             )
         )
@@ -147,8 +144,6 @@ pub async fn startup(config: HashMap<String, String>, mb: MagicBall, startup_dat
             )  
         )
         ;
-
-
 
     if cert_path.is_some() && key_path.is_some() {
         warp::serve(routes)

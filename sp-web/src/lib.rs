@@ -35,13 +35,36 @@ pub async fn startup(config: HashMap<String, String>, mb: MagicBall, startup_dat
 
     let auth_key = config.get("auth_key").map(|x| x.to_owned()).unwrap();
 
-    let apps = match startup_data {
+    let mut app_indexes = HashMap::new();
+    let mut app_paths = HashMap::new();
+
+    match startup_data {
         Some(startup_data) =>
             match startup_data["apps"].as_array() {
-                Some(apps) => Some(apps.to_owned()),
-                None => None
+                Some(apps) => {                    
+                    for app in apps {
+                        match app["name"].as_str() {
+                            Some(app_name) => {
+                                match app["index"].as_str() {
+                                    Some(app_index) => {
+                                        app_indexes.insert(app_name.to_owned(), app_index.to_owned());
+                                    }
+                                    None => {}
+                                }
+                                match app["path"].as_str() {
+                                    Some(app_path) => {
+                                        app_paths.insert(app_name.to_owned(), app_path.to_owned());
+                                    }
+                                    None => {}
+                                }
+                            }
+                            None => {}
+                        }                        
+                    }                    
+                }
+                None => {}
             }
-        None => None
+        None => {}
     };
 
     let deploy_path = match config.get("deploy_path") {
@@ -73,20 +96,10 @@ pub async fn startup(config: HashMap<String, String>, mb: MagicBall, startup_dat
                 .and(warp::path::param())
                 .and(warp::header::optional("cookie"))
                 .and(warp::path::end())                                
-                .map(move |name: String, _cookie_header: Option<String>| {
-                    let apps = apps.clone();                    
-                    
-                    let index = match apps {
-                        Some(apps) => {
-                            match apps.into_iter().find(|x| x["name"] == name) {
-                                Some(app) => app["index"].as_str().map(|x| x.to_owned()),
-                                None => None
-                            }                            
-                        }
-                        None => None
-                    };
+                .map(move |app_name: String, _cookie_header: Option<String>| {
+                    let mut app_indexes = app_indexes.clone();
 
-                    match index {
+                    match app_indexes.remove(&app_name) {
                         Some(index) => 
                             Response::builder()
                                 .header("content-type", "text/html")
@@ -106,27 +119,35 @@ pub async fn startup(config: HashMap<String, String>, mb: MagicBall, startup_dat
                 .and(warp::path::tail())                                
                 .map(move |app_name: String, _cookie_header: Option<String>, tail: warp::path::Tail| {
                     let deploy_path = deploy_path.clone();
+                    let mut app_paths = app_paths.clone();
 
-                    let (mut tx, body) = warp::hyper::body::Body::channel();
+                    match app_paths.remove(&app_name) {
+                        Some(app_path) => {
+                            let (mut tx, body) = warp::hyper::body::Body::channel();
 
-                    streaming_platform::tokio::spawn(async move {                        
-                        let mut file = streaming_platform::tokio::fs::File::open(deploy_path + "/" + &app_name + "/" + tail.as_str()).await.unwrap();
+                            streaming_platform::tokio::spawn(async move {                        
+                                let mut file = streaming_platform::tokio::fs::File::open(deploy_path + "/" + &app_path + "/" + tail.as_str()).await.unwrap();
 
-                        let mut file_buf = [0; 1024];
+                                let mut file_buf = [0; 1024];
 
-                        loop {
-                            match file.read(&mut file_buf).await.unwrap() {
-                                0 => break,
-                                _ =>                                 
-                                    match tx.send_data(warp::hyper::body::Bytes::copy_from_slice(&file_buf)).await {
-                                        Ok(_) => {}
-                                        Err(_) => break
-                                    }                                
-                            }
+                                loop {
+                                    match file.read(&mut file_buf).await.unwrap() {
+                                        0 => break,
+                                        _ =>                                 
+                                            match tx.send_data(warp::hyper::body::Bytes::copy_from_slice(&file_buf)).await {
+                                                Ok(_) => {}
+                                                Err(_) => break
+                                            }                                
+                                    }
+                                }
+                            });                        
+
+                            Response::builder().body(body)
                         }
-                    });                        
-
-                    Response::builder().body(body)                    
+                        None => Response::builder()
+                            .header("content-type", "text/html")
+                            .body(warp::hyper::body::Body::from(""))
+                    }
                 }
             )
         )

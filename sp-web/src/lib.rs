@@ -120,33 +120,46 @@ pub async fn startup(config: HashMap<String, String>, mb: MagicBall, startup_dat
                 .map(move |app_name: String, _cookie_header: Option<String>, tail: warp::path::Tail| {
                     let deploy_path = deploy_path.clone();
                     let mut app_paths = app_paths.clone();
-
+                    
                     match app_paths.remove(&app_name) {
                         Some(app_path) => {
+
+                            let mime = mime_guess::from_path(tail.as_str()).first();
+
                             let (mut tx, body) = warp::hyper::body::Body::channel();
 
-                            streaming_platform::tokio::spawn(async move {                        
-                                let mut file = streaming_platform::tokio::fs::File::open(deploy_path + "/" + &app_path + "/" + tail.as_str()).await.unwrap();
+                            streaming_platform::tokio::spawn(async move {
+                                //let q = deploy_path + "/" + &app_path + "/" + tail.as_str();
+                                //info!("{}", q);
+                                //let mut file = streaming_platform::tokio::fs::File::open(q).await.unwrap();
 
+                                let mut file = streaming_platform::tokio::fs::File::open(deploy_path + "/" + &app_path + "/" + tail.as_str()).await.unwrap();
+                                
                                 let mut file_buf = [0; 1024];
 
                                 loop {
                                     match file.read(&mut file_buf).await.unwrap() {
                                         0 => break,
-                                        _ =>                                 
-                                            match tx.send_data(warp::hyper::body::Bytes::copy_from_slice(&file_buf)).await {
+                                        n =>                                 
+                                            match tx.send_data(warp::hyper::body::Bytes::copy_from_slice(&file_buf[..n])).await {
                                                 Ok(_) => {}
                                                 Err(_) => break
                                             }                                
                                     }
                                 }
-                            });                        
+                            });                            
 
-                            Response::builder().body(body)
+                            match mime {
+                                Some(mime_type) => Response::builder()                                    
+                                    .header("content-type", mime_type.essence_str())
+                                    .body(body),
+                                None => Response::builder()                                    
+                                    .body(body)
+                            }                            
                         }
                         None => Response::builder()
                             .header("content-type", "text/html")
-                            .body(warp::hyper::body::Body::from(""))
+                            .body(warp::hyper::body::Body::from("Error"))
                     }
                 }
             )

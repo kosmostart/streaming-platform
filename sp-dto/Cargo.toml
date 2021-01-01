@@ -6,10 +6,10 @@ license = "MIT"
 readme = "README.md"
 keywords = ["message", "broker", "stream"]
 categories = ["network-programming", "asynchronous"]
-repository = "https://github.com/astromq/streaming-platform"
+repository = "https://github.com/skytfs/streaming-platform"
 documentation = "https://docs.rs/sp-dto"
 description = """
-Message format and types for data transfer used by https://github.com/astromq/streaming-platform/streaming-platform
+Message format and types for data transfer used by https://github.com/skytfs/streaming-platform/streaming-platform
 """
 edition = "2018"
 

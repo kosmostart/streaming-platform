@@ -6,7 +6,7 @@ license = "MIT"
 readme = "README.md"
 keywords = ["yew", "wasm"]
 categories = ["web-programming", "wasm"]
-repository = "https://github.com/astromq/streaming-platform"
+repository = "https://github.com/skytfs/streaming-platform"
 documentation = "https://docs.rs/sp-yew"
 description = """
 Component communication tool for Yew framework.

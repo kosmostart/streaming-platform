@@ -1,1 +1,1 @@
-Message format and types for data transfer used by *[streaming-platform](https://github.com/astromq/streaming-platform/tree/master/streaming-platform)*
+Message format and types for data transfer used by *[streaming-platform](https://github.com/skytfs/streaming-platform/tree/master/streaming-platform)*

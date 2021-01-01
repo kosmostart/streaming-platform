@@ -1697,6 +1697,7 @@ version = "0.1.0"
 dependencies = [
  "env_logger 0.8.2",
  "log",
+ "mime_guess",
  "serde_json",
  "sp-auth",
  "streaming-platform",

@@ -128,10 +128,10 @@ pub async fn startup(config: HashMap<String, String>, mb: MagicBall, startup_dat
 
                             let (mut tx, body) = warp::hyper::body::Body::channel();
 
-                            streaming_platform::tokio::spawn(async move {
-                                //let q = deploy_path + "/" + &app_path + "/" + tail.as_str();
-                                //info!("{}", q);
-                                //let mut file = streaming_platform::tokio::fs::File::open(q).await.unwrap();
+                            streaming_platform::tokio::spawn(async move {                                
+                                //info!("{}", deploy_path);
+                                //info!("{}", app_path);
+                                //info!("{}", tail.as_str());
 
                                 let mut file = streaming_platform::tokio::fs::File::open(deploy_path + "/" + &app_path + "/" + tail.as_str()).await.unwrap();
                                 

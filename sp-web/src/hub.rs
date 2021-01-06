@@ -5,11 +5,11 @@ use streaming_platform::MagicBall;
 use streaming_platform::sp_dto::{get_msg_meta, MsgKind};
 use crate::{response, check_auth_token_vec};
 
-pub async fn go(aca_origin: Option<String>, auth_key: String, body: warp::hyper::body::Bytes, mut mb: MagicBall) -> Result<Response<Vec<u8>>, warp::Rejection> {    
+pub async fn go(aca_origin: Option<String>, auth_token_key: String, body: warp::hyper::body::Bytes, mut mb: MagicBall) -> Result<Response<Vec<u8>>, warp::Rejection> {    
     let res = match get_msg_meta(&body) {
         Ok(msg_meta) => {
             info!("hub auth token {:?}", msg_meta.auth_token);
-            match check_auth_token_vec(auth_key.as_bytes(), &msg_meta) {
+            match check_auth_token_vec(auth_token_key.as_bytes(), &msg_meta) {
                 Ok(_) => {
                     match msg_meta.kind {
                         MsgKind::RpcRequest => {                                        

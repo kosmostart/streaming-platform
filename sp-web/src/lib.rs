@@ -33,7 +33,7 @@ pub async fn startup(config: HashMap<String, String>, mb: MagicBall, startup_dat
 
     let listen_addr = listen_addr.parse::<SocketAddr>().expect("incorrect listen addr passed");
 
-    let auth_key = config.get("auth_key").map(|x| x.to_owned()).unwrap();
+    let auth_token_key = config.get("auth_token_key").map(|x| x.to_owned()).unwrap();
 
     let mut app_indexes = HashMap::new();
     let mut app_paths = HashMap::new();
@@ -170,10 +170,10 @@ pub async fn startup(config: HashMap<String, String>, mb: MagicBall, startup_dat
                 .and(warp::body::bytes())
                 .and_then(move |body: warp::hyper::body::Bytes| {
                     let aca_origin = aca_origin2.clone();
-                    let auth_key = auth_key.clone();
+                    let auth_token_key = auth_token_key.clone();
                     let mb = mb2.clone();
                     
-                    crate::hub::go(aca_origin, auth_key, body, mb)
+                    crate::hub::go(aca_origin, auth_token_key, body, mb)
                 }
             )  
         )
@@ -208,10 +208,10 @@ pub fn response_with_cookie(aca_origin: String, cookie_header: &str, data: Vec<u
         .body(data) 
 }
 
-pub fn check_auth_token_vec(auth_key: &[u8], msg_meta: &MsgMeta) -> Result<Value, Vec<u8>> {
+pub fn check_auth_token_vec(auth_token_key: &[u8], msg_meta: &MsgMeta) -> Result<Value, Vec<u8>> {
     let res = match &msg_meta.auth_token {
         Some(data) => {
-            match verify_auth_token(auth_key, &data) {
+            match verify_auth_token(auth_token_key, &data) {
                 Ok(auth_data) => Some(auth_data),
                 Err(e) => {
                     warn!("auth token verification failed, {:?}", e);

@@ -24,16 +24,16 @@ pub async fn process_rpc(_config: HashMap<String, String>, mut _mb: MagicBall, _
 }
 
 pub async fn startup(config: HashMap<String, String>, mb: MagicBall, startup_data: Option<Value>) {
-    let listen_addr = config.get("listen_addr").expect("missing listen_addr config value");    
+    let listen_addr = config.get("listen_addr").expect("Missing listen_addr config value");
     let cert_path = config.get("cert_path");
     let key_path = config.get("key_path");
     let aca_origin = config.get("aca_origin").map(|x| x.to_owned());
     let aca_origin2 = aca_origin.clone();
     let mb2 = mb.clone();
 
-    let listen_addr = listen_addr.parse::<SocketAddr>().expect("incorrect listen addr passed");
+    let listen_addr = listen_addr.parse::<SocketAddr>().expect("Incorrect listen addr passed");
 
-    let auth_token_key = config.get("auth_token_key").map(|x| x.to_owned()).unwrap();
+    let auth_token_key = config.get("auth_token_key").map(|x| x.to_owned()).expect("Missing auth_token_key config value");
 
     let mut app_indexes = HashMap::new();
     let mut app_paths = HashMap::new();

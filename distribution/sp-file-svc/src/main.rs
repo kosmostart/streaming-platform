@@ -3,7 +3,7 @@ use std::fs;
 use serde_json::{json, Value, from_slice, to_vec, to_string, from_str};
 use log::*;
 use tokio::{io::AsyncWriteExt, fs::File, sync::mpsc::UnboundedReceiver};
-use streaming_platform::{client::stream_mode, tokio::{self, runtime::Runtime, io::AsyncReadExt}, DATA_BUF_SIZE, MagicBall, ClientMsg, RestreamMsg, StreamLayout, StreamUnit, sp_dto::{MsgMeta, MsgKind, reply_to_rpc_dto2_sizes, Participator, RpcResult}};
+use streaming_platform::{client::stream_mode, tokio::{self, runtime::Runtime, io::AsyncReadExt}, DATA_BUF_SIZE, MagicBall, ClientMsg, RestreamMsg, StreamLayout, StreamUnit, sp_dto::{MsgMeta, MsgType, reply_to_rpc_dto2_sizes, Participator, RpcResult}};
 
 mod cfg;
 
@@ -42,14 +42,13 @@ pub async fn process_stream(config: HashMap<String, String>, mut mb: MagicBall, 
                     Some(stream_id) => {
                         match stream_layouts.remove(&stream_id) {
                             Some(stream_layout) => {
-                                match stream_layout.stream.msg_meta.kind {
-                                    MsgKind::RpcRequest => {
+                                match stream_layout.stream.msg_meta.msg_type {
+                                    MsgType::RpcRequest => {
                                         let mut route = stream_layout.stream.msg_meta.route.clone();
                                         route.points.push(Participator::Service(mb.addr.clone()));
                                         let (res, msg_meta_size, payload_size, attachments_size) = reply_to_rpc_dto2_sizes(
-                                            mb.addr.clone(), 
-                                            stream_layout.stream.msg_meta.tx.clone(), 
-                                            stream_layout.stream.msg_meta.key.clone(), 
+                                            mb.addr.clone(),                                            
+                                            stream_layout.stream.msg_meta.key.clone(),
                                             stream_layout.stream.msg_meta.correlation_id, 
                                             vec![],
                                             vec![], vec![],
@@ -144,8 +143,7 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
                     let mut route = stream_layout.stream.msg_meta.route.clone();
                     route.points.push(Participator::Service(mb.addr.clone()));
                     let (res, msg_meta_size, payload_size, attachments_size) = reply_to_rpc_dto2_sizes(
-                        mb.addr.clone(), 
-                        stream_layout.stream.msg_meta.tx.clone(), 
+                        mb.addr.clone(),                        
                         stream_layout.stream.msg_meta.key.clone(), 
                         stream_layout.stream.msg_meta.correlation_id, 
                         reponse_payload,
@@ -206,7 +204,7 @@ async fn download_file(mut mb: MagicBall, msg_meta: MsgMeta, path: std::path::Pa
     let payload = to_vec(&json!({
         "file_name": file_name
     }))?;
-    let (dto, msg_meta_size, payload_size, _) = reply_to_rpc_dto2_sizes(mb.addr.clone(), msg_meta.tx.clone(), msg_meta.key.clone(), msg_meta.correlation_id, payload, vec![(file_name, size)], vec![], RpcResult::Ok, msg_meta.route.clone(), mb.auth_token.clone(), mb.auth_data.clone())?;
+    let (dto, msg_meta_size, payload_size, _) = reply_to_rpc_dto2_sizes(mb.addr.clone(), msg_meta.key.clone(), msg_meta.correlation_id, payload, vec![(file_name, size)], vec![], RpcResult::Ok, msg_meta.route.clone(), mb.auth_token.clone(), mb.auth_data.clone())?;
     let stream_id = mb.get_stream_id();
     mb.write_vec(stream_id, dto, msg_meta_size, payload_size, vec![]).await?;        
     match size {

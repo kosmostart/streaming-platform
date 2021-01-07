@@ -12,13 +12,17 @@ pub fn main() {
     
     let mut subscribes = HashMap::new();
 
-    subscribes.insert("HiRpc".to_owned(), vec![
+    event_subscribes.insert("HiEvent".to_owned(), vec![
+        "Client1".to_owned(),
+        "Client2".to_owned()
+    ]);
+
+    rpc_subscribes.insert("HiRpc".to_owned(), vec![
         "Client1".to_owned()        
     ]);
 
-    subscribes.insert("HiEvent".to_owned(), vec![
-        "Client1".to_owned(),
-        "Client2".to_owned()
+    rpc_response_subscribes.insert("HiRpc".to_owned(), vec![
+        "Client3".to_owned()
     ]);
 
     info!("{:#?}", config);

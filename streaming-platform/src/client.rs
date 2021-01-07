@@ -12,8 +12,8 @@ use crate::proto::*;
 /// Future for stream based client based on provided config.
 /// "addr" value will be used as address for endpoint, "host" value - network addr for the server (in host:port format)
 /// "access_key" value will be send for optional authorization, more information about this feature will be provided later.
-/// process_event is used for processing incoming message, which are marked as events via message kind.
-/// process_rpc is used for processing incoming message, which are marked as rpc request via message kind.
+/// process_event is used for processing incoming message, which are marked as events via message msg_type.
+/// process_rpc is used for processing incoming message, which are marked as rpc request via message msg_type.
 /// startup is executed on the start of this function.
 /// restream_rx can be used for restreaming data somewhere else, for example returning data for incoming web request
 /// The protocol message format is in sp-dto crate.
@@ -137,8 +137,8 @@ where
             let mut write_tx3 = write_tx3.clone();
             match msg {
                 ClientMsg::Message(_, msg_meta, payload, attachments_data) => {
-                    match msg_meta.kind {
-                        MsgKind::Event => {          
+                    match msg_meta.msg_type {
+                        MsgType::Event => {          
                             debug!("client got event {}", msg_meta.display());
                             tokio::spawn(async move {
                                 let payload: P = from_slice(&payload).expect("failed to deserialize event payload");                                
@@ -148,12 +148,11 @@ where
                                 debug!("client {} process_event succeeded", mb.addr);
                             });                            
                         }
-                        MsgKind::RpcRequest => {                        
+                        MsgType::RpcRequest => {                        
                             debug!("client got rpc request {}", msg_meta.display());
                             tokio::spawn(async move {                                
                                 let mut route = msg_meta.route.clone();
-                                let correlation_id = msg_meta.correlation_id;
-                                let tx = msg_meta.tx.clone();
+                                let correlation_id = msg_meta.correlation_id;                                
                                 let key = msg_meta.key.clone();
                                 let payload: P = from_slice(&payload).expect("failed to deserialize rpc request payload");                            
                                 let (payload, attachments, attachments_data, rpc_result) = match process_rpc(config.clone(), mb.clone(), Message { meta: msg_meta, payload, attachments_data }).await {
@@ -171,13 +170,13 @@ where
                                     }
                                 };                                
                                 route.points.push(Participator::Service(mb.addr.clone()));
-                                let (res, msg_meta_size, payload_size, attacchments_size) = reply_to_rpc_dto2_sizes(mb.addr.clone(), tx, key, correlation_id, payload, attachments, attachments_data, rpc_result, route, None, None).expect("failed to create rpc reply");
+                                let (res, msg_meta_size, payload_size, attacchments_size) = reply_to_rpc_dto2_sizes(mb.addr.clone(),  key, correlation_id, payload, attachments, attachments_data, rpc_result, route, None, None).expect("failed to create rpc reply");
                                 debug!("client {} attempt to write rpc response", mb.addr);
                                 write(mb.get_stream_id(), res, msg_meta_size, payload_size, attacchments_size, &mut write_tx3).await.expect("failed to write rpc response");                                
                                 debug!("client {} write rpc response succeded", mb.addr);
                             });                            
                         }
-                        MsgKind::RpcResponse(_) => {           
+                        MsgType::RpcResponse(_) => {           
                             debug!("client got rpc response {}", msg_meta.display());
                             match rpc_inbound_tx2.send(RpcMsg::RpcDataRequest(msg_meta.correlation_id)) {
                                 Ok(()) => {
@@ -213,14 +212,14 @@ where
     connect_full_message_future(host, addr3, access_key, read_tx, write_rx).await;
 }
 
-async fn auth(target: String, addr: String, access_key: String, stream: &mut TcpStream) -> Result<(), ProcessError> {
+async fn auth(addr: String, access_key: String, stream: &mut TcpStream) -> Result<(), ProcessError> {
     let route = Route {
         source: Participator::Service(addr.clone()),
         spec: RouteSpec::Simple,
         points: vec![Participator::Service(addr.clone())]
     };  
 
-    let (dto, msg_meta_size, payload_size, attachments_size) = rpc_dto_with_sizes(addr.clone(), target.to_owned(), "Auth".to_owned(), json!({
+    let (dto, msg_meta_size, payload_size, attachments_size) = rpc_dto_with_sizes(addr.clone(), "Auth".to_owned(), json!({
         "access_key": access_key
     }), route, None, None).unwrap();
 
@@ -228,14 +227,12 @@ async fn auth(target: String, addr: String, access_key: String, stream: &mut Tcp
 }
 
 
-async fn connect_stream_future(host: &str, addr: String, access_key: String, read_tx: UnboundedSender<ClientMsg>, write_rx: UnboundedReceiver<StreamUnit>) {    
-    let server = "Server".to_owned();
-
+async fn connect_stream_future(host: &str, addr: String, access_key: String, read_tx: UnboundedSender<ClientMsg>, write_rx: UnboundedReceiver<StreamUnit>) {
     let mut write_stream = TcpStream::connect(host).await.expect("connection to host failed");
-    auth(server.clone(), addr.clone(), access_key.clone(), &mut write_stream).await.expect("write stream authorization failed");
+    auth(addr.clone(), access_key.clone(), &mut write_stream).await.expect("write stream authorization failed");
 
     let mut read_stream = TcpStream::connect(host).await.expect("connection to host failed");
-    auth(server.clone(), addr.clone(), access_key, &mut read_stream).await.expect("read stream authorization failed");
+    auth(addr.clone(), access_key, &mut read_stream).await.expect("read stream authorization failed");
 
     let res = process_message_stream(addr, write_stream, read_stream, read_tx, write_rx).await;
 
@@ -243,13 +240,11 @@ async fn connect_stream_future(host: &str, addr: String, access_key: String, rea
 }
 
 async fn connect_full_message_future(host: &str, addr: String, access_key: String, read_tx: UnboundedSender<ClientMsg>, write_rx: UnboundedReceiver<StreamUnit>) {    
-    let server = "Server".to_owned();
-    
     let mut write_stream = TcpStream::connect(host).await.expect("connection to host failed");
-    auth(server.clone(), addr.clone(), access_key.clone(), &mut write_stream).await.expect("wrtie stream authorization failed");
+    auth(addr.clone(), access_key.clone(), &mut write_stream).await.expect("wrtie stream authorization failed");
 
     let mut read_stream = TcpStream::connect(host).await.expect("connection to host failed");
-    auth(server.clone(), addr.clone(), access_key, &mut read_stream).await.expect("read stream authorization failed");
+    auth(addr.clone(), access_key, &mut read_stream).await.expect("read stream authorization failed");
 
     let res = process_full_message(addr, write_stream, read_stream, read_tx, write_rx).await;
 
@@ -384,8 +379,8 @@ where
 
 /// Starts a message based client based on provided config. Creates new runtime and blocks.
 /// Config must have "addr" key, this will be used as address for endpoint, and "host" key - network addr for the server (in host:port format)
-/// process_event is used for processing incoming message, which are marked as events via message kind.
-/// process_rpc is used for processing incoming message, which are marked as rpc request via message kind.
+/// process_event is used for processing incoming message, which are marked as events via message msg_type.
+/// process_rpc is used for processing incoming message, which are marked as rpc request via message msg_type.
 /// startup is executed on the start of this function.
 /// The protocol message format is in sp-dto crate.
 pub fn start<T: 'static, Q: 'static, R: 'static>(config: HashMap<String, String>, process_event: ProcessEvent<T, Value>, process_rpc: ProcessRpc<Q, Value>, startup: Startup<R>, startup_data: Option<Value>) 

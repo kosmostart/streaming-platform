@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use serde_json::{json, Value, from_slice};
 use log::*;
 use tokio::{io::AsyncWriteExt, fs::File, sync::mpsc::UnboundedReceiver};
-use streaming_platform::{client::stream_mode, tokio::{self, runtime::Runtime}, MagicBall, ClientMsg, RestreamMsg, StreamLayout, sp_dto::{MsgKind, reply_to_rpc_dto2_sizes, rpc_dto_with_correlation_id_sizes, Route, Participator, RouteSpec, RpcResult}};
+use streaming_platform::{client::stream_mode, tokio::{self, runtime::Runtime}, MagicBall, ClientMsg, RestreamMsg, StreamLayout, sp_dto::{MsgType, reply_to_rpc_dto2_sizes, rpc_dto_with_correlation_id_sizes, Route, Participator, RouteSpec, RpcResult}};
 use sp_pack_core::unpack;
 
 mod cfg;
@@ -28,8 +28,7 @@ fn main() {
 pub async fn startup(config: HashMap<String, String>, mut mb: MagicBall, _startup_data: Option<Value>) {
     let access_key = config.get("access_key").expect("access key is empty");
     let (_correlation_id, dto, msg_meta_size, payload_size, attachments_sizes) = rpc_dto_with_correlation_id_sizes(
-        mb.addr.clone(),
-        "SpFileSvc".to_owned(),
+        mb.addr.clone(),        
         "Download".to_owned(),
         json!({
             "access_key": access_key
@@ -65,13 +64,12 @@ pub async fn process_stream(config: HashMap<String, String>, mut mb: MagicBall, 
                     Some(stream_id) => {
                         match stream_layouts.remove(&stream_id) {
                             Some(stream_layout) => {
-                                match stream_layout.stream.msg_meta.kind {
-                                    MsgKind::RpcRequest => {
+                                match stream_layout.stream.msg_meta.msg_type {
+                                    MsgType::RpcRequest => {
                                         let mut route = stream_layout.stream.msg_meta.route.clone();
                                         route.points.push(Participator::Service(mb.addr.clone()));
                                         let (res, msg_meta_size, payload_size, attachments_size) = reply_to_rpc_dto2_sizes(
-                                            mb.addr.clone(), 
-                                            stream_layout.stream.msg_meta.tx.clone(), 
+                                            mb.addr.clone(),                                            
                                             stream_layout.stream.msg_meta.key.clone(), 
                                             stream_layout.stream.msg_meta.correlation_id, 
                                             vec![],

@@ -6,7 +6,9 @@ fn main() {
     
     let config = sp_cfg::get_config_from_arg();
 
-    let subscribes = HashMap::new();    
+    let event_subscribes = HashMap::new();
+    let rpc_subscribes = HashMap::new();
+    let rpc_response_subscribes = HashMap::new();
 
-    start(config, subscribes);
+    start(config, event_subscribes, rpc_subscribes, rpc_response_subscribes);
 }

@@ -118,8 +118,8 @@ pub struct MsgMeta {
     pub tx: String,    
     /// Logic key for message processing
     pub key: String,
-    /// Defines what kind of message it is
-    pub kind: MsgKind,
+    /// Defines what msg_type of message it is
+    pub msg_type: MsgType,
     /// Correlation id is needed for rpc and for message chains
     pub correlation_id: Uuid,
     /// Logical message route, receiver are responsible for moving message on.
@@ -135,7 +135,7 @@ pub struct MsgMeta {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub enum MsgKind {
+pub enum MsgType {
     Event,
     RpcRequest,
     RpcResponse(RpcResult)
@@ -180,7 +180,7 @@ impl MsgMeta {
     }
     /// Short display of message meta data
     pub fn display(&self) -> String {
-        format!("{}, {} {:?}", self.tx, self.key, self.kind)
+        format!("{}, {} {:?}", self.tx, self.key, self.msg_type)
     }
     /// Get key part, index is zero based, . is used as a separator.
     pub fn key_part(&self, index: usize) -> Result<&str, String> {
@@ -298,7 +298,7 @@ pub fn event_dto<T>(tx: String, key: String, payload: T, route: Route, auth_toke
     let msg_meta = MsgMeta {
         tx,        
         key,
-        kind: MsgKind::Event,
+        msg_type: MsgType::Event,
         correlation_id,
         route,
         payload_size: payload.len() as u64,
@@ -325,7 +325,7 @@ pub fn event_dto_with_sizes<T>(tx: String, key: String, payload: T, route: Route
     let msg_meta = MsgMeta {
         tx,        
         key,
-        kind: MsgKind::Event,
+        msg_type: MsgType::Event,
         correlation_id,
         route,
         payload_size: payload.len() as u64,
@@ -350,7 +350,7 @@ pub fn reply_to_rpc_dto<T>(tx: String, key: String, correlation_id: Uuid, payloa
     let msg_meta = MsgMeta {
         tx,        
         key,
-        kind: MsgKind::RpcResponse(result),
+        msg_type: MsgType::RpcResponse(result),
         correlation_id,
         route,
         payload_size: payload.len() as u64,
@@ -395,7 +395,7 @@ pub fn rpc_dto<T>(tx: String, key: String, payload: T, route: Route, auth_token:
     let msg_meta = MsgMeta {
         tx,        
         key,
-        kind: MsgKind::RpcRequest,
+        msg_type: MsgType::RpcRequest,
         correlation_id,
         route,
         payload_size: payload.len() as u64,
@@ -422,7 +422,7 @@ pub fn rpc_dto_with_sizes<T>(tx: String, key: String, payload: T, route: Route, 
     let msg_meta = MsgMeta {
         tx,        
         key,
-        kind: MsgKind::RpcRequest,
+        msg_type: MsgType::RpcRequest,
         correlation_id,
         route,
         payload_size: payload.len() as u64,
@@ -447,7 +447,7 @@ pub fn rpc_dto_with_correlation_id<T>(tx: String, key: String, payload: T, route
     let msg_meta = MsgMeta {
         tx,        
         key,
-        kind: MsgKind::RpcRequest,
+        msg_type: MsgType::RpcRequest,
         correlation_id,
         route,
         payload_size: payload.len() as u64,
@@ -469,7 +469,7 @@ pub fn rpc_dto_with_correlation_id_sizes<T>(tx: String, key: String, payload: T,
     let msg_meta = MsgMeta {
         tx,        
         key,
-        kind: MsgKind::RpcRequest,
+        msg_type: MsgType::RpcRequest,
         correlation_id,
         route,
         payload_size: payload.len() as u64,
@@ -505,7 +505,7 @@ pub fn rpc_dto_with_attachments<T>(tx: String, key: String, payload: T, attachme
     let msg_meta = MsgMeta {
         tx,        
         key,
-        kind: MsgKind::RpcRequest,
+        msg_type: MsgType::RpcRequest,
         correlation_id,
         route,
         payload_size: payload.len() as u64,
@@ -542,7 +542,7 @@ pub fn rpc_dto_with_later_attachments<T>(tx: String, key: String, payload: T, at
     let msg_meta = MsgMeta {
         tx,        
         key,
-        kind: MsgKind::RpcRequest,
+        msg_type: MsgType::RpcRequest,
         correlation_id,
         route,
         payload_size: payload.len() as u64,
@@ -582,7 +582,7 @@ pub fn event_dto2(tx: String, key: String, mut payload: Vec<u8>, route: Route, a
     let msg_meta = MsgMeta {
         tx,        
         key,
-        kind: MsgKind::Event,
+        msg_type: MsgType::Event,
         correlation_id,
         route,
         payload_size: payload.len() as u64,
@@ -614,7 +614,7 @@ pub fn reply_to_rpc_dto2_sizes(tx: String, key: String, correlation_id: Uuid, mu
     let msg_meta = MsgMeta {
         tx,        
         key,
-        kind: MsgKind::RpcResponse(result),
+        msg_type: MsgType::RpcResponse(result),
         correlation_id,
         route,
         payload_size: payload.len() as u64,
@@ -647,7 +647,7 @@ pub fn reply_to_rpc_dto_with_later_attachments2(tx: String, key: String, correla
     let msg_meta = MsgMeta {
         tx,        
         key,
-        kind: MsgKind::RpcResponse(result),
+        msg_type: MsgType::RpcResponse(result),
         correlation_id,
         route,
         payload_size: payload.len() as u64,
@@ -689,7 +689,7 @@ pub fn rpc_dto2(tx: String, key: String, mut payload: Vec<u8>, route: Route, aut
     let msg_meta = MsgMeta {
         tx,        
         key,
-        kind: MsgKind::RpcRequest,
+        msg_type: MsgType::RpcRequest,
         correlation_id,
         route,
         payload_size: payload.len() as u64,
@@ -726,7 +726,7 @@ pub fn rpc_dto_with_attachments2(tx: String, key: String, mut payload: Vec<u8>, 
     let msg_meta = MsgMeta {
         tx,        
         key,
-        kind: MsgKind::RpcRequest,
+        msg_type: MsgType::RpcRequest,
         correlation_id,
         route,
         payload_size: payload.len() as u64,
@@ -762,7 +762,7 @@ pub fn rpc_dto_with_later_attachments2(tx: String, key: String, mut payload: Vec
     let msg_meta = MsgMeta {
         tx,        
         key,
-        kind: MsgKind::RpcRequest,
+        msg_type: MsgType::RpcRequest,
         correlation_id,
         route,
         payload_size: payload.len() as u64,
@@ -789,7 +789,7 @@ pub fn rpc_dto_with_correlation_id_2(tx: String, key: String, mut payload: Vec<u
     let msg_meta = MsgMeta {
         tx,        
         key,
-        kind: MsgKind::RpcRequest,
+        msg_type: MsgType::RpcRequest,
         correlation_id,
         route,
         payload_size: payload.len() as u64,

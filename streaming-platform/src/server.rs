@@ -4,18 +4,18 @@ use log::*;
 use tokio::runtime::Runtime;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc::{self, UnboundedSender};
-use sp_dto::MsgKind;
+use sp_dto::MsgType;
 use sp_cfg::ServerConfig;
 use crate::proto::*;
 
 /// Starts the server based on provided ServerConfig struct. Creates new runtime and blocks.
-pub fn start(config: ServerConfig, subscribes: HashMap<String, Vec<String>>) {
+pub fn start(config: ServerConfig, event_subscribes: HashMap<String, Vec<String>>, rpc_subscribes: HashMap<String, Vec<String>>, rpc_response_subscribes: HashMap<String, Vec<String>>) {
     let mut rt = Runtime::new().expect("failed to create runtime"); 
-    let _ = rt.block_on(start_future(config, subscribes));
+    let _ = rt.block_on(start_future(config, event_subscribes, rpc_subscribes, rpc_response_subscribes));
 }
 
 /// Future for new server start based on provided ServerConfig struct, in case you want to create runtime by yourself.
-pub async fn start_future(config: ServerConfig, subscribes: HashMap<String, Vec<String>>) -> Result<(), ProcessError> {
+pub async fn start_future(config: ServerConfig, event_subscribes: HashMap<String, Vec<String>>, rpc_subscribes: HashMap<String, Vec<String>>, rpc_response_subscribes: HashMap<String, Vec<String>>) -> Result<(), ProcessError> {
     let mut listener = TcpListener::bind(config.host.clone()).await?;
     let (server_tx, mut server_rx) = mpsc::unbounded_channel();
     tokio::spawn(async move {        
@@ -74,9 +74,11 @@ pub async fn start_future(config: ServerConfig, subscribes: HashMap<String, Vec<
                         
                         if !client_state.has_writer {
                             client_state.has_writer = true;
-                            let subscribes = subscribes.clone();
+                            let event_subscribes = event_subscribes.clone();
+                            let rpc_subscribes = rpc_subscribes.clone();
+                            let rpc_response_subscribes = rpc_response_subscribes.clone();
                             tokio::spawn(async move {                                
-                                let res = process_write_stream(addr.clone(), subscribes, &mut stream, client_net_addr, server_tx).await;
+                                let res = process_write_stream(addr.clone(), event_subscribes, rpc_subscribes, rpc_response_subscribes, &mut stream, client_net_addr, server_tx).await;
                                 error!("{} write process ended, {:?}", addr, res);
                             });
                         } else {
@@ -185,12 +187,7 @@ async fn process_read_stream(addr: String, mut stream: TcpStream, client_net_add
     write_loop(addr, client_rx, &mut stream).await
 }
 
-enum TargetSelection {
-    Rx(String),
-    Key(String)
-}
-
-async fn process_write_stream(addr: String, subscribes: HashMap<String, Vec<String>>, stream: &mut TcpStream, _client_net_addr: SocketAddr, server_tx: UnboundedSender<ServerMsg>) -> Result<(), ProcessError> {    
+async fn process_write_stream(addr: String, rpc_subscribes: HashMap<String, Vec<String>>, rpc_response_subscribes: HashMap<String, Vec<String>>, event_subscribes: HashMap<String, Vec<String>>, stream: &mut TcpStream, _client_net_addr: SocketAddr, server_tx: UnboundedSender<ServerMsg>) -> Result<(), ProcessError> {    
     let mut state = State::new("read stream from Server to ".to_owned() + &addr);        
     let mut client_addrs = HashMap::new();    
 
@@ -199,132 +196,123 @@ async fn process_write_stream(addr: String, subscribes: HashMap<String, Vec<Stri
             ReadResult::MsgMeta(stream_id, msg_meta, buf) => {
                 info!("{} {:?}", stream_id, msg_meta);
 
-                match msg_meta.kind {
-                    MsgKind::RpcResponse(_) => {
-                        client_addrs.insert(stream_id, TargetSelection::Rx(msg_meta.rx.clone()));
-                        debug!("Sending unit to addr12 {}", msg_meta.rx);
+                client_addrs.insert(stream_id, (msg_meta.key.clone(), msg_meta.msg_type.clone()));
 
-                        server_tx.send(ServerMsg::SendUnit(msg_meta.rx.clone(), StreamUnit::Vector(stream_id, buf)))?;
-                    }
-                    _ => {
-                        client_addrs.insert(stream_id, TargetSelection::Key(msg_meta.key.clone()));
-
-                        match subscribes.get(&msg_meta.key) {
-                            Some(targets) => {
-                                for target in targets {     
-                                    debug!("Sending unit to addr11 {}", target);
-                                    server_tx.send(ServerMsg::SendUnit(target.clone(), StreamUnit::Vector(stream_id, buf.clone())))?;
-                                }
-                            }
-                            None => warn!("No subscribes found for key {}", msg_meta.key)
+                let subscribes = match msg_meta.msg_type {
+                    MsgType::Event => &event_subscribes,
+                    MsgType::RpcRequest => &rpc_subscribes,
+                    MsgType::RpcResponse(_) => &rpc_response_subscribes
+                };
+                
+                match subscribes.get(&msg_meta.key) {
+                    Some(targets) => {
+                        for target in targets {     
+                            debug!("Sending unit to addr11 {}", target);
+                            server_tx.send(ServerMsg::SendUnit(target.clone(), StreamUnit::Vector(stream_id, buf.clone())))?;
                         }
                     }
-                }                 
+                    None => warn!("No subscribes found for key {}, msg_type {:#?}", msg_meta.key, msg_meta.msg_type)
+                }
             }
             ReadResult::PayloadData(stream_id, n, buf) => {                        
-                match client_addrs.get(&stream_id).ok_or(ProcessError::ClientAddrNotFound)? {
-                    TargetSelection::Rx(target) => {
-                        debug!("Sending unit to addr10 {}", target);
-                        server_tx.send(ServerMsg::SendUnit(target.clone(), StreamUnit::Array(stream_id, n, buf.clone())))?;
-                    }
-                    TargetSelection::Key(key) => {                        
-                        match subscribes.get(key) {
-                            Some(targets) => {
-                                for target in targets {                            
-                                    debug!("Sending unit to addr9 {}", target);
-                                    server_tx.send(ServerMsg::SendUnit(target.clone(), StreamUnit::Array(stream_id, n, buf.clone())))?;
-                                }
-                            }
-                            None => warn!("No subscribes found for key {}", key)
+                let (key, msg_type) = client_addrs.get(&stream_id).ok_or(ProcessError::ClientAddrNotFound)?;
+
+                let subscribes = match msg_type {
+                    MsgType::Event => &event_subscribes,
+                    MsgType::RpcRequest => &rpc_subscribes,
+                    MsgType::RpcResponse(_) => &rpc_response_subscribes
+                };
+
+                match subscribes.get(key) {
+                    Some(targets) => {
+                        for target in targets {                            
+                            debug!("Sending unit to addr9 {}", target);
+                            server_tx.send(ServerMsg::SendUnit(target.clone(), StreamUnit::Array(stream_id, n, buf.clone())))?;
                         }
                     }
+                    None => warn!("No subscribes found for key {}", key)
                 }
             }
             ReadResult::PayloadFinished(stream_id, n, buf) => {
-                match client_addrs.get(&stream_id).ok_or(ProcessError::ClientAddrNotFound)? {
-                    TargetSelection::Rx(target) => {
-                        debug!("Sending unit to addr8 {}", target);
-                        server_tx.send(ServerMsg::SendUnit(target.clone(), StreamUnit::Array(stream_id, n, buf.clone())))?;
-                    }
-                    TargetSelection::Key(key) => {                        
-                        match subscribes.get(key) {
-                            Some(targets) => {
-                                for target in targets {                            
-                                    debug!("Sending unit to addr7 {}", target);
-                                    server_tx.send(ServerMsg::SendUnit(target.clone(), StreamUnit::Array(stream_id, n, buf.clone())))?;
-                                }
-                            }
-                            None => warn!("No subscribes found for key {}", key)
+                let (key, msg_type) = client_addrs.get(&stream_id).ok_or(ProcessError::ClientAddrNotFound)?;
+
+                let subscribes = match msg_type {
+                    MsgType::Event => &event_subscribes,
+                    MsgType::RpcRequest => &rpc_subscribes,
+                    MsgType::RpcResponse(_) => &rpc_response_subscribes
+                };
+
+                match subscribes.get(key) {
+                    Some(targets) => {
+                        for target in targets {                            
+                            debug!("Sending unit to addr7 {}", target);
+                            server_tx.send(ServerMsg::SendUnit(target.clone(), StreamUnit::Array(stream_id, n, buf.clone())))?;
                         }
                     }
+                    None => warn!("No subscribes found for key {}", key)
                 }
             }
             ReadResult::AttachmentData(stream_id, _, n, buf) => {
-                match client_addrs.get(&stream_id).ok_or(ProcessError::ClientAddrNotFound)? {
-                    TargetSelection::Rx(target) => {
-                        debug!("Sending unit to addr6 {}", target);
-                        server_tx.send(ServerMsg::SendUnit(target.clone(), StreamUnit::Array(stream_id, n, buf.clone())))?;
-                    }
-                    TargetSelection::Key(key) => {                        
-                        match subscribes.get(key) {
-                            Some(targets) => {
-                                for target in targets {                            
-                                    debug!("Sending unit to addr5 {}", target);
-                                    server_tx.send(ServerMsg::SendUnit(target.clone(), StreamUnit::Array(stream_id, n, buf.clone())))?;
-                                }
-                            }
-                            None => warn!("No subscribes found for key {}", key)
+                let (key, msg_type) = client_addrs.get(&stream_id).ok_or(ProcessError::ClientAddrNotFound)?;
+
+                let subscribes = match msg_type {
+                    MsgType::Event => &event_subscribes,
+                    MsgType::RpcRequest => &rpc_subscribes,
+                    MsgType::RpcResponse(_) => &rpc_response_subscribes
+                };
+                
+                match subscribes.get(key) {
+                    Some(targets) => {
+                        for target in targets {                            
+                            debug!("Sending unit to addr5 {}", target);
+                            server_tx.send(ServerMsg::SendUnit(target.clone(), StreamUnit::Array(stream_id, n, buf.clone())))?;
                         }
                     }
+                    None => warn!("No subscribes found for key {}", key)
                 }
             }
             ReadResult::AttachmentFinished(stream_id, _, n, buf) => {
-                match client_addrs.get(&stream_id).ok_or(ProcessError::ClientAddrNotFound)? {
-                    TargetSelection::Rx(target) => {
-                        debug!("Sending unit to addr4 {}", target);
-                        server_tx.send(ServerMsg::SendUnit(target.clone(), StreamUnit::Array(stream_id, n, buf.clone())))?;
+                let (key, msg_type) = client_addrs.get(&stream_id).ok_or(ProcessError::ClientAddrNotFound)?;
+
+                let subscribes = match msg_type {
+                    MsgType::Event => &event_subscribes,
+                    MsgType::RpcRequest => &rpc_subscribes,
+                    MsgType::RpcResponse(_) => &rpc_response_subscribes
+                };
+                
+                match subscribes.get(key) {
+                    Some(targets) => {
+                        for target in targets {                            
+                            debug!("Sending unit to addr3 {}", target);
+                            server_tx.send(ServerMsg::SendUnit(target.clone(), StreamUnit::Array(stream_id, n, buf.clone())))?;
+                        }
                     }
-                    TargetSelection::Key(key) => {                        
+                    None => warn!("No subscribes found for key {}", key)
+                }
+            }
+            ReadResult::MessageFinished(stream_id, finish_bytes) => {
+                let (key, msg_type) = client_addrs.get(&stream_id).ok_or(ProcessError::ClientAddrNotFound)?;
+
+                let subscribes = match msg_type {
+                    MsgType::Event => &event_subscribes,
+                    MsgType::RpcRequest => &rpc_subscribes,
+                    MsgType::RpcResponse(_) => &rpc_response_subscribes
+                };
+                
+                match finish_bytes {
+                    MessageFinishBytes::Payload(n, buf) |
+                    MessageFinishBytes::Attachment(_, n, buf) => {                        
                         match subscribes.get(key) {
                             Some(targets) => {
-                                for target in targets {                            
-                                    debug!("Sending unit to addr3 {}", target);
+                                for target in targets {                                    
+                                    debug!("Sending unit to addr1 {}", target);
                                     server_tx.send(ServerMsg::SendUnit(target.clone(), StreamUnit::Array(stream_id, n, buf.clone())))?;
                                 }
                             }
                             None => warn!("No subscribes found for key {}", key)
                         }
-                    }
+                    }                            
                 }
-            }
-            ReadResult::MessageFinished(stream_id, finish_bytes) => {
-                match client_addrs.remove(&stream_id).ok_or(ProcessError::ClientAddrNotFound)? {
-                    TargetSelection::Rx(target) => {                        
-                        match finish_bytes {
-                            MessageFinishBytes::Payload(n, buf) | 
-                            MessageFinishBytes::Attachment(_, n, buf) => {
-                                debug!("Sending unit to addr2 {}", target);
-                                server_tx.send(ServerMsg::SendUnit(target.clone(), StreamUnit::Array(stream_id, n, buf.clone())))?;
-                            }                             
-                        }
-                    }
-                    TargetSelection::Key(key) => {
-                        match finish_bytes {
-                            MessageFinishBytes::Payload(n, buf) |
-                            MessageFinishBytes::Attachment(_, n, buf) => {
-                                match subscribes.get(&key) {
-                                    Some(targets) => {
-                                        for target in targets {                                    
-                                            debug!("Sending unit to addr1 {}", target);
-                                            server_tx.send(ServerMsg::SendUnit(target.clone(), StreamUnit::Array(stream_id, n, buf.clone())))?;
-                                        }
-                                    }
-                                    None => warn!("No subscribes found for key {}", key)
-                                }
-                            }                            
-                        }
-                    }
-                }                
             }
             ReadResult::MessageAborted(stream_id) => {
                 match stream_id {

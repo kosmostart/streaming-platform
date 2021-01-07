@@ -2,7 +2,7 @@ use log::*;
 use serde_json::{json, Value, to_vec};
 use warp::http::{Response, header::SET_COOKIE};
 use streaming_platform::MagicBall;
-use streaming_platform::sp_dto::{MsgKind, get_msg_meta_and_payload, reply_to_rpc_dto, RpcResult};
+use streaming_platform::sp_dto::{MsgType, get_msg_meta_and_payload, reply_to_rpc_dto, RpcResult};
 use crate::{response, response_with_cookie};
 
 pub async fn go(aca_origin: Option<String>, body: warp::hyper::body::Bytes, mut mb: MagicBall) -> Result<Response<Vec<u8>>, warp::Rejection> {
@@ -11,20 +11,18 @@ pub async fn go(aca_origin: Option<String>, body: warp::hyper::body::Bytes, mut 
             //info!("{:?}", msg_meta);
             match msg_meta.key.as_ref() {
                 "Auth" => {
-                    match msg_meta.kind {
-                        MsgKind::RpcRequest => {                                        
-                            match mb.rpc::<_, Value>("Auth", "Auth", payload).await {
+                    match msg_meta.msg_type {
+                        MsgType::RpcRequest => {                                        
+                            match mb.rpc::<_, Value>("Auth", payload).await {
                                 Ok(msg) => {                                                        
                                     match msg.payload["auth_token"].as_str() {
                                         Some(auth_token) => {
                                             let res = reply_to_rpc_dto(
-                                                msg_meta.rx.clone(),
-                                                msg_meta.tx.clone(),
+                                                mb.addr,
                                                 msg_meta.key.clone(),
                                                 msg_meta.correlation_id,
                                                 json!({
-                                                    "auth_token": auth_token,
-                                                    "domain": msg.payload["domain"]
+                                                    "auth_token": auth_token                                                    
                                                 }),
                                                 RpcResult::Ok,
                                                 msg_meta.route.clone(),
@@ -45,8 +43,7 @@ pub async fn go(aca_origin: Option<String>, body: warp::hyper::body::Bytes, mut 
                                         }
                                         None => {
                                             let res = reply_to_rpc_dto(
-                                                msg_meta.rx.clone(),
-                                                msg_meta.tx.clone(),
+                                                mb.addr,
                                                 msg_meta.key.clone(),
                                                 msg_meta.correlation_id,
                                                 json!({}),
@@ -75,7 +72,7 @@ pub async fn go(aca_origin: Option<String>, body: warp::hyper::body::Bytes, mut 
                             }                                                                        
                         }
                         _ => {
-                            warn!("wrong authorize msg kind");
+                            warn!("wrong authorize msg msg_type");
                             let res = to_vec("here comes the error").expect("failed to serialize proxy rpc error response error");
                             match aca_origin {
                                 Some(aca_origin) => response(aca_origin, res).expect("failed to build aca origin response"),

@@ -695,40 +695,40 @@ impl MagicBall {
 
         Ok(())
     }
-    pub async fn send_event<T>(&mut self, addr: &str, key: &str, payload: T) -> Result<(), ProcessError> where T: serde::Serialize, for<'de> T: serde::Deserialize<'de>, T: Debug {
+    pub async fn send_event<T>(&mut self, key: &str, payload: T) -> Result<(), ProcessError> where T: serde::Serialize, for<'de> T: serde::Deserialize<'de>, T: Debug {
         let route = Route {
             source: Participator::Service(self.addr.clone()),
             spec: RouteSpec::Simple,
             points: vec![Participator::Service(self.addr.to_owned())]
         };
 
-        let (dto, msg_meta_size, payload_size, attachments_sizes) = event_dto_with_sizes(self.addr.clone(), addr.to_owned(), key.to_owned(), payload, route, self.auth_token.clone(), self.auth_data.clone())?;
+        let (dto, msg_meta_size, payload_size, attachments_sizes) = event_dto_with_sizes(self.addr.clone(), key.to_owned(), payload, route, self.auth_token.clone(), self.auth_data.clone())?;
 
         write(self.get_stream_id(), dto, msg_meta_size, payload_size, attachments_sizes, &mut self.write_tx).await?;
         
         Ok(())
     }
-    pub async fn send_event_with_route<T>(&mut self, addr: &str, key: &str, payload: T, mut route: Route) -> Result<(), ProcessError> where T: serde::Serialize, for<'de> T: serde::Deserialize<'de>, T: Debug {
-        //info!("send_event, route {:?}, target addr {}, key {}, payload {:?}, ", route, addr, key, payload);
+    pub async fn send_event_with_route<T>(&mut self, key: &str, payload: T, mut route: Route) -> Result<(), ProcessError> where T: serde::Serialize, for<'de> T: serde::Deserialize<'de>, T: Debug {
+        //info!("send_event, route {:?}, key {}, payload {:?}, ", route, addr, key, payload);
 
         route.points.push(Participator::Service(self.addr.clone()));
 
-        let (dto, msg_meta_size, payload_size, attachments_sizes) = event_dto_with_sizes(self.addr.clone(), addr.to_owned(), key.to_owned(), payload, route, self.auth_token.clone(), self.auth_data.clone())?;
+        let (dto, msg_meta_size, payload_size, attachments_sizes) = event_dto_with_sizes(self.addr.clone(), key.to_owned(), payload, route, self.auth_token.clone(), self.auth_data.clone())?;
 
         write(self.get_stream_id(), dto, msg_meta_size, payload_size, attachments_sizes, &mut self.write_tx).await?;
         
         Ok(())
     }    
-    pub async fn rpc<T, R>(&mut self, addr: &str, key: &str, payload: T) -> Result<Message<R>, ProcessError> where T: serde::Serialize, T: Debug, for<'de> R: serde::Deserialize<'de>, R: Debug {
+    pub async fn rpc<T, R>(&mut self, key: &str, payload: T) -> Result<Message<R>, ProcessError> where T: serde::Serialize, T: Debug, for<'de> R: serde::Deserialize<'de>, R: Debug {
         let route = Route {
             source: Participator::Service(self.addr.clone()),
             spec: RouteSpec::Simple,
             points: vec![Participator::Service(self.addr.to_owned())]
         };
 
-		//info!("send_rpc, route {:?}, target addr {}, key {}, payload {:?}, ", route, addr, key, payload);
+		//info!("send_rpc, route {:?}, key {}, payload {:?}, ", route, key, payload);
 		
-        let (correlation_id, dto, msg_meta_size, payload_size, attachments_sizes) = rpc_dto_with_correlation_id_sizes(self.addr.clone(), addr.to_owned(), key.to_owned(), payload, route, self.auth_token.clone(), self.auth_data.clone())?;
+        let (correlation_id, dto, msg_meta_size, payload_size, attachments_sizes) = rpc_dto_with_correlation_id_sizes(self.addr.clone(), key.to_owned(), payload, route, self.auth_token.clone(), self.auth_data.clone())?;
         let (rpc_tx, rpc_rx) = oneshot::channel();
         
         self.rpc_inbound_tx.send(RpcMsg::AddRpc(correlation_id, rpc_tx))?;
@@ -743,12 +743,12 @@ impl MagicBall {
             attachments_data
         })
     }
-    pub async fn rpc_with_route<T, R>(&mut self, addr: &str, key: &str, payload: T, mut route: Route) -> Result<Message<R>, ProcessError> where T: serde::Serialize, T: Debug, for<'de> R: serde::Deserialize<'de>, R: Debug {
-		//info!("send_rpc, route {:?}, target addr {}, key {}, payload {:?}, ", route, addr, key, payload);
+    pub async fn rpc_with_route<T, R>(&mut self, key: &str, payload: T, mut route: Route) -> Result<Message<R>, ProcessError> where T: serde::Serialize, T: Debug, for<'de> R: serde::Deserialize<'de>, R: Debug {
+		//info!("send_rpc, route {:?}, key {}, payload {:?}, ", route, key, payload);
 
         route.points.push(Participator::Service(self.addr.to_owned()));
 		
-        let (correlation_id, dto, msg_meta_size, payload_size, attachments_sizes) = rpc_dto_with_correlation_id_sizes(self.addr.clone(), addr.to_owned(), key.to_owned(), payload, route, self.auth_token.clone(), self.auth_data.clone())?;
+        let (correlation_id, dto, msg_meta_size, payload_size, attachments_sizes) = rpc_dto_with_correlation_id_sizes(self.addr.clone(), key.to_owned(), payload, route, self.auth_token.clone(), self.auth_data.clone())?;
         let (rpc_tx, rpc_rx) = oneshot::channel();
         
         self.rpc_inbound_tx.send(RpcMsg::AddRpc(correlation_id, rpc_tx))?;
@@ -816,9 +816,7 @@ impl MagicBall {
 
         let mut msg_meta = res?;
 
-        let correlation_id = msg_meta.correlation_id;
-
-        let initiator_tx = msg_meta.tx;
+        let correlation_id = msg_meta.correlation_id;        
         
         msg_meta.tx = tx;
         msg_meta.route.points.push(Participator::Service(self.addr.to_owned()));
@@ -844,9 +842,7 @@ impl MagicBall {
         write(self.get_stream_id(), buf, msg_meta_size, payload_size, attachments_sizes, &mut self.write_tx).await?;
         debug!("proxy_rpc write attempt succeeded");
 
-        let (mut msg_meta, mut payload, mut attachments_data) = timeout(Duration::from_millis(RPC_TIMEOUT_MS_AMOUNT), rpc_rx).await??;
-
-        msg_meta.rx = initiator_tx;
+        let (msg_meta, mut payload, mut attachments_data) = timeout(Duration::from_millis(RPC_TIMEOUT_MS_AMOUNT), rpc_rx).await??;
 
         let mut buf = vec![];
         let mut msg_meta_buf = to_vec(&msg_meta)?;
@@ -874,9 +870,7 @@ impl MagicBall {
 
         let mut msg_meta = res?;
 
-        let correlation_id = msg_meta.correlation_id;
-
-        let initiator_tx = msg_meta.tx;
+        let correlation_id = msg_meta.correlation_id;        
 
         msg_meta.tx = tx;
         msg_meta.route.points.push(Participator::Service(self.addr.to_owned()));
@@ -902,11 +896,9 @@ impl MagicBall {
         write(self.get_stream_id(), buf, msg_meta_size, payload_size, attachments_sizes, &mut self.write_tx).await?;
         debug!("proxy_rpc write attempt succeeded");
 
-        let (mut msg_meta, payload, attachments_data) = timeout(Duration::from_millis(RPC_TIMEOUT_MS_AMOUNT), rpc_rx).await??;
+        let (msg_meta, payload, attachments_data) = timeout(Duration::from_millis(RPC_TIMEOUT_MS_AMOUNT), rpc_rx).await??;
 
-        msg_meta.rx = initiator_tx;
-
-        let payload: T = from_slice(&payload)?;                
+        let payload: T = from_slice(&payload)?;
         
         Ok((msg_meta, payload, attachments_data))
     }

@@ -2,7 +2,7 @@ use log::*;
 use serde_json::to_vec;
 use warp::http::Response;
 use streaming_platform::MagicBall;
-use streaming_platform::sp_dto::{get_msg_meta, MsgKind};
+use streaming_platform::sp_dto::{get_msg_meta, MsgType};
 use crate::{response, check_auth_token_vec};
 
 pub async fn go(aca_origin: Option<String>, auth_token_key: String, body: warp::hyper::body::Bytes, mut mb: MagicBall) -> Result<Response<Vec<u8>>, warp::Rejection> {    
@@ -11,8 +11,8 @@ pub async fn go(aca_origin: Option<String>, auth_token_key: String, body: warp::
             info!("hub auth token {:?}", msg_meta.auth_token);
             match check_auth_token_vec(auth_token_key.as_bytes(), &msg_meta) {
                 Ok(_) => {
-                    match msg_meta.kind {
-                        MsgKind::RpcRequest => {                                        
+                    match msg_meta.msg_type {
+                        MsgType::RpcRequest => {                                        
                             match mb.proxy_rpc(mb.addr.clone(), body.to_vec()).await {
                                 Ok((_, res_data)) => res_data,
                                 Err(err) => {
@@ -21,8 +21,8 @@ pub async fn go(aca_origin: Option<String>, auth_token_key: String, body: warp::
                                 }
                             }                                                                        
                         }
-                        MsgKind::RpcResponse(_) => to_vec("not yet supported").expect("failed to serialize not yet supported response"),
-                        MsgKind::Event => {                                        
+                        MsgType::RpcResponse(_) => to_vec("not yet supported").expect("failed to serialize not yet supported response"),
+                        MsgType::Event => {                                        
                             match mb.proxy_event(mb.addr.clone(), body.to_vec()).await {
                                 Ok(_) => to_vec("ok friends").expect("failed to serialize proxy event ok response"),
                                 Err(err) => {

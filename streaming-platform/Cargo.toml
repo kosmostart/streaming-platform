@@ -19,7 +19,7 @@ edition = "2018"
 
 log = "0.4"
 futures = { version = "0.3", features = ["async-await"] }
-rand = "0.7"
+rand = "0.8"
 siphasher = "0.3"
 serde = "1.0"
 serde_derive = "1.0"
@@ -27,7 +27,7 @@ serde_json = "1.0"
 toml = "0.5"
 tokio = { version = "0.2", features = ["full"] }
 hyper = { version = "0.13", optional = true }
-sp-dto = "0.1"
+sp-dto = { path = "../sp-dto" }
 sp-cfg = { path = "../sp-cfg" }
 
 [features]
@@ -37,4 +37,4 @@ http = ["hyper"]
 
 [dev-dependencies]
 
-env_logger = "0.7"
+env_logger = "*"

@@ -10,7 +10,9 @@ pub fn main() {
 
     let config = get_config_from_str();
     
-    let mut subscribes = HashMap::new();
+    let mut event_subscribes = HashMap::new();
+    let mut rpc_subscribes = HashMap::new();
+    let mut rpc_response_subscribes = HashMap::new();
 
     event_subscribes.insert("HiEvent".to_owned(), vec![
         "Client1".to_owned(),
@@ -27,7 +29,7 @@ pub fn main() {
 
     info!("{:#?}", config);
 
-    server::start(config, subscribes);
+    server::start(config, event_subscribes, rpc_subscribes, rpc_response_subscribes);
 }
 
 pub fn get_config_from_str() -> ServerConfig {    

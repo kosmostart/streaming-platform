@@ -16,7 +16,7 @@ pub async fn process_rpc(config: HashMap<String, String>, mut mb: MagicBall, msg
     }))
 }
 
-pub async fn startup(config: HashMap<String, String>, mut mb: MagicBall) {    
+pub async fn startup(config: HashMap<String, String>, mut mb: MagicBall, startup_data: Option<Value>) {
 }
 
 pub fn main() {

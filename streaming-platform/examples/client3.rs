@@ -10,12 +10,12 @@ pub async fn process_rpc(config: HashMap<String, String>, mut mb: MagicBall, msg
     resp(json!({}))
 }
 
-pub async fn startup(config: HashMap<String, String>, mut mb: MagicBall) {
-    mb.send_event("", "HiEvent", json!({
+pub async fn startup(config: HashMap<String, String>, mut mb: MagicBall, startup_data: Option<Value>) {
+    mb.send_event("HiEvent", json!({
         "data": "hello event"
     })).await;
 
-    let msg = mb.rpc::<_, Value>("Client", "HiRpc", json!({
+    let msg = mb.rpc::<_, Value>("HiRpc", json!({
         "data": "hello rpc"
     })).await;
 

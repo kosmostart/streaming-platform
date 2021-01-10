@@ -15,15 +15,15 @@ pub use streaming_platform;
 mod authorize;
 mod hub;
 
-pub async fn process_event(_config: HashMap<String, String>, mut _mb: MagicBall, _msg: Message<Value>) -> Result<(), Box<dyn std::error::Error>>  {
+pub async fn process_event(_config: HashMap<String, String>, mut _mb: MagicBall, _msg: Message<Value>, _: ()) -> Result<(), Box<dyn std::error::Error>>  {
     Ok(())
 }
 
-pub async fn process_rpc(_config: HashMap<String, String>, mut _mb: MagicBall, _msg: Message<Value>) -> Result<streaming_platform::sp_dto::Response<Value>, Box<dyn std::error::Error>> {    
+pub async fn process_rpc(_config: HashMap<String, String>, mut _mb: MagicBall, _msg: Message<Value>, _: ()) -> Result<streaming_platform::sp_dto::Response<Value>, Box<dyn std::error::Error>> {
     resp(json!({}))    
 }
 
-pub async fn startup(config: HashMap<String, String>, mb: MagicBall, startup_data: Option<Value>) {
+pub async fn startup(config: HashMap<String, String>, mb: MagicBall, startup_data: Option<Value>, _: ()) {
     let listen_addr = config.get("listen_addr").expect("Missing listen_addr config value");
     let cert_path = config.get("cert_path");
     let key_path = config.get("key_path");

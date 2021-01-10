@@ -22,10 +22,10 @@ fn main() {
     let mut hm_config = HashMap::new();
     hm_config.insert("access_key".to_owned(), config.access_key.clone());
     hm_config.insert("path".to_owned(), config.path.clone());
-    rt.block_on(stream_mode(&config.host, &config.addr, access_key, process_stream, startup, hm_config, None, None));
+    rt.block_on(stream_mode(&config.host, &config.addr, access_key, process_stream, startup, hm_config, None, None, ()));
 }
 
-pub async fn startup(config: HashMap<String, String>, mut mb: MagicBall, _startup_data: Option<Value>) {
+pub async fn startup(config: HashMap<String, String>, mut mb: MagicBall, _startup_data: Option<Value>, _: ()) {
     let access_key = config.get("access_key").expect("access key is empty");
     let (_correlation_id, dto, msg_meta_size, payload_size, attachments_sizes) = rpc_dto_with_correlation_id_sizes(
         mb.addr.clone(),        
@@ -51,7 +51,7 @@ pub async fn startup(config: HashMap<String, String>, mut mb: MagicBall, _startu
     ).await.expect("failed to write download rpc dto");
 }
 
-pub async fn process_stream(config: HashMap<String, String>, mut mb: MagicBall, mut rx: UnboundedReceiver<ClientMsg>, _: Option<UnboundedReceiver<RestreamMsg>>) {
+pub async fn process_stream(config: HashMap<String, String>, mut mb: MagicBall, mut rx: UnboundedReceiver<ClientMsg>, _: Option<UnboundedReceiver<RestreamMsg>>, _: ()) {
     let path = config.get("path").expect("path is empty");
     let mut stream_layouts = HashMap::new();
     loop {        

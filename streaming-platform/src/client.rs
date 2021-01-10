@@ -16,11 +16,13 @@ use crate::proto::*;
 /// process_rpc is used for processing incoming message, which are marked as rpc request via message msg_type.
 /// startup is executed on the start of this function.
 /// restream_rx can be used for restreaming data somewhere else, for example returning data for incoming web request
+/// dependency is w/e clonable dependency needed when processing data.
 /// The protocol message format is in sp-dto crate.
-pub async fn stream_mode<T: 'static, R: 'static>(host: &str, addr: &str, access_key: &str, process_stream: ProcessStream<T>, startup: Startup<R>, config: HashMap<String, String>, startup_data: Option<Value>, restream_rx: Option<UnboundedReceiver<RestreamMsg>>)
+pub async fn stream_mode<T: 'static, R: 'static, D: 'static>(host: &str, addr: &str, access_key: &str, process_stream: ProcessStream<T, D>, startup: Startup<R, D>, config: HashMap<String, String>, startup_data: Option<Value>, restream_rx: Option<UnboundedReceiver<RestreamMsg>>, dependency: D)
 where 
     T: Future<Output = ()> + Send,
-    R: Future<Output = ()> + Send
+    R: Future<Output = ()> + Send,
+    D: Clone + Send + Sync
 {    
     let (read_tx, read_rx) = mpsc::unbounded_channel();
     let (write_tx, write_rx) = mpsc::unbounded_channel();
@@ -59,8 +61,8 @@ where
         }
     });    
     let mb = MagicBall::new(addr2, write_tx2, rpc_inbound_tx);
-    tokio::spawn(process_stream(config.clone(), mb.clone(), read_rx, restream_rx));
-    tokio::spawn(startup(config, mb, startup_data));
+    tokio::spawn(process_stream(config.clone(), mb.clone(), read_rx, restream_rx, dependency.clone()));
+    tokio::spawn(startup(config, mb, startup_data, dependency));
     connect_stream_future(host, addr3, access_key, read_tx, write_rx).await;
 }
 
@@ -70,13 +72,15 @@ where
 /// process_stream is used for stream of incoming data processing.
 /// startup is executed on the start of this function.
 /// restream_rx can be used for restreaming data somewhere else, for example returning data for incoming web request
+/// dependency is w/e clonable dependency needed when processing data.
 /// The protocol message format is in sp-dto crate.
-pub async fn full_message_mode<P: 'static, T: 'static, Q: 'static, R: 'static>(host: &str, addr: &str, access_key: &str, process_event: ProcessEvent<T, P>, process_rpc: ProcessRpc<Q, P>, startup: Startup<R>, config: HashMap<String, String>, startup_data: Option<Value>)
+pub async fn full_message_mode<P: 'static, T: 'static, Q: 'static, R: 'static, D: 'static>(host: &str, addr: &str, access_key: &str, process_event: ProcessEvent<T, P, D>, process_rpc: ProcessRpc<Q, P, D>, startup: Startup<R, D>, config: HashMap<String, String>, startup_data: Option<Value>, dependency: D)
 where 
     T: Future<Output = Result<(), Box<dyn Error>>> + Send,
     Q: Future<Output = Result<Response<P>, Box<dyn Error>>> + Send,
     R: Future<Output = ()> + Send,
-    P: serde::Serialize, for<'de> P: serde::Deserialize<'de> + Send
+    P: serde::Serialize, for<'de> P: serde::Deserialize<'de> + Send,
+    D: Clone + Send + Sync
 {    
     let (read_tx, mut read_rx) = mpsc::unbounded_channel();
     let (write_tx, write_rx) = mpsc::unbounded_channel();
@@ -123,7 +127,7 @@ where
 
     tokio::spawn(async move {
         let mb = MagicBall::new(addr2, write_tx2, rpc_inbound_tx);        
-        tokio::spawn(startup(config.clone(), mb.clone(), startup_data));
+        tokio::spawn(startup(config.clone(), mb.clone(), startup_data, dependency.clone()));
         loop {                        
             let msg = match read_rx.recv().await {
                 Some(msg) => msg,
@@ -135,6 +139,7 @@ where
             let mut mb = mb.clone();
             let config = config.clone();
             let mut write_tx3 = write_tx3.clone();
+            let dependency = dependency.clone();
             match msg {
                 ClientMsg::Message(_, msg_meta, payload, attachments_data) => {
                     match msg_meta.msg_type {
@@ -142,7 +147,7 @@ where
                             debug!("client got event {}", msg_meta.display());
                             tokio::spawn(async move {
                                 let payload: P = from_slice(&payload).expect("failed to deserialize event payload");                                
-                                if let Err(e) = process_event(config, mb.clone(), Message { meta: msg_meta, payload, attachments_data }).await {
+                                if let Err(e) = process_event(config, mb.clone(), Message {meta: msg_meta, payload, attachments_data}, dependency).await {
                                     error!("process event error {}", e);
                                 }
                                 debug!("client {} process_event succeeded", mb.addr);
@@ -155,7 +160,7 @@ where
                                 let correlation_id = msg_meta.correlation_id;                                
                                 let key = msg_meta.key.clone();
                                 let payload: P = from_slice(&payload).expect("failed to deserialize rpc request payload");                            
-                                let (payload, attachments, attachments_data, rpc_result) = match process_rpc(config.clone(), mb.clone(), Message { meta: msg_meta, payload, attachments_data }).await {
+                                let (payload, attachments, attachments_data, rpc_result) = match process_rpc(config.clone(), mb.clone(), Message {meta: msg_meta, payload, attachments_data}, dependency).await {
                                     Ok(res) => {
                                         debug!("client {} process_rpc succeeded", mb.addr);
                                         let (res, attachments, attachments_data) = match res {
@@ -364,17 +369,19 @@ async fn process_full_message(addr: String, mut write_stream: TcpStream, mut rea
 /// process_stream is used for stream of incoming data processing.
 /// startup is executed on the start of this function.
 /// restream_rx can be used for restreaming data somewhere else, for example returning data for incoming web request
+/// dependency is w/e clonable dependency needed when processing data.
 /// The protocol message format is in sp-dto crate.
-pub fn start_stream<T: 'static, R: 'static>(config: HashMap<String, String>, process_stream: ProcessStream<T>, startup: Startup<R>, startup_data: Option<Value>, restream_rx: Option<UnboundedReceiver<RestreamMsg>>) 
+pub fn start_stream<T: 'static, R: 'static, D: 'static>(config: HashMap<String, String>, process_stream: ProcessStream<T, D>, startup: Startup<R, D>, startup_data: Option<Value>, restream_rx: Option<UnboundedReceiver<RestreamMsg>>, dependency: D) 
 where 
     T: Future<Output = ()> + Send,
-    R: Future<Output = ()> + Send
+    R: Future<Output = ()> + Send,
+    D: Clone + Send + Sync
 {        
     let addr = config.get("addr").expect("missing addr config value").to_owned();
     let host = config.get("host").expect("missing host config value").to_owned();    
     let access_key = config.get("access_key").expect("missing access_key config value").to_owned();
     let mut rt = Runtime::new().expect("failed to create runtime");
-    rt.block_on(stream_mode(&host, &addr, &access_key, process_stream, startup, config, startup_data, restream_rx));
+    rt.block_on(stream_mode(&host, &addr, &access_key, process_stream, startup, config, startup_data, restream_rx, dependency));
 }
 
 /// Starts a message based client based on provided config. Creates new runtime and blocks.
@@ -382,16 +389,18 @@ where
 /// process_event is used for processing incoming message, which are marked as events via message msg_type.
 /// process_rpc is used for processing incoming message, which are marked as rpc request via message msg_type.
 /// startup is executed on the start of this function.
+/// dependency is w/e clonable dependency needed when processing data.
 /// The protocol message format is in sp-dto crate.
-pub fn start<T: 'static, Q: 'static, R: 'static>(config: HashMap<String, String>, process_event: ProcessEvent<T, Value>, process_rpc: ProcessRpc<Q, Value>, startup: Startup<R>, startup_data: Option<Value>) 
+pub fn start<T: 'static, Q: 'static, R: 'static, D: 'static>(config: HashMap<String, String>, process_event: ProcessEvent<T, Value, D>, process_rpc: ProcessRpc<Q, Value, D>, startup: Startup<R, D>, startup_data: Option<Value>, dependency: D) 
 where 
     T: Future<Output = Result<(), Box<dyn Error>>> + Send,
     Q: Future<Output = Result<Response<Value>, Box<dyn Error>>> + Send,
-    R: Future<Output = ()> + Send
+    R: Future<Output = ()> + Send,
+    D: Clone + Send + Sync
 {    
     let addr = config.get("addr").expect("missing addr config value").to_owned();
     let host = config.get("host").expect("missing host config value").to_owned();
     let access_key = config.get("access_key").expect("missing access_key config value").to_owned();
     let mut rt = Runtime::new().expect("failed to create runtime");
-    rt.block_on(full_message_mode(&host, &addr, &access_key, process_event, process_rpc, startup, config, startup_data));
+    rt.block_on(full_message_mode(&host, &addr, &access_key, process_event, process_rpc, startup, config, startup_data, dependency));
 }

@@ -22,13 +22,13 @@ fn main() {
     let mut rt = Runtime::new().expect("failed to create runtime");
     let mut hm_config = HashMap::new();
     hm_config.insert("dirs".to_owned(), to_string(&json!(config.dirs.expect("config directories are empty"))).expect("failed to serialize config directories"));
-    rt.block_on(stream_mode(&config.host, &config.addr, access_key, process_stream, startup, hm_config, None, None));
+    rt.block_on(stream_mode(&config.host, &config.addr, access_key, process_stream, startup, hm_config, None, None, ()));
 }
 
-pub async fn startup(_config: HashMap<String, String>, mut _mb: MagicBall, _startup_data: Option<Value>) {
+pub async fn startup(_config: HashMap<String, String>, mut _mb: MagicBall, _startup_data: Option<Value>, _: ()) {
 }
 
-pub async fn process_stream(config: HashMap<String, String>, mut mb: MagicBall, mut rx: UnboundedReceiver<ClientMsg>, _: Option<UnboundedReceiver<RestreamMsg>>) {
+pub async fn process_stream(config: HashMap<String, String>, mut mb: MagicBall, mut rx: UnboundedReceiver<ClientMsg>, _: Option<UnboundedReceiver<RestreamMsg>>, _: ()) {
     let dirs = config.get("dirs").expect("missing dirs config value");
     let dirs: Vec<cfg::Dir> = from_str(dirs).expect("failed to deserialize config directories");
     let mut stream_layouts = HashMap::new();    

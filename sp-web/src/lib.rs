@@ -96,7 +96,9 @@ pub async fn startup(config: HashMap<String, String>, mb: MagicBall, startup_dat
                 .and(warp::path::param())
                 .and(warp::header::optional("cookie"))
                 .and(warp::path::end())                                
-                .map(move |app_name: String, _cookie_header: Option<String>| {
+                .map(move |app_name: String, cookie_header: Option<String>| {
+                    info!("{}, {:?}", app_name, cookie_header);
+
                     let mut app_indexes = app_indexes.clone();
 
                     match app_indexes.remove(&app_name) {
@@ -166,9 +168,10 @@ pub async fn startup(config: HashMap<String, String>, mb: MagicBall, startup_dat
         )
         .or(
             warp::path("hub")
-                .and(warp::post())                
+                .and(warp::post())
+                .and(warp::header::optional("cookie"))
                 .and(warp::body::bytes())
-                .and_then(move |body: warp::hyper::body::Bytes| {
+                .and_then(move |_cookie_header: Option<String>, body: warp::hyper::body::Bytes| {
                     let aca_origin = aca_origin2.clone();
                     let auth_token_key = auth_token_key.clone();
                     let mb = mb2.clone();

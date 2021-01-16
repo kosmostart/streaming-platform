@@ -22,7 +22,7 @@ pub async fn go(aca_origin: Option<String>, body: warp::hyper::body::Bytes, mut 
                                                 msg_meta.key.clone(),
                                                 msg_meta.correlation_id,
                                                 json!({
-                                                    "auth_token": auth_token                                                    
+                                                    "result": true
                                                 }),
                                                 RpcResult::Ok,
                                                 msg_meta.route.clone(),

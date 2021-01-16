@@ -13,5 +13,6 @@ env_logger = "*"
 serde = "*"
 serde_derive = "*"
 toml = "*"
-tokio = { version = "0.2", features = ["rt-core"] }
-warp = { version = "*", features = ["tls"] }
+tokio = { version = "1", features = ["rt"] }
+warp = { git = "https://github.com/seanmonstar/warp", features = ["tls"] }
+#warp = { version = "*", features = ["tls"] }

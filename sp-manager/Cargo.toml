@@ -13,5 +13,6 @@ serde = "*"
 serde_derive = "*"
 toml = "*"
 sysinfo = "*"
-tokio = { version = "0.2", features = ["full"] }
-warp = { version = "*", features = ["tls"] }
+tokio = { version = "1", features = ["full"] }
+warp = { git = "https://github.com/seanmonstar/warp", features = ["tls"] }
+#warp = { version = "*", features = ["tls"] }

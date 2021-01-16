@@ -11,7 +11,8 @@ edition = "2018"
 log = "*"
 env_logger = "*"
 serde_json = "*"
-warp = { version = "*", features = ["tls"] }
+warp = { git = "https://github.com/seanmonstar/warp", features = ["tls"] }
+#warp = { version = "*", features = ["tls"] }
 mime_guess = "*"
 streaming-platform = { path = "../streaming-platform", features = ["http"] }
 sp-auth = { path = "../sp-auth"}

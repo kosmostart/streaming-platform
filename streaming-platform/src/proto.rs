@@ -12,7 +12,7 @@ use tokio::net::TcpStream;
 use tokio::sync::{mpsc::{UnboundedSender, UnboundedReceiver, error::{SendError, TrySendError}}, oneshot};
 //use tokio::time::{timeout, error::Elapsed};
 use tokio::time::timeout;
-use tokio::prelude::*;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use serde_json::{from_slice, Value, to_vec};
 use siphasher::sip::SipHasher24;
 use sp_dto::bytes::{Buf, BytesMut, BufMut};
@@ -1011,16 +1011,8 @@ impl From<oneshot::error::RecvError> for ProcessError {
 	}
 }
 
-/*
-impl From<Elapsed> for ProcessError {
-	fn from(_: Elapsed) -> ProcessError {
-		ProcessError::Timeout
-	}
-}
-*/
-
-impl From<tokio::time::Elapsed> for ProcessError {
-	fn from(_: tokio::time::Elapsed) -> ProcessError {
+impl From<tokio::time::error::Elapsed> for ProcessError {
+	fn from(_: tokio::time::error::Elapsed) -> ProcessError {
 		ProcessError::Timeout
 	}
 }

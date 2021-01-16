@@ -380,7 +380,7 @@ where
     let addr = config.get("addr").expect("missing addr config value").to_owned();
     let host = config.get("host").expect("missing host config value").to_owned();    
     let access_key = config.get("access_key").expect("missing access_key config value").to_owned();
-    let mut rt = Runtime::new().expect("failed to create runtime");
+    let rt = Runtime::new().expect("failed to create runtime");
     rt.block_on(stream_mode(&host, &addr, &access_key, process_stream, startup, config, startup_data, restream_rx, dependency));
 }
 
@@ -401,6 +401,6 @@ where
     let addr = config.get("addr").expect("missing addr config value").to_owned();
     let host = config.get("host").expect("missing host config value").to_owned();
     let access_key = config.get("access_key").expect("missing access_key config value").to_owned();
-    let mut rt = Runtime::new().expect("failed to create runtime");
+    let rt = Runtime::new().expect("failed to create runtime");
     rt.block_on(full_message_mode(&host, &addr, &access_key, process_event, process_rpc, startup, config, startup_data, dependency));
 }

@@ -17,15 +17,21 @@ struct Config {
 pub fn main() {
     let config_path = std::env::args().nth(1)
         .expect("path to config file not passed as argument");
+
     let file = File::open(config_path)
         .expect("failed to open config");
+
     let mut buf_reader = BufReader::new(file);
     let mut config = String::new();
-    buf_reader.read_to_string(&mut config)
+
+    buf_reader.read_to_string(&mut config)    
         .expect("failed to read config");
+
     let config: Config = toml::from_str(&config)
         .expect("failed to deserialize config");
+
     let host = config.host.parse::<SocketAddr>().unwrap();
+
     let routes = fs::dir(config.dir);
     /*    
     let routes = 
@@ -61,7 +67,7 @@ pub fn main() {
     });
     */
     
-    let mut rt = Runtime::new().expect("failed to create runtime");
+    let rt = Runtime::new().expect("failed to create runtime");
     rt.block_on(warp::serve(routes)
         .tls()
         .cert_path(config.cert_path)

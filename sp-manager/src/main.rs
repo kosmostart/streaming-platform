@@ -486,7 +486,7 @@ fn main() {
                 ;
             
             let addr = "0.0.0.0:49999".parse::<SocketAddr>().unwrap();        
-            let mut rt = Runtime::new().expect("failed to create runtime");    
+            let rt = Runtime::new().expect("failed to create runtime");    
 
             rt.block_on(warp::serve(routes).run(addr));
         }

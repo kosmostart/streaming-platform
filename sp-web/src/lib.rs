@@ -34,6 +34,8 @@ pub async fn startup(config: HashMap<String, String>, mb: MagicBall, startup_dat
     let listen_addr = listen_addr.parse::<SocketAddr>().expect("Incorrect listen addr passed");
 
     let auth_token_key = config.get("auth_token_key").map(|x| x.to_owned()).expect("Missing auth_token_key config value");
+    let auth_token_key1 = auth_token_key.clone();
+    let auth_token_key2 = auth_token_key.clone();
 
     let mut app_indexes = HashMap::new();
     let mut app_paths = HashMap::new();
@@ -47,7 +49,7 @@ pub async fn startup(config: HashMap<String, String>, mb: MagicBall, startup_dat
                             Some(app_name) => {
                                 match app["index"].as_str() {
                                     Some(app_index) => {
-                                        app_indexes.insert(app_name.to_owned(), app_index.to_owned());
+                                        app_indexes.insert(app_name.to_owned(), (app["index"].as_bool(), app_index.to_owned()));
                                     }
                                     None => {}
                                 }
@@ -96,28 +98,36 @@ pub async fn startup(config: HashMap<String, String>, mb: MagicBall, startup_dat
                 .and(warp::path::param())
                 .and(warp::header::optional("cookie"))
                 .and(warp::path::end())                                
-                .map(move |app_name: String, cookie_header: Option<String>| {                    
-                    info!("{}, {:?}", app_name, cookie_header);
-
-                    match cookie_header {
-                        Some(cookie_string) => {
-                            info!("{:#?}", cookie::Cookie::parse(cookie_string).unwrap().name_value());
-                        }
-                        None => {}
-                    }
-
+                .map(move |app_name: String, cookie_header: Option<String>| {
+                    let auth_token_key = auth_token_key.clone();
                     let mut app_indexes = app_indexes.clone();
 
                     match app_indexes.remove(&app_name) {
-                        Some(index) => 
-                            Response::builder()
-                                .header("content-type", "text/html")
-                                .body(index),
+                        Some((allow_unauthorized, index)) =>
+                            if allow_unauthorized == Some(true) {
+                                Response::builder()
+                                    .header("content-type", "text/html")
+                                    .body(index)
+                            } else {
+                                match check_auth_token(auth_token_key.as_bytes(), cookie_header) {
+                                    Some(auth_data) => 
+                                        Response::builder()
+                                            .header("content-type", "text/html")
+                                            .body(index),
+                                    None => {
+                                        warn!("Anauthorized access attempt, app name: {}", app_name);
+
+                                        Response::builder()
+                                            .header("content-type", "text/html")
+                                            .body("Here comes the error".to_owned())
+                                    }
+                                }                                
+                            }
                         None => 
                             Response::builder()
                                 .header("content-type", "text/html")
-                                .body("".to_owned())
-                    }                    
+                                .body("Here comes the error".to_owned())
+                    }
                 }
             )
         )
@@ -126,46 +136,58 @@ pub async fn startup(config: HashMap<String, String>, mb: MagicBall, startup_dat
                 .and(warp::path::param())
                 .and(warp::header::optional("cookie"))
                 .and(warp::path::tail())                                
-                .map(move |app_name: String, _cookie_header: Option<String>, tail: warp::path::Tail| {
+                .map(move |app_name: String, cookie_header: Option<String>, tail: warp::path::Tail| {
+                    let auth_token_key = auth_token_key1.clone();
                     let deploy_path = deploy_path.clone();
                     let mut app_paths = app_paths.clone();
-                    
-                    match app_paths.remove(&app_name) {
-                        Some(app_path) => {
 
-                            let mime = mime_guess::from_path(tail.as_str()).first();
-
-                            let (mut tx, body) = warp::hyper::body::Body::channel();
-
-                            streaming_platform::tokio::spawn(async move {                                
-                                let file_path = deploy_path + "/" + &app_path + "/" + tail.as_str();
-                                let mut file = streaming_platform::tokio::fs::File::open(&file_path).await.expect(&("File not found ".to_owned() + &file_path));                                
-                                let mut file_buf = [0; 1024];
-
-                                loop {
-                                    match file.read(&mut file_buf).await.expect("File read failed") {
-                                        0 => break,
-                                        n =>                                 
-                                            match tx.send_data(warp::hyper::body::Bytes::copy_from_slice(&file_buf[..n])).await {
-                                                Ok(_) => {}
-                                                Err(_) => break
+                     match check_auth_token(auth_token_key.as_bytes(), cookie_header) {
+                        Some(auth_data) => {
+                            match app_paths.remove(&app_name) {
+                                Some(app_path) => {
+        
+                                    let mime = mime_guess::from_path(tail.as_str()).first();
+        
+                                    let (mut tx, body) = warp::hyper::body::Body::channel();
+        
+                                    streaming_platform::tokio::spawn(async move {                                
+                                        let file_path = deploy_path + "/" + &app_path + "/" + tail.as_str();
+                                        let mut file = streaming_platform::tokio::fs::File::open(&file_path).await.expect(&("File not found ".to_owned() + &file_path));                                
+                                        let mut file_buf = [0; 1024];
+        
+                                        loop {
+                                            match file.read(&mut file_buf).await.expect("File read failed") {
+                                                0 => break,
+                                                n =>                                 
+                                                    match tx.send_data(warp::hyper::body::Bytes::copy_from_slice(&file_buf[..n])).await {
+                                                        Ok(_) => {}
+                                                        Err(_) => break
+                                                    }
                                             }
-                                    }
+                                        }
+                                    });                            
+        
+                                    match mime {
+                                        Some(mime_type) => Response::builder()                                    
+                                            .header("content-type", mime_type.essence_str())
+                                            .body(body),
+                                        None => Response::builder()                                    
+                                            .body(body)
+                                    }                            
                                 }
-                            });                            
-
-                            match mime {
-                                Some(mime_type) => Response::builder()                                    
-                                    .header("content-type", mime_type.essence_str())
-                                    .body(body),
-                                None => Response::builder()                                    
-                                    .body(body)
-                            }                            
+                                None => Response::builder()
+                                    .header("content-type", "text/html")
+                                    .body(warp::hyper::body::Body::from("Here comes the error"))
+                            }
                         }
-                        None => Response::builder()
-                            .header("content-type", "text/html")
-                            .body(warp::hyper::body::Body::from("Error"))
-                    }
+                        None => {
+                            warn!("Anauthorized file access attempt, app name: {}, tail: {}", app_name, tail.as_str());
+
+                            Response::builder()
+                                .header("content-type", "text/html")
+                                .body(warp::hyper::body::Body::from("Here comes the error"))
+                        }
+                    }                    
                 }
             )
         )
@@ -175,7 +197,7 @@ pub async fn startup(config: HashMap<String, String>, mb: MagicBall, startup_dat
                 .and(warp::header::optional("cookie"))
                 .and(warp::body::bytes())
                 .and_then(move |cookie_header: Option<String>, body: warp::hyper::body::Bytes| {
-                    let auth_token_key = auth_token_key.clone();
+                    let auth_token_key = auth_token_key2.clone();
                     let aca_origin = aca_origin2.clone();                    
                     let mb = mb2.clone();
 

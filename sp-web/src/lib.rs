@@ -49,13 +49,13 @@ pub async fn startup(config: HashMap<String, String>, mb: MagicBall, startup_dat
                             Some(app_name) => {
                                 match app["index"].as_str() {
                                     Some(app_index) => {
-                                        app_indexes.insert(app_name.to_owned(), (app["index"].as_bool(), app_index.to_owned()));
+                                        app_indexes.insert(app_name.to_owned(), (app["allow_unauthorized"].as_bool(), app_index.to_owned()));
                                     }
                                     None => {}
                                 }
                                 match app["path"].as_str() {
                                     Some(app_path) => {
-                                        app_paths.insert(app_name.to_owned(), app_path.to_owned());
+                                        app_paths.insert(app_name.to_owned(), (app["allow_unauthorized"].as_bool(), app_path.to_owned()));
                                     }
                                     None => {}
                                 }
@@ -104,24 +104,25 @@ pub async fn startup(config: HashMap<String, String>, mb: MagicBall, startup_dat
 
                     match app_indexes.remove(&app_name) {
                         Some((allow_unauthorized, index)) =>
-                            if allow_unauthorized == Some(true) {
-                                Response::builder()
+                        
+                            match allow_unauthorized == Some(true) {
+                                true => Response::builder()
                                     .header("content-type", "text/html")
-                                    .body(index)
-                            } else {
-                                match check_auth_token(auth_token_key.as_bytes(), cookie_header) {
-                                    Some(auth_data) => 
-                                        Response::builder()
-                                            .header("content-type", "text/html")
-                                            .body(index),
-                                    None => {
-                                        warn!("Anauthorized access attempt, app name: {}", app_name);
+                                    .body(index),
+                                false =>
+                                    match check_auth_token(auth_token_key.as_bytes(), cookie_header) {
+                                        Some(auth_data) => 
+                                            Response::builder()
+                                                .header("content-type", "text/html")
+                                                .body(index),
+                                        None => {
+                                            warn!("Anauthorized access attempt, app name: {}", app_name);
 
-                                        Response::builder()
-                                            .header("content-type", "text/html")
-                                            .body("Here comes the error".to_owned())
+                                            Response::builder()
+                                                .header("content-type", "text/html")
+                                                .body("Here comes the error".to_owned())
+                                        }
                                     }
-                                }                                
                             }
                         None => 
                             Response::builder()
@@ -141,52 +142,27 @@ pub async fn startup(config: HashMap<String, String>, mb: MagicBall, startup_dat
                     let deploy_path = deploy_path.clone();
                     let mut app_paths = app_paths.clone();
 
-                     match check_auth_token(auth_token_key.as_bytes(), cookie_header) {
-                        Some(auth_data) => {
-                            match app_paths.remove(&app_name) {
-                                Some(app_path) => {
-        
-                                    let mime = mime_guess::from_path(tail.as_str()).first();
-        
-                                    let (mut tx, body) = warp::hyper::body::Body::channel();
-        
-                                    streaming_platform::tokio::spawn(async move {                                
-                                        let file_path = deploy_path + "/" + &app_path + "/" + tail.as_str();
-                                        let mut file = streaming_platform::tokio::fs::File::open(&file_path).await.expect(&("File not found ".to_owned() + &file_path));                                
-                                        let mut file_buf = [0; 1024];
-        
-                                        loop {
-                                            match file.read(&mut file_buf).await.expect("File read failed") {
-                                                0 => break,
-                                                n =>                                 
-                                                    match tx.send_data(warp::hyper::body::Bytes::copy_from_slice(&file_buf[..n])).await {
-                                                        Ok(_) => {}
-                                                        Err(_) => break
-                                                    }
-                                            }
-                                        }
-                                    });                            
-        
-                                    match mime {
-                                        Some(mime_type) => Response::builder()                                    
-                                            .header("content-type", mime_type.essence_str())
-                                            .body(body),
-                                        None => Response::builder()                                    
-                                            .body(body)
-                                    }                            
-                                }
-                                None => Response::builder()
-                                    .header("content-type", "text/html")
-                                    .body(warp::hyper::body::Body::from("Here comes the error"))
-                            }
-                        }
-                        None => {
-                            warn!("Anauthorized file access attempt, app name: {}, tail: {}", app_name, tail.as_str());
+                    match app_paths.remove(&app_name) {
+                        Some((allow_unauthorized, app_path)) => {
 
-                            Response::builder()
-                                .header("content-type", "text/html")
-                                .body(warp::hyper::body::Body::from("Here comes the error"))
+                            match allow_unauthorized == Some(true) {
+                                true => process_static_file_request(deploy_path, app_path, tail.as_str().to_owned()),
+                                false => 
+                                    match check_auth_token(auth_token_key.as_bytes(), cookie_header) {
+                                        Some(auth_data) => process_static_file_request(deploy_path, app_path, tail.as_str().to_owned()),
+                                        None => {
+                                            warn!("Anauthorized file access attempt, app name: {}, tail: {}", app_name, tail.as_str());
+                
+                                            Response::builder()
+                                                .header("content-type", "text/html")
+                                                .body(warp::hyper::body::Body::from("Here comes the error"))
+                                        }
+                                    }                                
+                            }                                                                                 
                         }
+                        None => Response::builder()
+                            .header("content-type", "text/html")
+                            .body(warp::hyper::body::Body::from("Here comes the error"))
                     }                    
                 }
             )
@@ -252,6 +228,37 @@ fn check_auth_token(auth_token_key: &[u8], cookie_header: Option<String>) -> Opt
             }
         }
         None => None
+    }
+}
+
+fn process_static_file_request(deploy_path: String, app_path: String, tail: String) -> Result<Response<warp::hyper::body::Body>, warp::http::Error> {
+    let mime = mime_guess::from_path(&tail).first();
+
+    let (mut tx, body) = warp::hyper::body::Body::channel();
+
+    streaming_platform::tokio::spawn(async move {                                
+        let file_path = deploy_path + "/" + &app_path + "/" + &tail;
+        let mut file = streaming_platform::tokio::fs::File::open(&file_path).await.expect(&("File not found ".to_owned() + &file_path));                                
+        let mut file_buf = [0; 1024];
+
+        loop {
+            match file.read(&mut file_buf).await.expect("File read failed") {
+                0 => break,
+                n =>                                 
+                    match tx.send_data(warp::hyper::body::Bytes::copy_from_slice(&file_buf[..n])).await {
+                        Ok(_) => {}
+                        Err(_) => break
+                    }
+            }
+        }
+    });                            
+
+    match mime {
+        Some(mime_type) => Response::builder()                                    
+            .header("content-type", mime_type.essence_str())
+            .body(body),
+        None => Response::builder()                                    
+            .body(body)
     }
 }
 

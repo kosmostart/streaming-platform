@@ -13,13 +13,17 @@ enum AuthResult {
 
 pub async fn go(aca_origin: Option<String>, body: warp::hyper::body::Bytes, mut mb: MagicBall) -> Result<Response<Vec<u8>>, warp::Rejection> {
     let res = match get_msg_meta_and_payload::<Value>(&body) {
-        Ok((msg_meta, payload)) =>        
-            match msg_meta.key.as_ref() {
+        Ok((msg_meta, payload)) =>
+
+            match msg_meta.key.as_ref() {                
                 "Auth" => {
+
                     match msg_meta.msg_type {
-                        MsgType::RpcRequest => {                                        
+                        MsgType::RpcRequest => 
+
                             match mb.rpc::<_, Value>("Auth", payload).await {
-                                Ok(msg) =>                       
+                                Ok(msg) =>
+
                                     match msg.payload["auth_token"].as_str() {
                                         Some(auth_token) =>
                                             AuthResult::Ok(
@@ -53,8 +57,7 @@ pub async fn go(aca_origin: Option<String>, body: warp::hyper::body::Bytes, mut 
                                     error!("{:?}", err);
                                     AuthResult::Error
                                 }
-                            }                                                                        
-                        }
+                            }                        
                         _ => {
                             warn!("Wrong authorize msg msg_type");
                             AuthResult::Error

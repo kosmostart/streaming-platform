@@ -8,8 +8,10 @@ use crate::{check_auth_token, response};
 pub async fn go(aca_origin: Option<String>, auth_token_key: String, cookie_header: Option<String>, body: warp::hyper::body::Bytes, mut mb: MagicBall) -> Result<Response<Vec<u8>>, warp::Rejection> {
     let res = match check_auth_token(auth_token_key.as_bytes(), cookie_header) {
         Some(auth_data) =>
+
             match get_msg_meta(&body) {                
                 Ok(msg_meta) =>
+                
                     match msg_meta.msg_type {
                         MsgType::RpcRequest =>
                             match mb.proxy_rpc(mb.addr.clone(), body.to_vec()).await {

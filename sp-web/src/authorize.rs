@@ -5,44 +5,40 @@ use streaming_platform::MagicBall;
 use streaming_platform::sp_dto::{MsgType, get_msg_meta_and_payload, reply_to_rpc_dto, RpcResult};
 use crate::{response, response_with_cookie};
 
+enum AuthResult {
+    Ok(String, Vec<u8>),
+    Fail(Vec<u8>),
+    Error
+}
+
 pub async fn go(aca_origin: Option<String>, body: warp::hyper::body::Bytes, mut mb: MagicBall) -> Result<Response<Vec<u8>>, warp::Rejection> {
     let res = match get_msg_meta_and_payload::<Value>(&body) {
-        Ok((msg_meta, payload)) => {
-            //info!("{:?}", msg_meta);
+        Ok((msg_meta, payload)) =>        
             match msg_meta.key.as_ref() {
                 "Auth" => {
                     match msg_meta.msg_type {
                         MsgType::RpcRequest => {                                        
                             match mb.rpc::<_, Value>("Auth", payload).await {
-                                Ok(msg) => {                                                        
+                                Ok(msg) =>                       
                                     match msg.payload["auth_token"].as_str() {
-                                        Some(auth_token) => {
-                                            let res = reply_to_rpc_dto(
-                                                mb.addr,
-                                                msg_meta.key.clone(),
-                                                msg_meta.correlation_id,
-                                                json!({
-                                                    "result": true
-                                                }),
-                                                RpcResult::Ok,
-                                                msg_meta.route.clone(),
-                                                None,
-                                                None
-                                            )
-                                            .expect("failed to create positive auth response dto");
-
-                                            let cookie_header = "skytfs-token=".to_owned() + auth_token + "; HttpOnly; path=/";
-
-                                            match aca_origin {
-                                                Some(aca_origin) => response_with_cookie(aca_origin, &cookie_header, res).expect("failed to build aca origin response"),
-                                                None => Response::builder()
-                                                            .header(SET_COOKIE, cookie_header)
-                                                            .body(res)
-                                                            .expect("failed to build response")
-                                            }
-                                        }
-                                        None => {
-                                            let res = reply_to_rpc_dto(
+                                        Some(auth_token) =>
+                                            AuthResult::Ok(
+                                                "skytfs-token=".to_owned() + auth_token + "; HttpOnly; path=/",
+                                                reply_to_rpc_dto(
+                                                    mb.addr,
+                                                    msg_meta.key.clone(),
+                                                    msg_meta.correlation_id,
+                                                    json!({
+                                                        "result": true
+                                                    }),
+                                                    RpcResult::Ok,
+                                                    msg_meta.route.clone(),
+                                                    None,
+                                                    None
+                                                ).expect("Failed to create positive auth response dto")
+                                            ),
+                                        None =>
+                                            AuthResult::Fail(reply_to_rpc_dto(
                                                 mb.addr,
                                                 msg_meta.key.clone(),
                                                 msg_meta.correlation_id,
@@ -51,56 +47,53 @@ pub async fn go(aca_origin: Option<String>, body: warp::hyper::body::Bytes, mut 
                                                 msg_meta.route.clone(),
                                                 None,
                                                 None
-                                            )
-                                            .expect("failed to create negative auth response dto");
-
-                                            match aca_origin {
-                                                Some(aca_origin) => response(aca_origin, res).expect("failed to build aca origin response"),
-                                                None => Response::builder().body(res).expect("failed to build response")
-                                            }
-                                        }                                                            
-                                    }                                                        
-                                }
+                                            ).expect("Failed to create negative auth response dto"))
+                                    }
                                 Err(err) => {
                                     error!("{:?}", err);
-                                    let res = to_vec("here comes the error").expect("failed to serialize proxy rpc error response error");
-                                    match aca_origin {
-                                        Some(aca_origin) => response(aca_origin, res).expect("failed to build aca origin response"),
-                                        None => Response::builder().body(res).expect("failed to build response")
-                                    }
+                                    AuthResult::Error
                                 }
                             }                                                                        
                         }
                         _ => {
-                            warn!("wrong authorize msg msg_type");
-                            let res = to_vec("here comes the error").expect("failed to serialize proxy rpc error response error");
-                            match aca_origin {
-                                Some(aca_origin) => response(aca_origin, res).expect("failed to build aca origin response"),
-                                None => Response::builder().body(res).expect("failed to build response")
-                            }
+                            warn!("Wrong authorize msg msg_type");
+                            AuthResult::Error
                         }
                     }
                 }
                 _ => {
-                    warn!("wrong authorize msg key");
-                    let res = to_vec("here comes the error").expect("failed to serialize proxy rpc error response error");
-                    match aca_origin {
-                        Some(aca_origin) => response(aca_origin, res).expect("failed to build aca origin response"),
-                        None => Response::builder().body(res).expect("failed to build response")
-                    }
+                    warn!("Wrong authorize msg key");
+                    AuthResult::Error
                 }
-            }                                
-
-        }
+            }        
         Err(err) => {
             error!("{:?}", err);
-            let res = to_vec("here comes the error").expect("failed to serialize error response");
+            AuthResult::Error
+        }
+    };
+
+    Ok::<Response<Vec<u8>>, warp::Rejection>(match res {        
+        AuthResult::Ok(cookie_header, res) => {
             match aca_origin {
-                Some(aca_origin) => response(aca_origin, res).expect("failed to build aca origin response"),
-                None => Response::builder().body(res).expect("failed to build response")
+                Some(aca_origin) => response_with_cookie(aca_origin, &cookie_header, res).expect("failed to build aca origin response"),
+                None => Response::builder()
+                            .header(SET_COOKIE, cookie_header)
+                            .body(res)
+                            .expect("failed to build response")
             }
         }
-    };                                                
+        AuthResult::Fail(res) => 
+            match aca_origin {
+                Some(aca_origin) => response(aca_origin, res).expect("Failed to build aca origin response"),
+                None => Response::builder().body(res).expect("Failed to build response")
+            },
+        AuthResult::Error => {
+            let res = to_vec("Here comes the error").expect("Failed to serialize proxy rpc error response error");
 
-    Ok::<Response<Vec<u8>>, warp::Rejection>(res)
+            match aca_origin {
+                Some(aca_origin) => response(aca_origin, res).expect("Failed to build aca origin response"),
+                None => Response::builder().body(res).expect("Failed to build response")
+            }
+        }
+    })
 }

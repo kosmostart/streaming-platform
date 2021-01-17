@@ -71,7 +71,7 @@ impl From<base64::DecodeError> for Error {
 fn check_auth_token_length() {
     let res = create_auth_token(b"asdqwe", &json!({
         "user_id": 123321123
-    })).unwrap();
+    })).expect("Failed to create auth token");
 
     println!("{}", res.len());
 }

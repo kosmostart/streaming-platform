@@ -226,7 +226,7 @@ async fn auth(addr: String, access_key: String, stream: &mut TcpStream) -> Resul
 
     let (dto, msg_meta_size, payload_size, attachments_size) = rpc_dto_with_sizes(addr.clone(), "Auth".to_owned(), json!({
         "access_key": access_key
-    }), route, None, None).unwrap();
+    }), route, None, None).expect("Failed to create auth dto");
 
     write_to_stream(get_stream_id_onetime(&addr), dto, msg_meta_size, payload_size, attachments_size, stream).await
 }

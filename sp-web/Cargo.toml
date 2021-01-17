@@ -13,6 +13,7 @@ env_logger = "*"
 serde_json = "*"
 warp = { git = "https://github.com/seanmonstar/warp", features = ["tls"] }
 #warp = { version = "*", features = ["tls"] }
+cookie = "*"
 mime_guess = "*"
 streaming-platform = { path = "../streaming-platform", features = ["http"] }
 sp-auth = { path = "../sp-auth"}

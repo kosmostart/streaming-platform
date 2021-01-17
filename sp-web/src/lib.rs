@@ -96,8 +96,15 @@ pub async fn startup(config: HashMap<String, String>, mb: MagicBall, startup_dat
                 .and(warp::path::param())
                 .and(warp::header::optional("cookie"))
                 .and(warp::path::end())                                
-                .map(move |app_name: String, cookie_header: Option<String>| {
+                .map(move |app_name: String, cookie_header: Option<String>| {                    
                     info!("{}, {:?}", app_name, cookie_header);
+
+                    match cookie_header {
+                        Some(cookie_string) => {
+                            info!("{:#?}", cookie::Cookie::parse(cookie_string).unwrap().name_value());
+                        }
+                        None => {}
+                    }
 
                     let mut app_indexes = app_indexes.clone();
 
@@ -131,22 +138,18 @@ pub async fn startup(config: HashMap<String, String>, mb: MagicBall, startup_dat
                             let (mut tx, body) = warp::hyper::body::Body::channel();
 
                             streaming_platform::tokio::spawn(async move {                                
-                                //info!("{}", deploy_path);
-                                //info!("{}", app_path);
-                                //info!("{}", tail.as_str());
-
-                                let mut file = streaming_platform::tokio::fs::File::open(deploy_path + "/" + &app_path + "/" + tail.as_str()).await.unwrap();
-                                
+                                let file_path = deploy_path + "/" + &app_path + "/" + tail.as_str();
+                                let mut file = streaming_platform::tokio::fs::File::open(&file_path).await.expect(&("File not found ".to_owned() + &file_path));                                
                                 let mut file_buf = [0; 1024];
 
                                 loop {
-                                    match file.read(&mut file_buf).await.unwrap() {
+                                    match file.read(&mut file_buf).await.expect("File read failed") {
                                         0 => break,
                                         n =>                                 
                                             match tx.send_data(warp::hyper::body::Bytes::copy_from_slice(&file_buf[..n])).await {
                                                 Ok(_) => {}
                                                 Err(_) => break
-                                            }                                
+                                            }
                                     }
                                 }
                             });                            
@@ -171,28 +174,62 @@ pub async fn startup(config: HashMap<String, String>, mb: MagicBall, startup_dat
                 .and(warp::post())
                 .and(warp::header::optional("cookie"))
                 .and(warp::body::bytes())
-                .and_then(move |_cookie_header: Option<String>, body: warp::hyper::body::Bytes| {
-                    let aca_origin = aca_origin2.clone();
+                .and_then(move |cookie_header: Option<String>, body: warp::hyper::body::Bytes| {
                     let auth_token_key = auth_token_key.clone();
+                    let aca_origin = aca_origin2.clone();                    
                     let mb = mb2.clone();
-                    
-                    crate::hub::go(aca_origin, auth_token_key, body, mb)
+
+                    crate::hub::go(aca_origin, auth_token_key, cookie_header, body, mb)
                 }
-            )  
+            )
         )
-        ;
+    ;
 
     if cert_path.is_some() && key_path.is_some() {
         warp::serve(routes)
         .tls()
-        .cert_path(cert_path.unwrap())
-        .key_path(key_path.unwrap())
+        .cert_path(cert_path.expect("Certificate path failed"))
+        .key_path(key_path.expect("Key path failed"))
         .run(listen_addr)
         .await;	
     } else {
         warp::serve(routes)        
         .run(listen_addr)
         .await;
+    }
+}
+
+fn check_auth_token(auth_token_key: &[u8], cookie_header: Option<String>) -> Option<Value> {
+    match cookie_header {
+        Some(cookie_string) => {
+            match cookie::Cookie::parse(cookie_string) {
+                Ok(parsed_cookie) => {
+                    let (name, value) = parsed_cookie.name_value();
+
+                    match name {
+                        "skytfs-token" => {
+                            match verify_auth_token(auth_token_key, value) {
+                                Ok(auth_data) => Some(auth_data),
+                                Err(e) => {
+                                    warn!("Auth token verification failed, {:?}", e);
+                                    None
+                                }
+                            }
+                        }
+                        _ => {
+                            warn!("Incorrect cookie name: {}", name);
+                            None                            
+                        }
+                    }
+                    
+                }
+                Err(e) => {
+                    warn!("Cookie parse failed, {:?}", e);
+                    None
+                }
+            }
+        }
+        None => None
     }
 }
 
@@ -209,24 +246,4 @@ pub fn response_with_cookie(aca_origin: String, cookie_header: &str, data: Vec<u
         .header("Access-Control-Allow-Origin", aca_origin)        
         .header(SET_COOKIE, cookie_header)
         .body(data) 
-}
-
-pub fn check_auth_token_vec(auth_token_key: &[u8], msg_meta: &MsgMeta) -> Result<Value, Vec<u8>> {
-    let res = match &msg_meta.auth_token {
-        Some(data) => {
-            match verify_auth_token(auth_token_key, &data) {
-                Ok(auth_data) => Some(auth_data),
-                Err(e) => {
-                    warn!("auth token verification failed, {:?}", e);
-                    None
-                }
-            }
-        }
-        None => None
-    };
-
-    match res {
-        Some(auth_data) => Ok(auth_data),
-        None => Err(to_vec("here comes the error").expect("failed to serialize check_cookie_vec error response"))        
-    }
 }

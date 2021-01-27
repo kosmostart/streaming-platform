@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use serde_json::{json, Value, from_slice};
 use log::*;
 use tokio::{io::AsyncWriteExt, fs::File, sync::mpsc::UnboundedReceiver};
-use streaming_platform::{client::stream_mode, tokio::{self, runtime::Runtime}, MagicBall, ClientMsg, RestreamMsg, StreamLayout, sp_dto::{MsgType, reply_to_rpc_dto2_sizes, rpc_dto_with_correlation_id_sizes, Route, Participator, RouteSpec, RpcResult}};
+use streaming_platform::{client::stream_mode, tokio::{self, runtime::Runtime}, MagicBall, ClientMsg, RestreamMsg, StreamLayout, sp_dto::{Key, MsgType, reply_to_rpc_dto2_sizes, rpc_dto_with_correlation_id_sizes, Route, Participator, RouteSpec, RpcResult}};
 use sp_pack_core::unpack;
 
 mod cfg;
@@ -29,7 +29,7 @@ pub async fn startup(config: HashMap<String, String>, mut mb: MagicBall, _startu
     let access_key = config.get("access_key").expect("access key is empty");
     let (_correlation_id, dto, msg_meta_size, payload_size, attachments_sizes) = rpc_dto_with_correlation_id_sizes(
         mb.addr.clone(),        
-        "Download".to_owned(),
+        Key::simple("Download"),
         json!({
             "access_key": access_key
         }),
@@ -117,7 +117,7 @@ async fn process_client_msg(_mb: &mut MagicBall, stream_layouts: &mut HashMap<u6
         ClientMsg::PayloadFinished(stream_id, n, buf) => {
             let stream_layout = stream_layouts.get_mut(&stream_id).ok_or(Error::CustomError("not found stream for payload finish".to_owned()))?;
             stream_layout.stream.payload.extend_from_slice(&buf[..n]);
-            match stream_layout.stream.msg_meta.key.as_ref() {
+            match stream_layout.stream.msg_meta.key.action.as_ref() {
                 "Download" => {
                     let _attachment = stream_layout.stream.msg_meta.attachments.iter().nth(0).ok_or(Error::CustomError("no attachment found in msg meta for upload key".to_owned()))?;
                     let payload: Value = from_slice(&stream_layout.stream.payload)?;
@@ -130,7 +130,7 @@ async fn process_client_msg(_mb: &mut MagicBall, stream_layouts: &mut HashMap<u6
         }
         ClientMsg::AttachmentData(stream_id, _index, n, buf) => {
             let stream_layout = stream_layouts.get_mut(&stream_id).ok_or(Error::CustomError("not found stream for attachment data".to_owned()))?;
-            match stream_layout.stream.msg_meta.key.as_ref() {
+            match stream_layout.stream.msg_meta.key.action.as_ref() {
                 "Download" => {
                     let file = stream_layout.file.as_mut().ok_or(Error::CustomError("file is empty for attachment data".to_owned()))?;
                     file.write_all(&buf[..n]).await?;
@@ -140,7 +140,7 @@ async fn process_client_msg(_mb: &mut MagicBall, stream_layouts: &mut HashMap<u6
         }
         ClientMsg::AttachmentFinished(stream_id, _index, n, buf) => {
             let stream_layout = stream_layouts.get_mut(&stream_id).ok_or(Error::CustomError("not found stream for attachment finish".to_owned()))?;
-            match stream_layout.stream.msg_meta.key.as_ref() {
+            match stream_layout.stream.msg_meta.key.action.as_ref() {
                 "Download" => {
                     let file = stream_layout.file.as_mut().ok_or(Error::CustomError("file is empty for attachment data".to_owned()))?;
                     file.write_all(&buf[..n]).await?;

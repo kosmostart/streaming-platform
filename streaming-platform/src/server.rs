@@ -4,18 +4,18 @@ use log::*;
 use tokio::runtime::Runtime;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc::{self, UnboundedSender};
-use sp_dto::MsgType;
+use sp_dto::{Key, MsgType};
 use sp_cfg::ServerConfig;
 use crate::proto::*;
 
 /// Starts the server based on provided ServerConfig struct. Creates new runtime and blocks.
-pub fn start(config: ServerConfig, event_subscribes: HashMap<String, Vec<String>>, rpc_subscribes: HashMap<String, Vec<String>>, rpc_response_subscribes: HashMap<String, Vec<String>>) {
+pub fn start(config: ServerConfig, event_subscribes: HashMap<Key, Vec<String>>, rpc_subscribes: HashMap<Key, Vec<String>>, rpc_response_subscribes: HashMap<Key, Vec<String>>) {
     let rt = Runtime::new().expect("failed to create runtime"); 
     let _ = rt.block_on(start_future(config, event_subscribes, rpc_subscribes, rpc_response_subscribes));
 }
 
 /// Future for new server start based on provided ServerConfig struct, in case you want to create runtime by yourself.
-pub async fn start_future(config: ServerConfig, event_subscribes: HashMap<String, Vec<String>>, rpc_subscribes: HashMap<String, Vec<String>>, rpc_response_subscribes: HashMap<String, Vec<String>>) -> Result<(), ProcessError> {
+pub async fn start_future(config: ServerConfig, event_subscribes: HashMap<Key, Vec<String>>, rpc_subscribes: HashMap<Key, Vec<String>>, rpc_response_subscribes: HashMap<Key, Vec<String>>) -> Result<(), ProcessError> {
     let listener = TcpListener::bind(config.host.clone()).await?;
     let (server_tx, mut server_rx) = mpsc::unbounded_channel();
     tokio::spawn(async move {        
@@ -187,7 +187,7 @@ async fn process_read_stream(addr: String, mut stream: TcpStream, client_net_add
     write_loop(addr, client_rx, &mut stream).await
 }
 
-async fn process_write_stream(addr: String, event_subscribes: HashMap<String, Vec<String>>, rpc_subscribes: HashMap<String, Vec<String>>, rpc_response_subscribes: HashMap<String, Vec<String>>, stream: &mut TcpStream, _client_net_addr: SocketAddr, server_tx: UnboundedSender<ServerMsg>) -> Result<(), ProcessError> {    
+async fn process_write_stream(addr: String, event_subscribes: HashMap<Key, Vec<String>>, rpc_subscribes: HashMap<Key, Vec<String>>, rpc_response_subscribes: HashMap<Key, Vec<String>>, stream: &mut TcpStream, _client_net_addr: SocketAddr, server_tx: UnboundedSender<ServerMsg>) -> Result<(), ProcessError> {    
     let mut state = State::new("read stream from Server to ".to_owned() + &addr);        
     let mut client_addrs = HashMap::new();    
 
@@ -211,7 +211,7 @@ async fn process_write_stream(addr: String, event_subscribes: HashMap<String, Ve
                             server_tx.send(ServerMsg::SendUnit(target.clone(), StreamUnit::Vector(stream_id, buf.clone())))?;
                         }
                     }
-                    None => warn!("No subscribes found for key {}, msg_type {:#?}", msg_meta.key, msg_meta.msg_type)
+                    None => warn!("No subscribes found for key {:#?}, msg_type {:#?}", msg_meta.key, msg_meta.msg_type)
                 }
             }
             ReadResult::PayloadData(stream_id, n, buf) => {                        
@@ -230,7 +230,7 @@ async fn process_write_stream(addr: String, event_subscribes: HashMap<String, Ve
                             server_tx.send(ServerMsg::SendUnit(target.clone(), StreamUnit::Array(stream_id, n, buf.clone())))?;
                         }
                     }
-                    None => warn!("No subscribes found for key {}", key)
+                    None => warn!("No subscribes found for key {:#?}", key)
                 }
             }
             ReadResult::PayloadFinished(stream_id, n, buf) => {
@@ -249,7 +249,7 @@ async fn process_write_stream(addr: String, event_subscribes: HashMap<String, Ve
                             server_tx.send(ServerMsg::SendUnit(target.clone(), StreamUnit::Array(stream_id, n, buf.clone())))?;
                         }
                     }
-                    None => warn!("No subscribes found for key {}", key)
+                    None => warn!("No subscribes found for key {:#?}", key)
                 }
             }
             ReadResult::AttachmentData(stream_id, _, n, buf) => {
@@ -268,7 +268,7 @@ async fn process_write_stream(addr: String, event_subscribes: HashMap<String, Ve
                             server_tx.send(ServerMsg::SendUnit(target.clone(), StreamUnit::Array(stream_id, n, buf.clone())))?;
                         }
                     }
-                    None => warn!("No subscribes found for key {}", key)
+                    None => warn!("No subscribes found for key {:#?}", key)
                 }
             }
             ReadResult::AttachmentFinished(stream_id, _, n, buf) => {
@@ -287,7 +287,7 @@ async fn process_write_stream(addr: String, event_subscribes: HashMap<String, Ve
                             server_tx.send(ServerMsg::SendUnit(target.clone(), StreamUnit::Array(stream_id, n, buf.clone())))?;
                         }
                     }
-                    None => warn!("No subscribes found for key {}", key)
+                    None => warn!("No subscribes found for key {:#?}", key)
                 }
             }
             ReadResult::MessageFinished(stream_id, finish_bytes) => {
@@ -309,7 +309,7 @@ async fn process_write_stream(addr: String, event_subscribes: HashMap<String, Ve
                                     server_tx.send(ServerMsg::SendUnit(target.clone(), StreamUnit::Array(stream_id, n, buf.clone())))?;
                                 }
                             }
-                            None => warn!("No subscribes found for key {}", key)
+                            None => warn!("No subscribes found for key {:#?}", key)
                         }
                     }                            
                 }

@@ -2,7 +2,7 @@ use log::*;
 use serde_json::{json, Value, to_vec};
 use warp::http::{Response, header::SET_COOKIE};
 use streaming_platform::MagicBall;
-use streaming_platform::sp_dto::{MsgType, get_msg_meta_and_payload, reply_to_rpc_dto, RpcResult};
+use streaming_platform::sp_dto::{Key, MsgType, get_msg_meta_and_payload, reply_to_rpc_dto, RpcResult};
 use crate::{response, response_with_cookie};
 
 enum AuthResult {
@@ -15,13 +15,13 @@ pub async fn go(aca_origin: Option<String>, body: warp::hyper::body::Bytes, mut 
     let res = match get_msg_meta_and_payload::<Value>(&body) {
         Ok((msg_meta, payload)) =>
 
-            match msg_meta.key.as_ref() {                
+            match msg_meta.key.action.as_ref() {                
                 "Auth" => {
 
                     match msg_meta.msg_type {
                         MsgType::RpcRequest => 
 
-                            match mb.rpc::<_, Value>("Auth", payload).await {
+                            match mb.rpc::<_, Value>(Key::simple("Auth"), payload).await {
                                 Ok(msg) =>
 
                                     match msg.payload["auth_token"].as_str() {

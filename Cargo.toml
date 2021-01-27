@@ -9,6 +9,7 @@ members = [
 	"sp-web",
 	"sp-yew",
 	"sp-manager",
+	"ci/spciweb",
 	"distribution/sp-pack-core",
 	"distribution/sp-build",
 	"distribution/sp-public-host",

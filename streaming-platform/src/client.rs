@@ -224,7 +224,7 @@ async fn auth(addr: String, access_key: String, stream: &mut TcpStream) -> Resul
         points: vec![Participator::Service(addr.clone())]
     };  
 
-    let (dto, msg_meta_size, payload_size, attachments_size) = rpc_dto_with_sizes(addr.clone(), "Auth".to_owned(), json!({
+    let (dto, msg_meta_size, payload_size, attachments_size) = rpc_dto_with_sizes(addr.clone(), Key::simple("Auth"), json!({
         "access_key": access_key
     }), route, None, None).expect("Failed to create auth dto");
 

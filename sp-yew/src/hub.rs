@@ -8,19 +8,19 @@ use yew::services::console::ConsoleService;
 use yew::services::fetch::{self, FetchService, FetchTask};
 use yew::agent::HandlerId;
 use yew::format::Nothing;
-use sp_dto::{Participator, MsgType, uuid::Uuid, MsgMeta, Route, RouteSpec, CmpSpec, rpc_dto_with_correlation_id, get_msg};
+use sp_dto::{Key, Participator, MsgType, uuid::Uuid, MsgMeta, Route, RouteSpec, CmpSpec, rpc_dto_with_correlation_id, get_msg};
 
 pub struct Worker {
     link: AgentLink<Worker>,
     clients: HashMap<String, HandlerId>,
-    subscribes: HashMap<String, Vec<String>>,
+    subscribes: HashMap<Key, Vec<String>>,
     fetch_tasks: HashMap<Uuid, FetchTask>
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum Request {
     Auth(String),
-    SetSubscribes(HashMap<String, Vec<String>>),
+    SetSubscribes(HashMap<Key, Vec<String>>),
     Msg(MsgMeta, Value),
     Rpc(String, Uuid, Vec<u8>),
     PostStringRpc(String, Uuid, String),
@@ -185,7 +185,7 @@ impl Agent for Worker {
                             }
                         }
                     }
-                    None => ConsoleService::log(&format!("No subscribes found for key {}", msg_meta.key))
+                    None => ConsoleService::log(&format!("No subscribes found for key {:#?}, {}, {:?}", msg_meta.key, msg_meta.tx, msg_meta.route.source))
                 }                
             }
             Request::Rpc(url, correlation_id, data) => {
@@ -347,11 +347,11 @@ impl Hub {
         self.cfg = cfg;
         self.hub.send(Request::Auth(self.spec.addr.clone()));
     }
-    pub fn set_subscribes(&mut self, subscribes: HashMap<String, Vec<String>>) {
+    pub fn set_subscribes(&mut self, subscribes: HashMap<Key, Vec<String>>) {
         self.hub.send(Request::SetSubscribes(subscribes));
     }
     /// Sends rpc request to the server
-    pub fn rpc(&mut self, key: &str, payload: Value) {
+    pub fn rpc(&mut self, key: Key, payload: Value) {
         let route = Route {
             source: Participator::Component(self.spec.addr.clone(), self.cfg.app_addr.clone(), self.cfg.client_addr.clone()),
             spec: RouteSpec::Simple,
@@ -362,7 +362,7 @@ impl Hub {
         self.hub.send(Request::Rpc(url, correlation_id, dto));
     }
     /// Sends rpc request to the server, but result will forwarded to component with client_addr
-    pub fn rpc_with_client(&mut self, key: &str, payload: Value, client_addr: String) {
+    pub fn rpc_with_client(&mut self, key: Key, payload: Value, client_addr: String) {
         let route = Route {
             source: Participator::Component(self.spec.addr.clone(), self.cfg.app_addr.clone(), self.cfg.client_addr.clone()),
             spec: RouteSpec::Client(Participator::Component(client_addr, self.cfg.app_addr.clone(), self.cfg.client_addr.clone())),
@@ -373,7 +373,7 @@ impl Hub {
         self.hub.send(Request::Rpc(host, correlation_id, dto));
     }    
     /// Sends rpc request to the server, iserting url segment to the resulting url.
-    pub fn rpc_with_segment(&mut self, segment: &str,  key: &str, payload: Value) {
+    pub fn rpc_with_segment(&mut self, segment: &str,  key: Key, payload: Value) {
         let route = Route {
             source: Participator::Component(self.spec.addr.clone(), self.cfg.app_addr.clone(), self.cfg.client_addr.clone()),
             spec: RouteSpec::Simple,
@@ -384,11 +384,11 @@ impl Hub {
         self.hub.send(Request::Rpc(url, correlation_id, dto));
     }
     /// Sends message marked as event to other component.
-    pub fn send_event_local(&mut self, key: &str, payload: Value) {
+    pub fn send_event_local(&mut self, key: Key, payload: Value) {
         self.hub.send(Request::Msg(
             MsgMeta {
                 tx: self.spec.addr.clone(),                
-                key: key.to_owned(),
+                key,
                 msg_type: MsgType::Event,
                 correlation_id: Uuid::new_v4(),
                 route: Route {
@@ -405,11 +405,11 @@ impl Hub {
         ));
     }
     /// Sends message marked as rpc request to other component.
-    pub fn send_rpc_local(&mut self, key: &str, payload: Value) {
+    pub fn send_rpc_local(&mut self, key: Key, payload: Value) {
         self.hub.send(Request::Msg(
             MsgMeta {
                 tx: self.spec.addr.clone(),                
-                key: key.to_owned(),
+                key,
                 msg_type: MsgType::RpcRequest,
                 correlation_id: Uuid::new_v4(),
                 route: Route {
@@ -445,11 +445,11 @@ impl Hub {
         ));
     }
     /// Sends message marked as event to component with addr held inside tx variable of component spec (which is stored in a hub struct).
-    pub fn send_event_tx(&mut self, key: &str, payload: Value) {
+    pub fn send_event_tx(&mut self, key: Key, payload: Value) {
         self.hub.send(Request::Msg(
             MsgMeta {
                 tx: self.spec.addr.clone(),                
-                key: key.to_owned(),
+                key,
                 msg_type: MsgType::Event,
                 correlation_id: Uuid::new_v4(),
                 route: Route {
@@ -466,11 +466,11 @@ impl Hub {
         ));
     }
     /// Sends message marked as rpc request to component with addr held inside tx variable of component spec (which is stored in a hub struct).
-    pub fn send_rpc_tx(&mut self, key: &str, payload: Value) {
+    pub fn send_rpc_tx(&mut self, key: Key, payload: Value) {
         self.hub.send(Request::Msg(
             MsgMeta {
                 tx: self.spec.addr.clone(),                
-                key: key.to_owned(),
+                key,
                 msg_type: MsgType::RpcRequest,
                 correlation_id: Uuid::new_v4(),
                 route: Route {

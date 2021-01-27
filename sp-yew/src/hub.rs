@@ -296,7 +296,7 @@ impl Agent for Worker {
 pub struct Hub {
     hub: Box<dyn Bridge<Worker>>,
     pub spec: CmpSpec,
-    pub cfg: HubCfg    
+    pub cfg: HubCfg
 }
 
 /// Configuration for various communication scenarios.
@@ -308,7 +308,8 @@ pub struct HubCfg {
     pub fetch_url: Option<String>,
     pub ws_url: Option<String>,    
     pub auth_token: Option<String>,
-    pub auth_data: Option<Value>
+    pub auth_data: Option<Value>,
+    pub domain: String
 }
 
 impl Default for HubCfg {
@@ -320,7 +321,8 @@ impl Default for HubCfg {
             fetch_url: None,
             ws_url: None,            
             auth_token: None,
-            auth_data: None
+            auth_data: None,
+            domain: "Default".to_owned()
         }
     }
 }

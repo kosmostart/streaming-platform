@@ -823,6 +823,10 @@ impl MagicBall {
         let mut msg_meta = res?;
         
         msg_meta.tx = tx;
+        match auth_data["domain"].as_str() {
+            Some(domain) if msg_meta.key.domain == "Default" => msg_meta.key.domain = domain.to_owned(),
+            _ => {}
+        }
         msg_meta.auth_data = Some(auth_data);
         msg_meta.route.points.push(Participator::Service(self.addr.to_owned()));
 
@@ -917,6 +921,10 @@ impl MagicBall {
         let correlation_id = msg_meta.correlation_id;
         
         msg_meta.tx = tx;
+        match auth_data["domain"].as_str() {
+            Some(domain) if msg_meta.key.domain == "Default" => msg_meta.key.domain = domain.to_owned(),
+            _ => {}
+        }
         msg_meta.auth_data = Some(auth_data);
         msg_meta.route.points.push(Participator::Service(self.addr.to_owned()));
 

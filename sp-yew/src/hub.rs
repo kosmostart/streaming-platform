@@ -309,6 +309,7 @@ pub struct HubCfg {
     pub ws_url: Option<String>,    
     pub auth_token: Option<String>,
     pub auth_data: Option<Value>,
+    pub service: String,
     pub domain: String
 }
 
@@ -322,6 +323,7 @@ impl Default for HubCfg {
             ws_url: None,            
             auth_token: None,
             auth_data: None,
+            service: "Default".to_owned(),
             domain: "Default".to_owned()
         }
     }

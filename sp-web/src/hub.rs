@@ -14,7 +14,7 @@ pub async fn go(aca_origin: Option<String>, auth_token_key: String, cookie_heade
                 
                     match msg_meta.msg_type {
                         MsgType::RpcRequest =>
-                            match mb.proxy_rpc(mb.addr.clone(), body.to_vec()).await {
+                            match mb.proxy_rpc_with_auth_data(mb.addr.clone(), auth_data, body.to_vec()).await {
                                 Ok((_, res_data)) => Some(res_data),
                                 Err(err) => {
                                     error!("{:?}", err);
@@ -26,7 +26,7 @@ pub async fn go(aca_origin: Option<String>, auth_token_key: String, cookie_heade
                             None                                 
                         }
                         MsgType::Event => 
-                            match mb.proxy_event(mb.addr.clone(), body.to_vec()).await {
+                            match mb.proxy_event_with_auth_data(mb.addr.clone(), auth_data, body.to_vec()).await {
                                 Ok(_) => Some(to_vec("Ok friends").expect("Failed to serialize proxy event ok response")),
                                 Err(err) => {
                                     error!("{:?}", err);

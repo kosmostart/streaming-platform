@@ -21,7 +21,7 @@ pub async fn go(aca_origin: Option<String>, body: warp::hyper::body::Bytes, mut 
                     match msg_meta.msg_type {
                         MsgType::RpcRequest => 
 
-                            match mb.rpc::<_, Value>(Key::simple("Auth"), payload).await {
+                            match mb.rpc::<_, Value>(msg_meta.key.clone(), payload).await {
                                 Ok(msg) =>
 
                                     match msg.payload["auth_token"].as_str() {
@@ -30,13 +30,13 @@ pub async fn go(aca_origin: Option<String>, body: warp::hyper::body::Bytes, mut 
                                                 "skytfs-token=".to_owned() + auth_token + "; HttpOnly; path=/",
                                                 reply_to_rpc_dto(
                                                     mb.addr,
-                                                    msg_meta.key.clone(),
+                                                    msg_meta.key,
                                                     msg_meta.correlation_id,
                                                     json!({
                                                         "result": true
                                                     }),
                                                     RpcResult::Ok,
-                                                    msg_meta.route.clone(),
+                                                    msg_meta.route,
                                                     None,
                                                     None
                                                 ).expect("Failed to create positive auth response dto")
@@ -44,11 +44,11 @@ pub async fn go(aca_origin: Option<String>, body: warp::hyper::body::Bytes, mut 
                                         None =>
                                             AuthResult::Fail(reply_to_rpc_dto(
                                                 mb.addr,
-                                                msg_meta.key.clone(),
+                                                msg_meta.key,
                                                 msg_meta.correlation_id,
                                                 json!({}),
                                                 RpcResult::Ok,
-                                                msg_meta.route.clone(),
+                                                msg_meta.route,
                                                 None,
                                                 None
                                             ).expect("Failed to create negative auth response dto"))

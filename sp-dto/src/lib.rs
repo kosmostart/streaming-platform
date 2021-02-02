@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::io::Cursor;
 use std::fmt::Debug;
 use bytes::{Buf, BufMut};
@@ -116,6 +117,69 @@ pub struct Key {
     pub action: String,
     pub service: String,
     pub domain: String
+}
+
+/// Parameters are as follows: event_subscribes, rpc_subscribes, rpc_response_subscribes
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum Subscribes {
+    ByAddr(HashMap<String, Vec<Key>>, HashMap<String, Vec<Key>>, HashMap<String, Vec<Key>>),
+    ByKey(HashMap<Key, Vec<String>>, HashMap<Key, Vec<String>>, HashMap<Key, Vec<String>>)
+}
+
+impl Subscribes {
+    pub fn traverse_to_keys(self) -> (HashMap<Key, Vec<String>>, HashMap<Key, Vec<String>>, HashMap<Key, Vec<String>>) {
+        match self {
+            Subscribes::ByAddr(event_subscribes, rpc_subscribes, rpc_response_subscribes) => {
+                let mut event_res: HashMap<_, Vec<String>> = HashMap::new();
+
+                for (addr, keys) in event_subscribes.into_iter() {
+                    for key in keys {
+                        match event_res.get_mut(&key) {
+                            Some(addrs) => {
+                                addrs.push(addr.clone());
+                            }
+                            None => {
+                                event_res.insert(key, vec![addr.clone()]);
+                            }
+                        }
+                    }
+                }
+
+                let mut rpc_res: HashMap<_, Vec<String>> = HashMap::new();
+
+                for (addr, keys) in rpc_subscribes.into_iter() {
+                    for key in keys {
+                        match rpc_res.get_mut(&key) {
+                            Some(addrs) => {
+                                addrs.push(addr.clone());
+                            }
+                            None => {
+                                rpc_res.insert(key, vec![addr.clone()]);
+                            }
+                        }
+                    }
+                }
+
+                let mut rpc_response_res: HashMap<_, Vec<String>> = HashMap::new();
+
+                for (addr, keys) in rpc_response_subscribes.into_iter() {
+                    for key in keys {
+                        match rpc_response_res.get_mut(&key) {
+                            Some(addrs) => {
+                                addrs.push(addr.clone());
+                            }
+                            None => {
+                                rpc_response_res.insert(key, vec![addr.clone()]);
+                            }
+                        }
+                    }
+                }
+
+                (event_res, rpc_res, rpc_response_res)
+            },
+            Subscribes::ByKey(event_subscribes, rpc_subscribes, rpc_response_subscribes) => (event_subscribes, rpc_subscribes, rpc_response_subscribes)
+        }
+    }
 }
 
 impl Key {

@@ -8,7 +8,7 @@ use yew::services::console::ConsoleService;
 use yew::services::fetch::{self, FetchService, FetchTask};
 use yew::agent::HandlerId;
 use yew::format::Nothing;
-use sp_dto::{Key, Participator, MsgType, uuid::Uuid, MsgMeta, Route, RouteSpec, CmpSpec, rpc_dto_with_correlation_id, get_msg};
+use sp_dto::{Key, Subscribes, Participator, MsgType, uuid::Uuid, MsgMeta, Route, RouteSpec, CmpSpec, rpc_dto_with_correlation_id, get_msg};
 
 pub struct Worker {
     link: AgentLink<Worker>,
@@ -20,7 +20,7 @@ pub struct Worker {
 #[derive(Serialize, Deserialize, Debug)]
 pub enum Request {
     Auth(String),
-    SetSubscribes(HashMap<Key, Vec<String>>),
+    SetSubscribes(Subscribes),
     Msg(MsgMeta, Value),
     Rpc(String, Uuid, Vec<u8>),
     PostStringRpc(String, Uuid, String),
@@ -172,6 +172,13 @@ impl Agent for Worker {
                 self.clients.insert(addr, who);
             }
             Request::SetSubscribes(subscribes) => {
+                let subscribes = match subscribes {
+                    Subscribes::ByAddr(_, _, _) => {
+                        let (event_subscribes, _, _) = subscribes.traverse_to_keys();
+                        event_subscribes
+                    }
+                    Subscribes::ByKey(event_subscribes, _, _) => event_subscribes
+                };
                 self.subscribes = subscribes;
                 ConsoleService::log("Subscribes set");
             }
@@ -352,7 +359,7 @@ impl Hub {
         self.hub.send(Request::Auth(self.spec.addr.clone()));
     }
     pub fn set_subscribes(&mut self, subscribes: HashMap<Key, Vec<String>>) {
-        self.hub.send(Request::SetSubscribes(subscribes));
+        self.hub.send(Request::SetSubscribes(Subscribes::ByKey(subscribes, HashMap::new(), HashMap::new())));
     }
     /// Sends rpc request to the server
     pub fn rpc(&mut self, key: Key, payload: Value) {

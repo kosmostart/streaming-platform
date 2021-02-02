@@ -4,18 +4,18 @@ use log::*;
 use tokio::runtime::Runtime;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc::{self, UnboundedSender};
-use sp_dto::{Key, MsgType};
+use sp_dto::{Key, MsgType, Subscribes};
 use sp_cfg::ServerConfig;
 use crate::proto::*;
 
 /// Starts the server based on provided ServerConfig struct. Creates new runtime and blocks.
-pub fn start(config: ServerConfig, event_subscribes: HashMap<Key, Vec<String>>, rpc_subscribes: HashMap<Key, Vec<String>>, rpc_response_subscribes: HashMap<Key, Vec<String>>) {
+pub fn start(config: ServerConfig, subscribes: Subscribes) {
     let rt = Runtime::new().expect("failed to create runtime"); 
-    let _ = rt.block_on(start_future(config, event_subscribes, rpc_subscribes, rpc_response_subscribes));
+    let _ = rt.block_on(start_future(config, subscribes));
 }
 
 /// Future for new server start based on provided ServerConfig struct, in case you want to create runtime by yourself.
-pub async fn start_future(config: ServerConfig, event_subscribes: HashMap<Key, Vec<String>>, rpc_subscribes: HashMap<Key, Vec<String>>, rpc_response_subscribes: HashMap<Key, Vec<String>>) -> Result<(), ProcessError> {
+pub async fn start_future(config: ServerConfig, subscribes: Subscribes) -> Result<(), ProcessError> {
     let listener = TcpListener::bind(config.host.clone()).await?;
     let (server_tx, mut server_rx) = mpsc::unbounded_channel();
     tokio::spawn(async move {        
@@ -57,6 +57,11 @@ pub async fn start_future(config: ServerConfig, event_subscribes: HashMap<Key, V
     });
 
     let mut client_states = HashMap::new();
+
+    let (event_subscribes, rpc_subscribes, rpc_response_subscribes) = match subscribes {
+        Subscribes::ByAddr(_, _, _) => subscribes.traverse_to_keys(),
+        Subscribes::ByKey(event_subscribes, rpc_subscribes, rpc_response_subscribes) => (event_subscribes, rpc_subscribes, rpc_response_subscribes)
+    };
 
     loop {                
         let (mut stream, client_net_addr) = listener.accept().await?;
@@ -194,7 +199,8 @@ async fn process_write_stream(addr: String, event_subscribes: HashMap<Key, Vec<S
     loop {        
         match read(&mut state, stream).await? {
             ReadResult::MsgMeta(stream_id, msg_meta, buf) => {
-                info!("{} {:?}", stream_id, msg_meta);
+                info!("{}, {:?}, {:?}", stream_id, msg_meta.key, msg_meta.msg_type);
+                info!("{}, {:?}", stream_id, msg_meta);
 
                 client_addrs.insert(stream_id, (msg_meta.key.clone(), msg_meta.msg_type.clone()));
 

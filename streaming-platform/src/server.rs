@@ -199,8 +199,8 @@ async fn process_write_stream(addr: String, event_subscribes: HashMap<Key, Vec<S
     loop {        
         match read(&mut state, stream).await? {
             ReadResult::MsgMeta(stream_id, msg_meta, buf) => {
-                info!("{}, {:?}, {:?}", stream_id, msg_meta.key, msg_meta.msg_type);
-                info!("{}, {:?}", stream_id, msg_meta);
+                info!("{}, {:?}, {:?}, {}", msg_meta.tx, msg_meta.key, msg_meta.msg_type, stream_id);
+                debug!("{}, {:?}", stream_id, msg_meta);
 
                 client_addrs.insert(stream_id, (msg_meta.key.clone(), msg_meta.msg_type.clone()));
 

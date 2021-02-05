@@ -146,9 +146,10 @@ where
                         MsgType::Event => {          
                             debug!("client got event {}", msg_meta.display());
                             tokio::spawn(async move {
+                                let key = msg_meta.key.clone();
                                 let payload: P = from_slice(&payload).expect("failed to deserialize event payload");                                
                                 if let Err(e) = process_event(config, mb.clone(), Message {meta: msg_meta, payload, attachments_data}, dependency).await {
-                                    error!("process event error {}", e);
+                                    error!("process event error {}, {:?}, {:?}", mb.addr.clone(), key, e);
                                 }
                                 debug!("client {} process_event succeeded", mb.addr);
                             });                            
@@ -170,7 +171,7 @@ where
                                         (to_vec(&res).expect("failed to serialize rpc process result"), attachments, attachments_data, RpcResult::Ok)
                                     }
                                     Err(e) =>  {
-                                        error!("process rpc error {} {:?}", mb.addr.clone(), e);
+                                        error!("process rpc error {}, {:?}, {:?}", mb.addr.clone(), key, e);
                                         (to_vec(&json!({ "err": e.to_string() })).expect("failed to serialize rpc process error result"), vec![], vec![], RpcResult::Err)
                                     }
                                 };                                

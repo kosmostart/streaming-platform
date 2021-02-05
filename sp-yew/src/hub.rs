@@ -117,6 +117,7 @@ impl Agent for Worker {
                                                 }
                                             }
                                             false => {
+                                                ConsoleService::log(&format!("{:?}", msg_meta.key));
                                                 ConsoleService::log(&format!("error: message source addr differ from real source, message not delivered, {} vs {} (real one). This is possible security issue, please note.", source_addr, addr));
                                             }
                                         }                                        
@@ -168,8 +169,21 @@ impl Agent for Worker {
         //self.console.log(&format!("hub: {:?}", msg));        
         match msg {
             Request::Auth(addr) => {
-                ConsoleService::log(&format!("Hub auth: {}", addr));
-                self.clients.insert(addr, who);
+                ConsoleService::log(&format!("Hub auth: {}", addr));                
+                let mut to_remove = None;
+                for (key, value) in self.clients.iter() {                    
+                    if *value == who {
+                        to_remove = Some(key.clone());
+                        break;
+                    }                    
+                }                
+                match to_remove {
+                    Some(key) => {
+                        self.clients.remove(&key);
+                    }
+                    None => {}
+                }
+                self.clients.insert(addr, who);                
             }
             Request::SetSubscribes(subscribes) => {
                 let subscribes = match subscribes {

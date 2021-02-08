@@ -321,8 +321,9 @@ pub struct Hub {
 }
 
 /// Configuration for various communication scenarios.
-#[derive(Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct HubCfg {
+    pub app_name: Option<String>,
     pub app_addr: Option<String>,
     pub client_addr: Option<String>,
     pub host: Option<String>,
@@ -337,6 +338,7 @@ pub struct HubCfg {
 impl Default for HubCfg {
     fn default() -> Self {
         HubCfg {
+            app_name: None,
             app_addr: None,
             client_addr: None,
             host: None,

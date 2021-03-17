@@ -53,7 +53,7 @@ pub fn pack() {
 
     let to: String = (0..len)
         .map(|_| {
-            let idx = rng.gen_range(0, charset.len());
+            let idx = rng.gen_range(0..charset.len());
             charset[idx] as char
         })
         .collect();

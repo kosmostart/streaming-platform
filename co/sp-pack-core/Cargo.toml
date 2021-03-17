@@ -1,5 +1,5 @@
 [package]
-name = "spci"
+name = "sp-pack-core"
 version = "0.1.0"
 authors = ["Maximb <sprayrules@gmail.com>"]
 edition = "2018"
@@ -8,5 +8,10 @@ edition = "2018"
 
 [dependencies]
 
-structopt = "*"
-git2 = "*"
+rand = "0.8"
+chrono = "*"
+serde = "*"
+serde_derive = "*"
+toml = "*"
+tar = "*"
+lz4 = "*"

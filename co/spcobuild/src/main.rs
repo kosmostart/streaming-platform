@@ -7,5 +7,5 @@ mod repository {
 }
 
 fn main() {
-    flow::start();
+    flow::start_ui();
 }

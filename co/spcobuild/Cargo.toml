@@ -1,5 +1,5 @@
 [package]
-name = "sp-hub"
+name = "spcobuild"
 version = "0.1.0"
 authors = ["Maximb <sprayrules@gmail.com>"]
 edition = "2018"
@@ -8,8 +8,5 @@ edition = "2018"
 
 [dependencies]
 
-env_logger = "*"
-serde = "*"
-serde_derive = "*"
-toml = "*"
-streaming-platform = { path = "../../streaming-platform" }
+structopt = "*"
+git2 = "*"

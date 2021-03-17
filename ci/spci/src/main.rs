@@ -1,3 +1,11 @@
+mod status;
+mod pull;
+mod add;
+mod commit;
+
 fn main() {
-    println!("Hello, world!");
+    status::start();
+    //pull::start();
+    //add::start();
+    //commit::start();
 }

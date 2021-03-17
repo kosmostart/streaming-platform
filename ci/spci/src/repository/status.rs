@@ -1,42 +1,38 @@
 use git2::{Error, ErrorCode, Repository, StatusOptions, SubmoduleIgnore};
 use std::str;
 use std::time::Duration;
-use structopt::StructOpt;
 
-#[derive(StructOpt)]
 struct Args {
     arg_spec: Vec<String>,
-    #[structopt(name = "long", long)]
     /// show longer statuses (default)
+    //#[structopt(name = "long", long)]
     _flag_long: bool,
     /// show short statuses
-    #[structopt(name = "short", long)]
+    //#[structopt(name = "short", long)]
     flag_short: bool,
-    #[structopt(name = "porcelain", long)]
-    /// ??
+    //#[structopt(name = "porcelain", long)]
     flag_porcelain: bool,
-    #[structopt(name = "branch", short, long)]
+    //#[structopt(name = "branch", short, long)]
     /// show branch information
     flag_branch: bool,
-    #[structopt(name = "z", short)]
-    /// ??
+    //#[structopt(name = "z", short)]
     flag_z: bool,
-    #[structopt(name = "ignored", long)]
+    //#[structopt(name = "ignored", long)]
     /// show ignored files as well
     flag_ignored: bool,
-    #[structopt(name = "opt-modules", long = "untracked-files")]
+    //#[structopt(name = "opt-modules", long = "untracked-files")]
     /// setting for showing untracked files [no|normal|all]
     flag_untracked_files: Option<String>,
-    #[structopt(name = "opt-files", long = "ignore-submodules")]
+    //#[structopt(name = "opt-files", long = "ignore-submodules")]
     /// setting for ignoring submodules [all]
     flag_ignore_submodules: Option<String>,
-    #[structopt(name = "dir", long = "git-dir")]
+    //#[structopt(name = "dir", long = "git-dir")]
     /// git directory to analyze
     flag_git_dir: Option<String>,
-    #[structopt(name = "repeat", long)]
+    //#[structopt(name = "repeat", long)]
     /// repeatedly show status, sleeping inbetween
     flag_repeat: bool,
-    #[structopt(name = "list-submodules", long)]
+    //#[structopt(name = "list-submodules", long)]
     /// show submodules
     flag_list_submodules: bool,
 }
@@ -416,8 +412,42 @@ impl Args {
     }
 }
 
-pub fn start() {
-    let args = Args::from_args();
+pub fn start(path: &str) {
+    let args = Args {
+        arg_spec: vec![],
+        /// show longer statuses (default)
+        //#[structopt(name = "long", long)]
+        _flag_long: true,
+        /// show short statuses
+        //#[structopt(name = "short", long)]
+        flag_short: false,
+        //#[structopt(name = "porcelain", long)]
+        flag_porcelain: false,
+        //#[structopt(name = "branch", short, long)]
+        /// show branch information
+        flag_branch: false,
+        //#[structopt(name = "z", short)]
+        flag_z: false,
+        //#[structopt(name = "ignored", long)]
+        /// show ignored files as well
+        flag_ignored: false,
+        //#[structopt(name = "opt-modules", long = "untracked-files")]
+        /// setting for showing untracked files [no|normal|all]
+        flag_untracked_files: Some("all".to_string()),
+        //#[structopt(name = "opt-files", long = "ignore-submodules")]
+        /// setting for ignoring submodules [all]
+        flag_ignore_submodules: None,
+        //#[structopt(name = "dir", long = "git-dir")]
+        /// git directory to analyze
+        flag_git_dir: Some(path.to_owned()),
+        //#[structopt(name = "repeat", long)]
+        /// repeatedly show status, sleeping inbetween
+        flag_repeat: false,
+        //#[structopt(name = "list-submodules", long)]
+        /// show submodules
+        flag_list_submodules: false
+    };
+
     match run(&args) {
         Ok(()) => {}
         Err(e) => println!("error: {}", e),

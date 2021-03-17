@@ -1,3 +1,4 @@
+mod flow;
 mod repository {
     pub mod status;
     pub mod pull;
@@ -6,8 +7,5 @@ mod repository {
 }
 
 fn main() {
-    repository::status::start();
-    //pull::start();
-    //add::start();
-    //commit::start();
+    flow::start();
 }

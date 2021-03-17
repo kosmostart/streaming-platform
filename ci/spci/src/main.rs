@@ -1,10 +1,12 @@
-mod status;
-mod pull;
-mod add;
-mod commit;
+mod repository {
+    pub mod status;
+    pub mod pull;
+    pub mod add;
+    pub mod commit;
+}
 
 fn main() {
-    status::start();
+    repository::status::start();
     //pull::start();
     //add::start();
     //commit::start();

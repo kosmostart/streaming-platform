@@ -240,6 +240,8 @@ async fn connect_stream_future(host: &str, addr: String, access_key: String, rea
     let mut read_stream = TcpStream::connect(host).await.expect("connection to host failed");
     auth(addr.clone(), access_key, &mut read_stream).await.expect("read stream authorization failed");
 
+    info!("Connected in stream mode to {} as {}", host, addr);
+
     let res = process_message_stream(addr, write_stream, read_stream, read_tx, write_rx).await;
 
     info!("{:?}", res);
@@ -251,6 +253,8 @@ async fn connect_full_message_future(host: &str, addr: String, access_key: Strin
 
     let mut read_stream = TcpStream::connect(host).await.expect("connection to host failed");
     auth(addr.clone(), access_key, &mut read_stream).await.expect("read stream authorization failed");
+
+    info!("Connected in full message mode to {} as {}", host, addr);
 
     let res = process_full_message(addr, write_stream, read_stream, read_tx, write_rx).await;
 

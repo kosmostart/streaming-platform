@@ -1,6 +1,0 @@
-addr = "SpFileSvc"
-host = "127.0.0.1:10001"
-
-[[dirs]]
-access_key = "12345"
-path = "./"

@@ -13,7 +13,9 @@ members = [
 	"co/spcohub",
 	"co/spcobuild",
 	"co/spcopod",
+	"co/spcoauth",
 	"co/spcoweb",
+	"co/spcocli",
 	"distribution/sp-public-host",
 	"distribution/spup"
 ]

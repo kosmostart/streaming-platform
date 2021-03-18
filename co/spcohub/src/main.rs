@@ -1,10 +1,12 @@
 use std::collections::HashMap;
-use streaming_platform::{sp_cfg, server::start, sp_dto::{Key, Subscribes}};
+use streaming_platform::{sp_cfg::ServerConfig, server, sp_dto::{Key, Subscribes}};
 
 fn main() {
     env_logger::init();
     
-    let config = sp_cfg::get_config_from_arg();
+    let config = ServerConfig {
+        host: "127.0.0.1:11001".to_owned()
+    };
 
     let event_subscribes = HashMap::new();
     let mut rpc_subscribes = HashMap::new();
@@ -26,5 +28,5 @@ fn main() {
         Key::new("Deploy", "", "")
     ]);
 
-    start(config, Subscribes::ByAddr(event_subscribes, rpc_subscribes, rpc_response_subscribes));
+    server::start(config, Subscribes::ByAddr(event_subscribes, rpc_subscribes, rpc_response_subscribes));
 }

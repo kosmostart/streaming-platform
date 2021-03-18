@@ -1,5 +1,5 @@
 [package]
-name = "spcoweb"
+name = "spcocli"
 version = "0.1.0"
 authors = ["Maximb <sprayrules@gmail.com>"]
 edition = "2018"
@@ -8,9 +8,6 @@ edition = "2018"
 
 [dependencies]
 
-log = "*"
-env_logger = "*"
-serde = "*"
-serde_derive = "*"
-serde_json = "*"
-sp-web = { path = "../../sp-web" }
+tokio = { version = "1", features = ["rt-multi-thread"] }
+reqwest = "*"
+sp-dto = { path = "../../sp-dto" }

@@ -3,9 +3,7 @@ use std::fs;
 use serde_json::{json, Value, from_slice, to_vec, to_string, from_str};
 use log::*;
 use tokio::{io::AsyncWriteExt, fs::File, sync::mpsc::UnboundedReceiver};
-use streaming_platform::{client::stream_mode, tokio::{self, runtime::Runtime, io::AsyncReadExt}, DATA_BUF_SIZE, MagicBall, ClientMsg, RestreamMsg, StreamLayout, StreamUnit, sp_dto::{MsgMeta, MsgType, reply_to_rpc_dto2_sizes, Participator, RpcResult}};
-
-mod cfg;
+use streaming_platform::{sp_cfg, client::start_stream, tokio::{self, io::AsyncReadExt}, DATA_BUF_SIZE, MagicBall, ClientMsg, RestreamMsg, StreamLayout, StreamUnit, sp_dto::{MsgMeta, MsgType, reply_to_rpc_dto2_sizes, Participator, RpcResult}};
 
 struct FileStreamLayout {
     stream: StreamLayout,
@@ -17,21 +15,23 @@ struct FileStreamLayout {
 
 fn main() {
     env_logger::init();
-    let config = cfg::get_config();    
-    let access_key = "";
-    let rt = Runtime::new().expect("failed to create runtime");
-    let mut hm_config = HashMap::new();
-    hm_config.insert("dirs".to_owned(), to_string(&json!(config.dirs.expect("config directories are empty"))).expect("failed to serialize config directories"));
-    rt.block_on(stream_mode(&config.host, &config.addr, access_key, process_stream, startup, hm_config, None, None, ()));
+
+    let mut config = HashMap::new();
+
+    config.insert("addr".to_owned(), "Pod".to_owned());
+    config.insert("host".to_owned(), "127.0.0.1:11001".to_owned());
+    config.insert("access_key".to_owned(), "".to_owned());
+
+    start_stream(config, process_stream, startup, None, None, ());
 }
 
 pub async fn startup(_config: HashMap<String, String>, mut _mb: MagicBall, _startup_data: Option<Value>, _: ()) {
 }
 
 pub async fn process_stream(config: HashMap<String, String>, mut mb: MagicBall, mut rx: UnboundedReceiver<ClientMsg>, _: Option<UnboundedReceiver<RestreamMsg>>, _: ()) {
-    let dirs = config.get("dirs").expect("missing dirs config value");
-    let dirs: Vec<cfg::Dir> = from_str(dirs).expect("failed to deserialize config directories");
-    let mut stream_layouts = HashMap::new();    
+    let dirs: Vec<sp_cfg::Dir> = vec![];
+    let mut stream_layouts = HashMap::new();
+
     loop {        
         let client_msg = rx.recv().await.expect("connection issues acquired");
         let stream_id = client_msg.get_stream_id();
@@ -73,7 +73,7 @@ pub async fn process_stream(config: HashMap<String, String>, mut mb: MagicBall, 
     }
 }
 
-async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64, FileStreamLayout>, dirs: &Vec<cfg::Dir>, client_msg: ClientMsg) -> Result<(), Error> {
+async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64, FileStreamLayout>, dirs: &Vec<sp_cfg::Dir>, client_msg: ClientMsg) -> Result<(), Error> {
     match client_msg {
         ClientMsg::MsgMeta(stream_id, msg_meta) => {            
             stream_layouts.insert(stream_id, FileStreamLayout {

@@ -1,10 +1,16 @@
 use std::io::BufReader;
 use std::io::prelude::*;
-use serde_derive::{Deserialize};
+use serde_derive::Deserialize;
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct ServerConfig {
     pub host: String
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct Dir {
+    pub access_key: String,
+    pub path: String
 }
 
 pub fn get_config_from_file() -> ServerConfig {

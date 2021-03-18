@@ -63,14 +63,16 @@ pub async fn start_future(config: ServerConfig, subscribes: Subscribes) -> Resul
         Subscribes::ByKey(event_subscribes, rpc_subscribes, rpc_response_subscribes) => (event_subscribes, rpc_subscribes, rpc_response_subscribes)
     };
 
+    info!("Started on {}", config.host);
+
     loop {                
         let (mut stream, client_net_addr) = listener.accept().await?;
-        info!("new connection from {}", client_net_addr);
+        info!("New connection from {}", client_net_addr);
         let config = config.clone();
         let server_tx = server_tx.clone();
         match auth_stream(&mut stream, client_net_addr, &config).await {
             Ok(addr) => {
-                info!("stream from {} authorized as {}", client_net_addr, addr);
+                info!("Stream from {} authorized as {}", client_net_addr, addr);
                 if !client_states.contains_key(&addr) {
                     client_states.insert(addr.clone(), ClientState::new());
                 }

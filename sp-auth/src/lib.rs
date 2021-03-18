@@ -3,11 +3,11 @@ use serde_json::{Value, to_vec, from_slice};
 use sha3::Sha3_256;
 use hmac::{Hmac, Mac, crypto_mac::{NewMac, MacError}};
 
-// Create alias for HMAC-SHA256
+// Create alias for HMAC-SHA3 256, it's SHA3 friends, umad?
 type HmacSha = Hmac<Sha3_256>;
 
 pub fn create_auth_token(auth_token_key: &[u8], payload: &Value) -> Result<Vec<u8>, serde_json::Error> {
-    // Create HMAC-SHA256 instance which implements `Mac` trait
+    // Create HMAC-SHA3 256 instance which implements `Mac` trait
     let mut mac = HmacSha::new_varkey(auth_token_key).expect("HMAC can take key of any size");
     mac.update(&to_vec(payload)?);
     

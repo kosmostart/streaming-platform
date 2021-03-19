@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::io::Read;
 use serde_json::{json, Value, from_value};
 use log::*;
-use streaming_platform::{client, MagicBall, sp_dto::{MsgMeta, Message, Response, resp}};
+use streaming_platform::{tokio, client, MagicBall, sp_dto::{MsgMeta, Message, Response, resp}};
 
 mod flow;
 mod repository {
@@ -37,43 +37,44 @@ pub async fn process_rpc(config: HashMap<String, String>, mut mb: MagicBall, msg
 
     let res = match msg.meta.key.action.as_ref() {
         "Deploy" => {
-            let path = "d:/src/streaming-platform/Cargo.toml";
+            tokio::spawn(async move {
+                let q = mb;
+                let path = "d:/src/streaming-platform/Cargo.toml";
 
-            let cmd = "cargo";
+                let cmd = "cargo";
+                
+                let args = [
+                    "build",
+                    "--release",
+                    "--manifest-path",
+                    path
+                ];
+
+                let args = ["--help"];
+
+                let mut handle = std::process::Command::new(cmd)
+                    .args(&args)
+                    //.stdin(std::process::Stdio::piped())
+                    .stdout(std::process::Stdio::piped())
+                    //.stderr(std::process::Stdio::piped())
+                    .spawn()
+                    .expect("");
+
+                let mut stdout = handle.stdout.take().unwrap();
             
-            let args = [
-                "build",
-                "--release",
-                "--manifest-path",
-                path
-            ];
+                let mut buffer = [0; 10];
+            
+                // read up to 10 bytes
+                while stdout.read(&mut buffer).unwrap() > 0 {
+                    println!("{:?}", buffer);
+                }
+            
+                let ecode = handle.wait().expect("failed to wait on child");
+            
+                println!("{:?}", ecode);
 
-            let args = ["--help"];
-
-            let mut handle = std::process::Command::new(cmd)
-                .args(&args)
-                //.stdin(std::process::Stdio::piped())
-                .stdout(std::process::Stdio::piped())
-                //.stderr(std::process::Stdio::piped())
-                .spawn()
-                .expect("");
-
-            let mut stdout = handle.stdout.take().unwrap();
-
-            println!("2");
-        
-            let mut buffer = [0; 100];
-        
-            // read up to 10 bytes
-            stdout.read(&mut buffer).unwrap();
-        
-            println!("{:?}", buffer);
-        
-            let ecode = handle.wait().expect("failed to wait on child");
-        
-            println!("{:?}", ecode);
-
-            //pack();
+                //pack();
+            });
 
             json!({
             })

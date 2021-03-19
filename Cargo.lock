@@ -1755,6 +1755,7 @@ dependencies = [
  "serde",
  "serde_derive",
  "serde_json",
+ "sp-pack-core",
  "streaming-platform",
  "structopt",
 ]

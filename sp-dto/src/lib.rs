@@ -41,10 +41,12 @@ impl Default for CmpSpec {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum Participator {
-    /// UI component addr, app_addr and client addr
-    Component(String, Option<String>, Option<String>),
     /// Service process addr running in background somewhere
-    Service(String)
+    Service(String),
+    /// Command line application
+    Cli(String),
+    /// UI component, consists of addr, app_addr and client addr
+    Component(String, Option<String>, Option<String>)
 }
 
 /// At the moment used in case when it is needed to overwrite rpc response receiver
@@ -61,6 +63,16 @@ pub struct Route {
     pub source: Participator,
     pub spec: RouteSpec,
     pub points: Vec<Participator>
+}
+
+impl Route {
+    pub fn new_cli(name: &str) -> Route {
+        Route {
+            source: Participator::Cli(name.to_owned()),
+            spec: RouteSpec::Simple,
+            points: vec![Participator::Cli(name.to_owned())]
+        }
+    }
 }
 
 /// The message itself

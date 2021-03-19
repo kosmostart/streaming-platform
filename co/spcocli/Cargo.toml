@@ -8,6 +8,7 @@ edition = "2018"
 
 [dependencies]
 
+serde_json = "*"
 tokio = { version = "1", features = ["rt-multi-thread"] }
 reqwest = "*"
 sp-dto = { path = "../../sp-dto" }

@@ -186,7 +186,7 @@ async fn auth_stream(stream: &mut TcpStream, _client_net_addr: SocketAddr, _conf
 
 
 async fn process_read_stream(addr: String, mut stream: TcpStream, client_net_addr: SocketAddr, server_tx: UnboundedSender<ServerMsg>) -> Result<(), ProcessError> {
-    let mut _state = State::new("write stream from Server to ".to_owned() + &addr);    
+    let mut _state = State::new("Write stream from Server to ".to_owned() + &addr);    
     let (client_tx, client_rx) = mpsc::unbounded_channel();
 
     server_tx.send(ServerMsg::AddClient(addr.clone(), client_net_addr, client_tx))?;    
@@ -195,13 +195,13 @@ async fn process_read_stream(addr: String, mut stream: TcpStream, client_net_add
 }
 
 async fn process_write_stream(addr: String, event_subscribes: HashMap<Key, Vec<String>>, rpc_subscribes: HashMap<Key, Vec<String>>, rpc_response_subscribes: HashMap<Key, Vec<String>>, stream: &mut TcpStream, _client_net_addr: SocketAddr, server_tx: UnboundedSender<ServerMsg>) -> Result<(), ProcessError> {    
-    let mut state = State::new("read stream from Server to ".to_owned() + &addr);        
+    let mut state = State::new("Read stream from Server to ".to_owned() + &addr);        
     let mut client_addrs = HashMap::new();    
 
     loop {        
         match read(&mut state, stream).await? {
             ReadResult::MsgMeta(stream_id, msg_meta, buf) => {
-                info!("{}, {:?}, {:?}, {}", msg_meta.tx, msg_meta.key, msg_meta.msg_type, stream_id);
+                info!("Sending from {}, key is {:?}, message type is {:?}, stream id is {}", msg_meta.tx, msg_meta.key, msg_meta.msg_type, stream_id);
                 debug!("{}, {:?}", stream_id, msg_meta);
 
                 client_addrs.insert(stream_id, (msg_meta.key.clone(), msg_meta.msg_type.clone()));
@@ -215,7 +215,7 @@ async fn process_write_stream(addr: String, event_subscribes: HashMap<Key, Vec<S
                 match subscribes.get(&msg_meta.key) {
                     Some(targets) => {
                         for target in targets {     
-                            debug!("Sending unit to addr11 {}", target);
+                            debug!("Sending unit to {}", target);
                             server_tx.send(ServerMsg::SendUnit(target.clone(), StreamUnit::Vector(stream_id, buf.clone())))?;
                         }
                     }

@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use serde_json::{json, Value, from_value};
+use log::*;
 use streaming_platform::{client, MagicBall, sp_dto::{MsgMeta, Message, Response, resp}};
 
 mod flow;
@@ -17,7 +18,7 @@ pub async fn process_event(config: HashMap<String, String>, mut mb: MagicBall, m
 }
 
 pub async fn process_rpc(config: HashMap<String, String>, mut mb: MagicBall, msg: Message<Value>, _: ()) -> Result<Response<Value>, Box<dyn std::error::Error>> {   
-    //info!("{:#?}", msg);
+    info!("{:#?}", msg);
 
     resp(json!({
         "data": "hi"

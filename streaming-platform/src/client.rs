@@ -100,23 +100,23 @@ where
         let mut rpcs = HashMap::new();        
 
         loop {
-            let msg = rpc_inbound_rx.recv().await.expect("rpc inbound msg receive failed");
+            let msg = rpc_inbound_rx.recv().await.expect("Rpc inbound msg receive failed");
 
             match msg {
                 RpcMsg::AddRpc(correlation_id, rpc_tx) => {
                     rpcs.insert(correlation_id, rpc_tx);
-                    info!("add rpc ok {}", correlation_id);
+                    info!("Add rpc ok {}", correlation_id);
                 }                
                 RpcMsg::RpcDataRequest(correlation_id) => {
                     match rpcs.remove(&correlation_id) {
                         Some(rpc_tx) => {
                             match rpc_outbound_tx.send(RpcMsg::RpcDataResponse(correlation_id, rpc_tx)) {
                                 Ok(()) => {}
-                                Err(_) => panic!("rpc outbound tx send failed on rpc data request")
+                                Err(_) => panic!("Rpc outbound tx send failed on rpc data request")
                             }
                             //info!("send rpc response ok {}", correlation_id);
                         }
-                        None => error!("send rpc response not found {}", correlation_id)
+                        None => error!("Send rpc response not found {}", correlation_id)
                     }
                 }
                 _=> {                    
@@ -132,7 +132,7 @@ where
             let msg = match read_rx.recv().await {
                 Some(msg) => msg,
                 None => {
-                    info!("client connection dropped");
+                    info!("Client connection dropped");
                     break;
                 }
             };
@@ -144,18 +144,18 @@ where
                 ClientMsg::Message(_, msg_meta, payload, attachments_data) => {
                     match msg_meta.msg_type {
                         MsgType::Event => {          
-                            debug!("client got event {}", msg_meta.display());
+                            debug!("Client got event {}", msg_meta.display());
                             tokio::spawn(async move {
                                 let key = msg_meta.key.clone();
-                                let payload: P = from_slice(&payload).expect("failed to deserialize event payload");                                
+                                let payload: P = from_slice(&payload).expect("Failed to deserialize event payload");                                
                                 if let Err(e) = process_event(config, mb.clone(), Message {meta: msg_meta, payload, attachments_data}, dependency).await {
-                                    error!("process event error {}, {:?}, {:?}", mb.addr.clone(), key, e);
+                                    error!("Process event error {}, {:?}, {:?}", mb.addr.clone(), key, e);
                                 }
-                                debug!("client {} process_event succeeded", mb.addr);
+                                debug!("Client {} process_event succeeded", mb.addr);
                             });                            
                         }
                         MsgType::RpcRequest => {                        
-                            debug!("client got rpc request {}", msg_meta.display());
+                            debug!("Client got rpc request {}", msg_meta.display());
                             tokio::spawn(async move {                                
                                 let mut route = msg_meta.route.clone();
                                 let correlation_id = msg_meta.correlation_id;                                
@@ -163,34 +163,34 @@ where
                                 let payload: P = from_slice(&payload).expect("failed to deserialize rpc request payload");                            
                                 let (payload, attachments, attachments_data, rpc_result) = match process_rpc(config.clone(), mb.clone(), Message {meta: msg_meta, payload, attachments_data}, dependency).await {
                                     Ok(res) => {
-                                        debug!("client {} process_rpc succeeded", mb.addr);
+                                        debug!("Client {} process_rpc succeeded", mb.addr);
                                         let (res, attachments, attachments_data) = match res {
                                             Response::Simple(payload) => (payload, vec![], vec![]),
                                             Response::Full(payload, attachments, attachments_data) => (payload, attachments, attachments_data)
                                         };
-                                        (to_vec(&res).expect("failed to serialize rpc process result"), attachments, attachments_data, RpcResult::Ok)
+                                        (to_vec(&res).expect("Failed to serialize rpc process result"), attachments, attachments_data, RpcResult::Ok)
                                     }
                                     Err(e) =>  {
-                                        error!("process rpc error {}, {:?}, {:?}", mb.addr.clone(), key, e);
+                                        error!("Process rpc error {}, {:?}, {:?}", mb.addr.clone(), key, e);
                                         (to_vec(&json!({ "err": e.to_string() })).expect("failed to serialize rpc process error result"), vec![], vec![], RpcResult::Err)
                                     }
                                 };                                
                                 route.points.push(Participator::Service(mb.addr.clone()));
                                 let (res, msg_meta_size, payload_size, attacchments_size) = reply_to_rpc_dto2_sizes(mb.addr.clone(),  key, correlation_id, payload, attachments, attachments_data, rpc_result, route, None, None).expect("failed to create rpc reply");
-                                debug!("client {} attempt to write rpc response", mb.addr);
+                                debug!("Client {} attempt to write rpc response", mb.addr);
                                 write(mb.get_stream_id(), res, msg_meta_size, payload_size, attacchments_size, &mut write_tx3).await.expect("failed to write rpc response");                                
-                                debug!("client {} write rpc response succeded", mb.addr);
+                                debug!("Client {} write rpc response succeded", mb.addr);
                             });                            
                         }
                         MsgType::RpcResponse(_) => {           
-                            debug!("client got rpc response {}", msg_meta.display());
+                            debug!("Client got rpc response {}", msg_meta.display());
                             match rpc_inbound_tx2.send(RpcMsg::RpcDataRequest(msg_meta.correlation_id)) {
                                 Ok(()) => {
-                                    debug!("client RpcDataRequest send succeeded {}", msg_meta.display());
+                                    debug!("Client RpcDataRequest send succeeded {}", msg_meta.display());
                                 }
-                                Err(_) => panic!("rpc inbound tx2 msg send failed on rpc response")
+                                Err(_) => panic!("Rpc inbound tx2 msg send failed on rpc response")
                             }
-                            let msg = rpc_outbound_rx.recv().await.expect("rpc outbound msg receive failed");                            
+                            let msg = rpc_outbound_rx.recv().await.expect("Rpc outbound msg receive failed");                            
 
                             match msg {
                                 RpcMsg::RpcDataResponse(received_correlation_id, rpc_tx) => {
@@ -198,12 +198,12 @@ where
                                         true => {                                            
                                             match rpc_tx.send((msg_meta, payload, attachments_data)) {
                                                 Ok(()) => {
-                                                    debug!("client {} RpcDataResponse receive succeeded", mb.addr);
+                                                    debug!("Client {} RpcDataResponse receive succeeded", mb.addr);
                                                 }
                                                 Err((msg_meta, _, _)) => error!("rpc_tx send failed on rpc response {:?}", msg_meta)
                                             }
                                         }
-                                        false => error!("received_correlation_id not equals correlation_id: {}, {}", received_correlation_id, msg_meta.correlation_id)
+                                        false => error!("Received_correlation_id not equals correlation_id: {}, {}", received_correlation_id, msg_meta.correlation_id)
                                     }
                                 }
                                 _ => error!("Client handler: wrong RpcMsg")
@@ -234,11 +234,11 @@ async fn auth(addr: String, access_key: String, stream: &mut TcpStream) -> Resul
 
 
 async fn connect_stream_future(host: &str, addr: String, access_key: String, read_tx: UnboundedSender<ClientMsg>, write_rx: UnboundedReceiver<StreamUnit>) {
-    let mut write_stream = TcpStream::connect(host).await.expect("connection to host failed");
-    auth(addr.clone(), access_key.clone(), &mut write_stream).await.expect("write stream authorization failed");
+    let mut write_stream = TcpStream::connect(host).await.expect("Connection to host failed");
+    auth(addr.clone(), access_key.clone(), &mut write_stream).await.expect("Write stream authorization failed");
 
-    let mut read_stream = TcpStream::connect(host).await.expect("connection to host failed");
-    auth(addr.clone(), access_key, &mut read_stream).await.expect("read stream authorization failed");
+    let mut read_stream = TcpStream::connect(host).await.expect("Connection to host failed");
+    auth(addr.clone(), access_key, &mut read_stream).await.expect("Read stream authorization failed");
 
     info!("Connected in stream mode to {} as {}", host, addr);
 
@@ -248,11 +248,11 @@ async fn connect_stream_future(host: &str, addr: String, access_key: String, rea
 }
 
 async fn connect_full_message_future(host: &str, addr: String, access_key: String, read_tx: UnboundedSender<ClientMsg>, write_rx: UnboundedReceiver<StreamUnit>) {    
-    let mut write_stream = TcpStream::connect(host).await.expect("connection to host failed");
-    auth(addr.clone(), access_key.clone(), &mut write_stream).await.expect("wrtie stream authorization failed");
+    let mut write_stream = TcpStream::connect(host).await.expect("Connection to host failed");
+    auth(addr.clone(), access_key.clone(), &mut write_stream).await.expect("Write stream authorization failed");
 
-    let mut read_stream = TcpStream::connect(host).await.expect("connection to host failed");
-    auth(addr.clone(), access_key, &mut read_stream).await.expect("read stream authorization failed");
+    let mut read_stream = TcpStream::connect(host).await.expect("Connection to host failed");
+    auth(addr.clone(), access_key, &mut read_stream).await.expect("Read stream authorization failed");
 
     info!("Connected in full message mode to {} as {}", host, addr);
 
@@ -382,10 +382,10 @@ where
     R: Future<Output = ()> + Send,
     D: Clone + Send + Sync
 {        
-    let addr = config.get("addr").expect("missing addr config value").to_owned();
-    let host = config.get("host").expect("missing host config value").to_owned();    
-    let access_key = config.get("access_key").expect("missing access_key config value").to_owned();
-    let rt = Runtime::new().expect("failed to create runtime");
+    let addr = config.get("addr").expect("Missing addr config value").to_owned();
+    let host = config.get("host").expect("Missing host config value").to_owned();    
+    let access_key = config.get("access_key").expect("Missing access_key config value").to_owned();
+    let rt = Runtime::new().expect("Failed to create runtime");
     rt.block_on(stream_mode(&host, &addr, &access_key, process_stream, startup, config, startup_data, restream_rx, dependency));
 }
 
@@ -403,9 +403,9 @@ where
     R: Future<Output = ()> + Send,
     D: Clone + Send + Sync
 {    
-    let addr = config.get("addr").expect("missing addr config value").to_owned();
-    let host = config.get("host").expect("missing host config value").to_owned();
-    let access_key = config.get("access_key").expect("missing access_key config value").to_owned();
-    let rt = Runtime::new().expect("failed to create runtime");
+    let addr = config.get("addr").expect("Missing addr config value").to_owned();
+    let host = config.get("host").expect("Missing host config value").to_owned();
+    let access_key = config.get("access_key").expect("Missing access_key config value").to_owned();
+    let rt = Runtime::new().expect("Failed to create runtime");
     rt.block_on(full_message_mode(&host, &addr, &access_key, process_event, process_rpc, startup, config, startup_data, dependency));
 }

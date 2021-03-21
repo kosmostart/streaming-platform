@@ -116,7 +116,7 @@ pub async fn startup(config: HashMap<String, String>, mb: MagicBall, startup_dat
                                                 .header("content-type", "text/html")
                                                 .body(index),
                                         None => {
-                                            warn!("Anauthorized access attempt, app name: {}", app_name);
+                                            warn!("Unauthorized access attempt, app name: {}", app_name);
 
                                             Response::builder()
                                                 .header("content-type", "text/html")
@@ -151,7 +151,7 @@ pub async fn startup(config: HashMap<String, String>, mb: MagicBall, startup_dat
                                     match check_auth_token(auth_token_key.as_bytes(), cookie_header) {
                                         Some(auth_data) => process_static_file_request(deploy_path, app_path, tail.as_str().to_owned()),
                                         None => {
-                                            warn!("Anauthorized file access attempt, app name: {}, tail: {}", app_name, tail.as_str());
+                                            warn!("Unauthorized file access attempt, app name: {}, tail: {}", app_name, tail.as_str());
                 
                                             Response::builder()
                                                 .header("content-type", "text/html")
@@ -200,32 +200,23 @@ pub async fn startup(config: HashMap<String, String>, mb: MagicBall, startup_dat
 fn check_auth_token(auth_token_key: &[u8], cookie_header: Option<String>) -> Option<Value> {
     match cookie_header {
         Some(cookie_string) => {
-            match cookie::Cookie::parse(cookie_string) {
-                Ok(parsed_cookie) => {
-                    let (name, value) = parsed_cookie.name_value();
+			let split: Vec<&str> = cookie_string.split(";").collect();
 
-                    match name {
-                        "skytfs-token" => {
-                            match verify_auth_token(auth_token_key, value) {
-                                Ok(auth_data) => Some(auth_data),
-                                Err(e) => {
-                                    warn!("Auth token verification failed, {:?}", e);
-                                    None
-                                }
-                            }
-                        }
-                        _ => {
-                            warn!("Incorrect cookie name: {}", name);
-                            None                            
-                        }
-                    }
-                    
-                }
-                Err(e) => {
-                    warn!("Cookie parse failed, {:?}", e);
-                    None
-                }
-            }
+			for pair in split {
+				let pair = pair.trim();				
+
+				if pair.len() > 13 && &pair[..13] == "skytfs-token=" {
+					match verify_auth_token(auth_token_key, &pair[13..]) {
+						Ok(auth_data) => return Some(auth_data),
+						Err(e) => {
+							warn!("Auth token verification failed, {:?}", e);
+							return None;
+						}
+					}
+				}
+			}
+
+			None
         }
         None => None
     }

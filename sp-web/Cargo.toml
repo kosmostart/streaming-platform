@@ -12,7 +12,6 @@ log = "*"
 env_logger = "*"
 serde_json = "*"
 warp = { version = "*", features = ["tls"] }
-cookie = "*"
 mime_guess = "*"
 streaming-platform = { path = "../streaming-platform", features = ["http"] }
 sp-auth = { path = "../sp-auth"}

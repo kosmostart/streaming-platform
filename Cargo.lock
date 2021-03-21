@@ -1656,6 +1656,81 @@ dependencies = [
 ]
 
 [[package]]
+name = "sp-co-auth"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "env_logger",
+ "log",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "sp-auth",
+ "streaming-platform",
+]
+
+[[package]]
+name = "sp-co-build"
+version = "0.1.0"
+dependencies = [
+ "env_logger",
+ "git2",
+ "log",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "sp-pack-core",
+ "streaming-platform",
+ "structopt",
+]
+
+[[package]]
+name = "sp-co-cli"
+version = "0.1.0"
+dependencies = [
+ "reqwest",
+ "serde_json",
+ "sp-dto",
+ "tokio",
+]
+
+[[package]]
+name = "sp-co-hub"
+version = "0.1.0"
+dependencies = [
+ "env_logger",
+ "serde",
+ "serde_derive",
+ "streaming-platform",
+ "toml",
+]
+
+[[package]]
+name = "sp-co-pod"
+version = "0.1.0"
+dependencies = [
+ "env_logger",
+ "log",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "streaming-platform",
+ "toml",
+]
+
+[[package]]
+name = "sp-co-web"
+version = "0.1.0"
+dependencies = [
+ "env_logger",
+ "log",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "sp-web",
+]
+
+[[package]]
 name = "sp-dto"
 version = "0.1.0"
 dependencies = [
@@ -1729,81 +1804,6 @@ dependencies = [
  "serde_json",
  "sp-dto",
  "yew",
-]
-
-[[package]]
-name = "spcoauth"
-version = "0.1.0"
-dependencies = [
- "base64",
- "env_logger",
- "log",
- "serde",
- "serde_derive",
- "serde_json",
- "sp-auth",
- "streaming-platform",
-]
-
-[[package]]
-name = "spcobuild"
-version = "0.1.0"
-dependencies = [
- "env_logger",
- "git2",
- "log",
- "serde",
- "serde_derive",
- "serde_json",
- "sp-pack-core",
- "streaming-platform",
- "structopt",
-]
-
-[[package]]
-name = "spcocli"
-version = "0.1.0"
-dependencies = [
- "reqwest",
- "serde_json",
- "sp-dto",
- "tokio",
-]
-
-[[package]]
-name = "spcohub"
-version = "0.1.0"
-dependencies = [
- "env_logger",
- "serde",
- "serde_derive",
- "streaming-platform",
- "toml",
-]
-
-[[package]]
-name = "spcopod"
-version = "0.1.0"
-dependencies = [
- "env_logger",
- "log",
- "serde",
- "serde_derive",
- "serde_json",
- "streaming-platform",
- "toml",
-]
-
-[[package]]
-name = "spcoweb"
-version = "0.1.0"
-dependencies = [
- "env_logger",
- "log",
- "serde",
- "serde_derive",
- "serde_json",
- "sp-web",
 ]
 
 [[package]]

@@ -1,5 +1,5 @@
 [package]
-name = "spcoweb"
+name = "sp-co-auth"
 version = "0.1.0"
 authors = ["Maximb <sprayrules@gmail.com>"]
 edition = "2018"
@@ -10,7 +10,9 @@ edition = "2018"
 
 log = "*"
 env_logger = "*"
+base64 = "*"
 serde = "*"
 serde_derive = "*"
 serde_json = "*"
-sp-web = { path = "../../sp-web" }
+sp-auth = { path = "../../sp-auth" }
+streaming-platform = { path = "../../streaming-platform" }

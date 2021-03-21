@@ -1,5 +1,5 @@
 [package]
-name = "spcoauth"
+name = "sp-co-build"
 version = "0.1.0"
 authors = ["Maximb <sprayrules@gmail.com>"]
 edition = "2018"
@@ -10,9 +10,10 @@ edition = "2018"
 
 log = "*"
 env_logger = "*"
-base64 = "*"
 serde = "*"
 serde_derive = "*"
 serde_json = "*"
-sp-auth = { path = "../../sp-auth" }
+structopt = "*"
+git2 = "*"
 streaming-platform = { path = "../../streaming-platform" }
+sp-pack-core = { path = "../sp-pack-core" }

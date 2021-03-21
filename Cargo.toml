@@ -10,12 +10,12 @@ members = [
 	"sp-yew",
 	"sp-manager",
 	"co/sp-pack-core",
-	"co/spcohub",
-	"co/spcobuild",
-	"co/spcopod",
-	"co/spcoauth",
-	"co/spcoweb",
-	"co/spcocli",
+	"co/sp-co-hub",
+	"co/sp-co-build",
+	"co/sp-co-pod",
+	"co/sp-co-auth",
+	"co/sp-co-web",
+	"co/sp-co-cli",
 	"distribution/sp-public-host",
 	"distribution/spup"
 ]

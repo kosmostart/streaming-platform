@@ -43,9 +43,44 @@ fn main() {
 
     println!("{:#?}", msg);
 
+    //let res = rt.block_on(events());
+
+   // println!("{:?}", res);
+
+
+    
+
     let event_source = sse_client::EventSource::new("http://localhost:12345/events").unwrap();
 
     for event in event_source.receiver().iter() {
         println!("New Message: {}", event.data);
     }
 }
+
+/*
+use futures::stream::StreamExt;
+use reqwest::Client;
+use reqwest_eventsource::RequestBuilderExt;
+
+async fn events() -> Result<(), Box<dyn std::error::Error>> {
+    let client = Client::new();
+    let mut stream = client
+        .get("http://127.0.0.1:12345/events")
+        .eventsource()?;
+
+    println!("Waiting");
+
+    while let Some(event) = stream.next().await {
+        match event {
+            Ok(event) => println!(
+                "received: {:?}: {}",
+                event.event,
+                String::from_utf8_lossy(&event.data)
+            ),
+            Err(e) => eprintln!("error occured: {}", e),
+        }
+    }
+
+    Ok(())
+}
+*/

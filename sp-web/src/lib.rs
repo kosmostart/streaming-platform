@@ -23,17 +23,17 @@ mod sse_stream {
     use warp::sse::Event;
 
     #[derive(Debug)]
-pub enum SideKick {
-    Kick
-}
-
-impl std::fmt::Display for SideKick {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "SuperErrorSideKick is here!")
+    pub enum SideKick {
+        Kick
     }
-}
 
-impl std::error::Error for SideKick {}
+    impl std::fmt::Display for SideKick {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "SuperErrorSideKick is here!")
+        }
+    }
+
+    impl std::error::Error for SideKick {}
 
     pub fn new(is_error: bool) -> (Option<UnboundedSender<Event>>, impl Stream<Item = Result<Event, SideKick>>) {
         let (tx, mut rx) = mpsc::unbounded_channel();
@@ -243,7 +243,9 @@ pub async fn startup(config: HashMap<String, String>, mb: MagicBall, startup_dat
                         None => {
                             warn!("Unauthorized events access attempt");
                             
-                            let (_, stream) = sse_stream::new(true);
+                            //let (_, stream) = sse_stream::new(true);
+                            let (tx, stream) = sse_stream::new(false);
+                            tx.expect("Empty sse tx").send(warp::sse::Event::default().data("Hello"));
 
                             warp::sse::reply(stream)
                         }

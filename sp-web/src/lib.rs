@@ -200,8 +200,8 @@ pub async fn startup(config: HashMap<String, String>, mb: MagicBall, startup_dat
                                                 .header("content-type", "text/html")
                                                 .body(warp::hyper::body::Body::from("Here comes the error"))
                                         }
-                                    }                                
-                            }                                                                                 
+                                    }
+                            }
                         }
                         None => Response::builder()
                             .header("content-type", "text/html")
@@ -233,15 +233,18 @@ pub async fn startup(config: HashMap<String, String>, mb: MagicBall, startup_dat
                     let aca_origin = aca_origin3.clone();                    
                     let mb = mb3.clone();
 
-                    if true {
-                        let (tx, stream) = sse_stream::new(false);
-                        tx.expect("Empty sse tx").send(warp::sse::Event::default().data("Hello"));
+                    match check_auth_token(auth_token_key.as_bytes(), cookie_header) {
+                        Some(auth_data) => {
+                            let (tx, stream) = sse_stream::new(false);
+                            tx.expect("Empty sse tx").send(warp::sse::Event::default().data("Hello"));
 
-                        warp::sse::reply(stream)
-                    } else {
-                        let (_, stream) = sse_stream::new(true);
-
-                        warp::sse::reply(stream)
+                            warp::sse::reply(stream)
+                        }
+                        None => {
+                            let (_, stream) = sse_stream::new(true);
+                            
+                            warp::sse::reply(stream)
+                        }
                     }
                 }
             )

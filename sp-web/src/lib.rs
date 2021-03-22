@@ -15,6 +15,46 @@ pub use streaming_platform;
 mod authorize;
 mod hub;
 
+mod sse_stream {
+    use std::convert::Infallible;
+    use streaming_platform::tokio::sync::mpsc::{self, UnboundedSender};
+    use async_stream::stream;
+    use tokio_stream::Stream;
+    use warp::sse::Event;
+
+    #[derive(Debug)]
+pub enum SideKick {
+    Kick
+}
+
+impl std::fmt::Display for SideKick {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "SuperErrorSideKick is here!")
+    }
+}
+
+impl std::error::Error for SideKick {}
+
+    pub fn new(is_error: bool) -> (Option<UnboundedSender<Event>>, impl Stream<Item = Result<Event, SideKick>>) {
+        let (tx, mut rx) = mpsc::unbounded_channel();
+
+        let stream = stream! {
+            match is_error {
+                true => yield Err(SideKick::Kick),
+                false => 
+                    while let Some(event) = rx.recv().await {
+                        yield Ok(event);
+                    }      
+            }   
+        };
+
+        (match is_error {
+            true => None,
+            false => Some(tx)
+        }, stream)
+    }
+}
+
 pub async fn process_event(_config: HashMap<String, String>, mut _mb: MagicBall, _msg: Message<Value>, _: ()) -> Result<(), Box<dyn std::error::Error>>  {
     Ok(())
 }
@@ -29,13 +69,16 @@ pub async fn startup(config: HashMap<String, String>, mb: MagicBall, startup_dat
     let key_path = config.get("key_path");
     let aca_origin = config.get("aca_origin").map(|x| x.to_owned());
     let aca_origin2 = aca_origin.clone();
+    let aca_origin3 = aca_origin.clone();
     let mb2 = mb.clone();
+    let mb3 = mb.clone();
 
     let listen_addr = listen_addr.parse::<SocketAddr>().expect("Incorrect listen addr passed");
 
     let auth_token_key = config.get("auth_token_key").map(|x| x.to_owned()).expect("Missing auth_token_key config value");
     let auth_token_key1 = auth_token_key.clone();
     let auth_token_key2 = auth_token_key.clone();
+    let auth_token_key3 = auth_token_key.clone();
 
     let mut app_indexes = HashMap::new();
     let mut app_paths = HashMap::new();
@@ -178,6 +221,28 @@ pub async fn startup(config: HashMap<String, String>, mb: MagicBall, startup_dat
                     let mb = mb2.clone();
 
                     crate::hub::go(aca_origin, auth_token_key, cookie_header, body, mb)
+                }
+            )
+        )
+        .or(
+            warp::path("events")
+                .and(warp::get())
+                .and(warp::header::optional("cookie"))
+                .map(move |cookie_header: Option<String>| {
+                    let auth_token_key = auth_token_key3.clone();
+                    let aca_origin = aca_origin3.clone();                    
+                    let mb = mb3.clone();
+
+                    if true {
+                        let (tx, stream) = sse_stream::new(false);
+                        tx.expect("Empty sse tx").send(warp::sse::Event::default().data("Hello"));
+
+                        warp::sse::reply(stream)
+                    } else {
+                        let (_, stream) = sse_stream::new(true);
+
+                        warp::sse::reply(stream)
+                    }
                 }
             )
         )

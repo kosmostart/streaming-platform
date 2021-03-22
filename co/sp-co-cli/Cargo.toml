@@ -11,4 +11,5 @@ edition = "2018"
 serde_json = "*"
 tokio = { version = "1", features = ["rt-multi-thread"] }
 reqwest = "*"
+sse-client = { version = "*", features = ["native-tls"] }
 sp-dto = { path = "../../sp-dto" }

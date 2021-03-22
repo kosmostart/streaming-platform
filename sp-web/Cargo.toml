@@ -11,6 +11,8 @@ edition = "2018"
 log = "*"
 env_logger = "*"
 serde_json = "*"
+async-stream = "*"
+tokio-stream = "*"
 warp = { version = "*", features = ["tls"] }
 mime_guess = "*"
 streaming-platform = { path = "../streaming-platform", features = ["http"] }

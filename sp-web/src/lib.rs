@@ -241,8 +241,10 @@ pub async fn startup(config: HashMap<String, String>, mb: MagicBall, startup_dat
                             warp::sse::reply(stream)
                         }
                         None => {
-                            let (_, stream) = sse_stream::new(true);
+                            warn!("Unauthorized events access attempt");
                             
+                            let (_, stream) = sse_stream::new(true);
+
                             warp::sse::reply(stream)
                         }
                     }

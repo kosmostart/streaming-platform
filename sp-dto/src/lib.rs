@@ -241,6 +241,21 @@ pub enum MsgType {
     RpcResponse(RpcResult)
 }
 
+impl MsgType {
+    pub fn to_u8(&self) -> u8 {
+        match self {
+            MsgType::Event => 0,
+            MsgType::RpcRequest => 1,
+            MsgType::RpcResponse(rpc_result) => {
+                match rpc_result {
+                    RpcResult::Ok => 2,
+                    RpcResult::Err => 3
+                }
+            }
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum RpcResult {
     Ok,

@@ -24,7 +24,7 @@ pub const LEN_BUF_SIZE: usize = 4;
 pub const LENS_BUF_SIZE: usize = 12;
 pub const DATA_BUF_SIZE: usize = 1024;
 
-pub const MIN_FRAME_SIZE: usize = 19;
+pub const MIN_FRAME_SIZE: usize = 20;
 pub const MAX_FRAME_SIZE: usize = 1024;
 
 /*
@@ -132,9 +132,28 @@ pub struct StreamLayout {
 pub struct Frame {
     pub frame_type: u8,
     pub frame_size: u16,
+    pub msg_type: u8,
     pub stream_id: u64,
     pub frame_signature: u64,
     pub payload: [u8; MAX_FRAME_SIZE]
+}
+
+pub enum FrameType {
+    MsgMeta = 0,
+    Payload = 1,
+    Attachment = 2
+}
+
+impl Frame {
+    pub fn get_msg_type(self) -> Result<MsgType, ProcessError> {
+        Ok(match self.msg_type {
+            0 => MsgType::Event,
+            1 => MsgType::RpcRequest,
+            2 => MsgType::RpcResponse(RpcResult::Ok),
+            3 => MsgType::RpcResponse(RpcResult::Err),
+            _ => return Err(ProcessError::IncorrectMsgType)
+        })
+    }
 }
 
 pub struct State2 {
@@ -143,7 +162,8 @@ pub struct State2 {
     offset: usize,
     frame_type: Option<u8>,
     frame_size: Option<usize>,
-    frame_size_u16: Option<u16>
+    frame_size_u16: Option<u16>,
+    msg_type: Option<u8>
 }
 
 impl State2 {
@@ -154,7 +174,8 @@ impl State2 {
             offset: 0,
             frame_type: None,
             frame_size: None,
-            frame_size_u16: None
+            frame_size_u16: None,
+            msg_type: None
         }
     }
     pub fn clear(&mut self) {
@@ -162,6 +183,7 @@ impl State2 {
         self.frame_type = None;
         self.frame_size = None;
         self.frame_size_u16 = None;
+        self.msg_type = None;
     }
     pub async fn read(&mut self, tcp_stream: &mut TcpStream) -> Result<Frame, ProcessError> {
         let mut i = 0;
@@ -202,8 +224,8 @@ impl State2 {
                                 i = i + 1;
                             }
                             
-                            let stream_id = byteorder::BigEndian::read_u64(&self.frame_buf[3..11]);
-                            let frame_signature = byteorder::BigEndian::read_u64(&self.frame_buf[11..19]);
+                            let stream_id = byteorder::BigEndian::read_u64(&self.frame_buf[4..12]);
+                            let frame_signature = byteorder::BigEndian::read_u64(&self.frame_buf[12..20]);
                             
                             debug!("Got frame, frame_= size {}", frame_size);
         
@@ -223,6 +245,7 @@ impl State2 {
                             return Ok(Frame {
                                 frame_type: self.frame_type?,
                                 frame_size: self.frame_size_u16?,
+                                msg_type: self.frame_buf[3],
                                 stream_id,
                                 frame_signature,
                                 payload: self.frame_buf.clone()
@@ -246,218 +269,15 @@ impl State2 {
     }
 }
 
-pub async fn read(state: &mut State, socket_read: &mut TcpStream) -> Result<ReadResult, ProcessError> {    
-    let mut u64_buf = [0; STREAM_ID_BUF_SIZE];
-    let mut u32_buf = [0; LEN_BUF_SIZE];
-
-    debug!("{} read stream_id attempt", state.addr);
-
-    socket_read.read_exact(&mut u64_buf).await?;
-
-    let mut buf = Cursor::new(&u64_buf[..]);
-    let stream_id = buf.get_u64();
-    
-    if stream_id == 0 {                
-        return Err(ProcessError::StreamIdIsZero);
-    }
-
-    debug!("{} read stream_id succeded, stream_id {}", state.addr, stream_id);
-    debug!("{} read unit_size attempt, stream_id {}", state.addr, stream_id);
-
-    socket_read.read_exact(&mut u32_buf).await?;
-
-    /*
-    match timeout(Duration::from_millis(STREAM_UNIT_READ_TIMEOUT_MS_AMOUNT), adapter.read(&mut u32_buf)).await? {
-        Ok(_) => {}
-        Err(e) => {
-            error!("read error {:#?}, read unit size attempt, stream_id {}", e, stream_id);            
-            return Ok(ReadResult::MessageAborted(Some(stream_id)));
-        }
-    }
-    */
-
-    let mut buf = Cursor::new(&u32_buf[..]);
-    let unit_size = buf.get_u32();
-
-    debug!("{} read unit_size succeded, unit_size {}, stream_id {}", state.addr, unit_size, stream_id);
-
-    if !state.stream_states.contains_key(&stream_id) {
-        state.stream_states.insert(stream_id, StreamState::new());
-    }
-
-    let stream_state = match state.stream_states.get_mut(&stream_id) {
-        Some(stream_state) => stream_state,
-        None => {
-            error!("read error {:#?}, stream_id {}", ProcessError::StreamNotFoundInState, stream_id);            
-            return Ok(ReadResult::MessageAborted(Some(stream_id)));            
-        }
-    };        
-
-    let res = match stream_state.step {
-        Step::MsgMeta => {
-            let mut buf = vec![];
-            let mut adapter = socket_read.take(unit_size as u64);
-            let _n = adapter.read_to_end(&mut buf).await?;
-            let msg_meta: MsgMeta = from_slice(&buf)?;            
-            for attachment in msg_meta.attachments.iter() {
-                stream_state.attachments.push(attachment.size);
-            }             
-            stream_state.step = Step::Payload(msg_meta.payload_size, 0);
-            Ok(ReadResult::MsgMeta(stream_id, msg_meta, buf))
-            /*
-            match timeout(Duration::from_millis(STREAM_UNIT_READ_TIMEOUT_MS_AMOUNT), adapter.read_to_end(&mut buf)).await? {
-                Ok(n) => {
-                    let msg_meta: MsgMeta = from_slice(&buf)?;            
-                    for attachment in msg_meta.attachments.iter() {
-                        stream_state.attachments.push(attachment.size);
-                    }             
-                    stream_state.step = Step::Payload(msg_meta.payload_size, 0);
-                    Ok(ReadResult::MsgMeta(stream_id, msg_meta, buf))
-                }
-                Err(e) => {
-                    error!("read error {:#?}, stream_id {}", e, stream_id);
-                    Ok(ReadResult::MessageAborted(Some(stream_id)))
-                }
-            }
-            */           
-        }
-        Step::Payload(payload_size, bytes_read) => {            
-            let mut data_buf = [0; DATA_BUF_SIZE];
-            //let n = adapter.read_to_end(&mut data_buf).await?;
-            let n = socket_read.read_exact(&mut data_buf[..unit_size as usize]).await?;
-            let bytes_read = bytes_read + n as u64;            
-            if bytes_read < payload_size {
-                stream_state.step = Step::Payload(payload_size, bytes_read);
-                Ok(ReadResult::PayloadData(stream_id, n, data_buf))
-            } else if bytes_read == payload_size {                
-                match stream_state.attachments.len() {
-                    0 => {
-                        let _ = state.stream_states.remove(&stream_id);
-                        Ok(ReadResult::MessageFinished(stream_id, MessageFinishBytes::Payload(n, data_buf)))
-                    }
-                    _ => {
-                        stream_state.step = Step::Attachment(0, stream_state.attachments[0], 0);
-                        Ok(ReadResult::PayloadFinished(stream_id, n, data_buf))
-                    }
-                }               
-            } else if bytes_read > payload_size {                        
-                error!("read error {:#?}, stream_id {}", ProcessError::BytesReadAmountExceededPayloadSize, stream_id);
-                Ok(ReadResult::MessageAborted(Some(stream_id)))
-            } else {                        
-                error!("read error {:#?}, stream_id {}", ProcessError::PayloadSizeChecksFailed, stream_id);
-                Ok(ReadResult::MessageAborted(Some(stream_id)))
-            }
-            /*
-            match timeout(Duration::from_millis(STREAM_UNIT_READ_TIMEOUT_MS_AMOUNT), adapter.read(&mut data_buf)).await? {
-                Ok(n) => {
-                    let bytes_read = bytes_read + n as u64;            
-                    if bytes_read < payload_size {
-                        stream_state.step = Step::Payload(payload_size, bytes_read);
-                        Ok(ReadResult::PayloadData(stream_id, n, data_buf))
-                    } else if bytes_read == payload_size {                
-                        match stream_state.attachments.len() {
-                            0 => {
-                                let _ = state.stream_states.remove(&stream_id);
-                                Ok(ReadResult::MessageFinished(stream_id, MessageFinishBytes::Payload(n, data_buf)))
-                            }
-                            _ => {
-                                stream_state.step = Step::Attachment(0, stream_state.attachments[0], 0);
-                                Ok(ReadResult::PayloadFinished(stream_id, n, data_buf))
-                            }
-                        }               
-                    } else if bytes_read > payload_size {                        
-                        error!("read error {:#?}, stream_id {}", ProcessError::BytesReadAmountExceededPayloadSize, stream_id);
-                        Ok(ReadResult::MessageAborted(Some(stream_id)))
-                    } else {                        
-                        error!("read error {:#?}, stream_id {}", ProcessError::PayloadSizeChecksFailed, stream_id);
-                        Ok(ReadResult::MessageAborted(Some(stream_id)))
-                    }
-                }
-                Err(e) => {
-                    error!("read error {:#?}, stream_id {}", e, stream_id);                    
-                    Ok(ReadResult::MessageAborted(Some(stream_id)))
-                }
-            }
-            */          
-        }
-        Step::Attachment(index, attachment_size, bytes_read) => {
-            let mut data_buf = [0; DATA_BUF_SIZE];
-            //let n = adapter.read(&mut data_buf).await?;
-            let n = socket_read.read_exact(&mut data_buf[..unit_size as usize]).await?;
-            let bytes_read = bytes_read + n as u64;
-            if bytes_read < attachment_size {
-                stream_state.step = Step::Attachment(index, attachment_size, bytes_read);
-                Ok(ReadResult::AttachmentData(stream_id, index, n, data_buf))
-            } else if bytes_read == attachment_size {                
-                if stream_state.attachments.len() == index {
-                    let _ = state.stream_states.remove(&stream_id);
-                    Ok(ReadResult::MessageFinished(stream_id, MessageFinishBytes::Attachment(index, n, data_buf)))
-                } else {
-                    stream_state.step = Step::Attachment(index + 1, stream_state.attachments[index + 1], 0);
-                    Ok(ReadResult::AttachmentFinished(stream_id, index, n, data_buf))                
-                }              
-            } else if bytes_read > attachment_size {
-                error!("read error {:#?}, stream_id {}", ProcessError::BytesReadAmountExceededAttachmentSize, stream_id);
-                Ok(ReadResult::MessageAborted(Some(stream_id)))
-            } else {
-                error!("read error {:#?}, stream_id {}", ProcessError::AttachmentSizeChecksFailed, stream_id);
-                Ok(ReadResult::MessageAborted(Some(stream_id)))
-            }
-            /*
-            match timeout(Duration::from_millis(STREAM_UNIT_READ_TIMEOUT_MS_AMOUNT), adapter.read(&mut data_buf)).await? {
-                Ok(n) => {
-                    let bytes_read = bytes_read + n as u64;
-                    if bytes_read < attachment_size {
-                        stream_state.step = Step::Attachment(index, attachment_size, bytes_read);
-                        Ok(ReadResult::AttachmentData(stream_id, index, n, data_buf))
-                    } else if bytes_read == attachment_size {                
-                        match stream_state.attachments.len() {
-                            index => {                        
-                                let _ = state.stream_states.remove(&stream_id);
-                                Ok(ReadResult::MessageFinished(stream_id, MessageFinishBytes::Attachment(index, n, data_buf)))
-                            }
-                            _ => {
-                                stream_state.step = Step::Attachment(index + 1, stream_state.attachments[index + 1], 0);
-                                Ok(ReadResult::AttachmentFinished(stream_id, index, n, data_buf))
-                            }
-                        }              
-                    } else if bytes_read > attachment_size {
-                        error!("read error {:#?}, stream_id {}", ProcessError::BytesReadAmountExceededAttachmentSize, stream_id);
-                        Ok(ReadResult::MessageAborted(Some(stream_id)))
-                    } else {
-                        error!("read error {:#?}, stream_id {}", ProcessError::AttachmentSizeChecksFailed, stream_id);
-                        Ok(ReadResult::MessageAborted(Some(stream_id)))
-                    }
-                }
-                Err(e) => {
-                    error!("read error {:#?}, stream_id {}", e, stream_id);                    
-                    Ok(ReadResult::MessageAborted(Some(stream_id)))
-                }
-            }
-            */           
-        }    
-    };    
-
-    debug!("{} read finished, unit_size {}, stream_id {}", state.addr, unit_size, stream_id);
-
-    res    
-}
-
 pub struct Client {
     pub net_addr: SocketAddr,
-    pub tx: UnboundedSender<StreamUnit>
+    pub tx: UnboundedSender<Frame>
 }
 
 pub enum ServerMsg {
-    AddClient(String, SocketAddr, UnboundedSender<StreamUnit>),
-    SendUnit(String, StreamUnit),
-    RemoveClient(String)
-}
-
-pub enum StreamUnit {
-    Array(u64, usize, [u8; DATA_BUF_SIZE]),
-    Vector(u64, Vec<u8>),
-    Empty(u64)
+    AddClient(String, SocketAddr, UnboundedSender<Frame>),
+    RemoveClient(String),
+    Send(String, Frame)
 }
 
 /*
@@ -523,18 +343,18 @@ pub enum StreamCompletion {
     Err
 }
 
-pub async fn write(stream_id: u64, data: Vec<u8>, msg_meta_size: u64, payload_size: u64, attachments_sizes: Vec<u64>, write_tx: &mut UnboundedSender<StreamUnit>) -> Result<(), ProcessError> {    
+pub async fn write(stream_id: u64, data: Vec<u8>, msg_meta_size: u64, payload_size: u64, attachments_sizes: Vec<u64>, write_tx: &mut UnboundedSender<Frame>) -> Result<(), ProcessError> {    
     let msg_meta_offset = LEN_BUF_SIZE + msg_meta_size as usize;
     let payload_offset = msg_meta_offset + payload_size as usize;
     debug!("write stream_id {}, data len {}, msg_meta_offset {}, payload_offset {}", stream_id, data.len(), msg_meta_offset, payload_offset);    
     let mut data_buf = [0; DATA_BUF_SIZE];    
 
-    write_tx.send(StreamUnit::Vector(stream_id, data[LEN_BUF_SIZE..msg_meta_offset].to_vec()))?;
+    write_tx.send(Frame::Vector(stream_id, data[LEN_BUF_SIZE..msg_meta_offset].to_vec()))?;
 
 
     match payload_size {
         0 => {
-            write_tx.send(StreamUnit::Empty(stream_id))?;
+            write_tx.send(Frame::Empty(stream_id))?;
         }
         _ => {
             let mut source = &data[msg_meta_offset..payload_offset];
@@ -543,7 +363,7 @@ pub async fn write(stream_id: u64, data: Vec<u8>, msg_meta_size: u64, payload_si
                 let n = source.read(&mut data_buf).await?;        
                 match n {
                     0 => break,
-                    _ => write_tx.send(StreamUnit::Array(stream_id, n, data_buf))?
+                    _ => write_tx.send(Frame::Array(stream_id, n, data_buf))?
                 }
             }
         }
@@ -556,7 +376,7 @@ pub async fn write(stream_id: u64, data: Vec<u8>, msg_meta_size: u64, payload_si
 
         match attachment_size {
             0 => {
-                write_tx.send(StreamUnit::Empty(stream_id))?;
+                write_tx.send(Frame::Empty(stream_id))?;
             }
             _ => {
                 let mut source = &data[prev..attachment_offset];
@@ -565,7 +385,7 @@ pub async fn write(stream_id: u64, data: Vec<u8>, msg_meta_size: u64, payload_si
                     let n = source.read(&mut data_buf).await?;        
                     match n {
                         0 => break,
-                        _ => write_tx.send(StreamUnit::Array(stream_id, n, data_buf))?
+                        _ => write_tx.send(Frame::Array(stream_id, n, data_buf))?
                     }
                 }
             }
@@ -587,11 +407,11 @@ pub async fn write_to_stream(stream_id: u64, data: Vec<u8>, msg_meta_size: u64, 
 
     let mut data_buf = [0; DATA_BUF_SIZE];    
 
-    write_stream_unit(stream, StreamUnit::Vector(stream_id, data[LEN_BUF_SIZE..msg_meta_offset].to_vec())).await?;
+    write_stream_unit(stream, Frame::Vector(stream_id, data[LEN_BUF_SIZE..msg_meta_offset].to_vec())).await?;
 
     match payload_size {
         0 => {
-            write_stream_unit(stream, StreamUnit::Empty(stream_id)).await?;
+            write_stream_unit(stream, Frame::Empty(stream_id)).await?;
         }
         _ => {
             let mut source = &data[msg_meta_offset..payload_offset];
@@ -600,7 +420,7 @@ pub async fn write_to_stream(stream_id: u64, data: Vec<u8>, msg_meta_size: u64, 
                 let n = source.read(&mut data_buf).await?;        
                 match n {
                     0 => break,
-                    _ => write_stream_unit(stream, StreamUnit::Array(stream_id, n, data_buf)).await?
+                    _ => write_stream_unit(stream, Frame::Array(stream_id, n, data_buf)).await?
                 }
             }
         }
@@ -613,7 +433,7 @@ pub async fn write_to_stream(stream_id: u64, data: Vec<u8>, msg_meta_size: u64, 
 
         match attachment_size {
             0 => {
-                write_stream_unit(stream, StreamUnit::Empty(stream_id)).await?;
+                write_stream_unit(stream, Frame::Empty(stream_id)).await?;
             }
             _ => {
                 let mut source = &data[prev..attachment_offset];
@@ -622,7 +442,7 @@ pub async fn write_to_stream(stream_id: u64, data: Vec<u8>, msg_meta_size: u64, 
                     let n = source.read(&mut data_buf).await?;        
                     match n {
                         0 => break,
-                        _ => write_stream_unit(stream, StreamUnit::Array(stream_id, n, data_buf)).await?
+                        _ => write_stream_unit(stream, Frame::Array(stream_id, n, data_buf)).await?
                     }
                 }
             }
@@ -636,7 +456,7 @@ pub async fn write_to_stream(stream_id: u64, data: Vec<u8>, msg_meta_size: u64, 
     Ok(())
 }
 
-pub async fn write_loop(addr: String, mut client_rx: UnboundedReceiver<StreamUnit>, socket_write: &mut TcpStream) -> Result<(), ProcessError> {    
+pub async fn write_loop(addr: String, mut client_rx: UnboundedReceiver<Frame>, socket_write: &mut TcpStream) -> Result<(), ProcessError> {    
     loop {       
         match client_rx.recv().await {
             Some(res) => {
@@ -644,31 +464,31 @@ pub async fn write_loop(addr: String, mut client_rx: UnboundedReceiver<StreamUni
                 let mut buf_u32 = BytesMut::new();
 
                 match res {
-                    StreamUnit::Array(stream_id, n, buf) => {
-                        debug!("{} StreamUnit::Array write to socket attempt, n {}, stream_id {}", addr, n, stream_id);                        
+                    Frame::Array(stream_id, n, buf) => {
+                        debug!("{} Frame::Array write to socket attempt, n {}, stream_id {}", addr, n, stream_id);                        
                         buf_u64.put_u64(stream_id);
                         socket_write.write_all(&buf_u64[..]).await?;                        
                         buf_u32.put_u32(n as u32);
                         socket_write.write_all(&buf_u32[..]).await?;
                         socket_write.write_all(&buf[..n]).await?;
-                        debug!("{} StreamUnit::Array write to socket succeded, stream_id {}", addr, stream_id);
+                        debug!("{} Frame::Array write to socket succeded, stream_id {}", addr, stream_id);
                     }
-                    StreamUnit::Vector(stream_id, buf) => {                        
-                        debug!("{} StreamUnit::Vector write to socket attempt, len {}, stream_id {}", addr, buf.len(), stream_id);                        
+                    Frame::Vector(stream_id, buf) => {                        
+                        debug!("{} Frame::Vector write to socket attempt, len {}, stream_id {}", addr, buf.len(), stream_id);                        
                         buf_u64.put_u64(stream_id);
                         socket_write.write_all(&buf_u64[..]).await?;                        
                         buf_u32.put_u32(buf.len() as u32);
                         socket_write.write_all(&buf_u32[..]).await?;
                         socket_write.write_all(&buf).await?;
-                        debug!("{} StreamUnit::Vector write to socket succeded, stream_id {}", addr, stream_id);
+                        debug!("{} Frame::Vector write to socket succeded, stream_id {}", addr, stream_id);
                     }
-                    StreamUnit::Empty(stream_id) => {       
-                        debug!("{} StreamUnit::Empty write to socket attempt, stream_id {}", addr, stream_id);                                         
+                    Frame::Empty(stream_id) => {       
+                        debug!("{} Frame::Empty write to socket attempt, stream_id {}", addr, stream_id);                                         
                         buf_u64.put_u64(stream_id);
                         socket_write.write_all(&buf_u64[..]).await?;                        
                         buf_u32.put_u32(0);
                         socket_write.write_all(&buf_u32[..]).await?;
-                        debug!("{} StreamUnit::Empty write to socket succeded, stream_id {}", addr, stream_id);
+                        debug!("{} Frame::Empty write to socket succeded, stream_id {}", addr, stream_id);
                     }
                 }
             }
@@ -677,36 +497,36 @@ pub async fn write_loop(addr: String, mut client_rx: UnboundedReceiver<StreamUni
     }
 }
 
-pub async fn write_stream_unit(socket_write: &mut TcpStream, stream_unit: StreamUnit) -> Result<(), ProcessError> {
+pub async fn write_stream_unit(socket_write: &mut TcpStream, stream_unit: Frame) -> Result<(), ProcessError> {
     let mut buf_u64 = BytesMut::new();
     let mut buf_u32 = BytesMut::new();
 
     match stream_unit {
-        StreamUnit::Array(stream_id, n, buf) => {
-            debug!("StreamUnit::Array write to socket attempt, n {}, stream_id {}", n, stream_id);            
+        Frame::Array(stream_id, n, buf) => {
+            debug!("Frame::Array write to socket attempt, n {}, stream_id {}", n, stream_id);            
             buf_u64.put_u64(stream_id);
             socket_write.write_all(&buf_u64[..]).await?;            
             buf_u32.put_u32(n as u32);
             socket_write.write_all(&buf_u32[..]).await?;
             socket_write.write_all(&buf[..n]).await?;
-            debug!("StreamUnit::Array write to socket succeded, stream_id {}", stream_id);
+            debug!("Frame::Array write to socket succeded, stream_id {}", stream_id);
         }
-        StreamUnit::Vector(stream_id, buf) => {                        
-            debug!("StreamUnit::Vector write to socket attempt, len {}, stream_id {}", buf.len(), stream_id);            
+        Frame::Vector(stream_id, buf) => {                        
+            debug!("Frame::Vector write to socket attempt, len {}, stream_id {}", buf.len(), stream_id);            
             buf_u64.put_u64(stream_id);
             socket_write.write_all(&buf_u64[..]).await?;            
             buf_u32.put_u32(buf.len() as u32);
             socket_write.write_all(&buf_u32[..]).await?;
             socket_write.write_all(&buf).await?;
-            debug!("StreamUnit::Vector write to socket succeded, stream_id {}", stream_id);
+            debug!("Frame::Vector write to socket succeded, stream_id {}", stream_id);
         }
-        StreamUnit::Empty(stream_id) => {       
-            debug!("StreamUnit::Empty write to socket attempt, stream_id {}", stream_id);                             
+        Frame::Empty(stream_id) => {       
+            debug!("Frame::Empty write to socket attempt, stream_id {}", stream_id);                             
             buf_u64.put_u64(stream_id);
             socket_write.write_all(&buf_u64[..]).await?;            
             buf_u32.put_u32(0);
             socket_write.write_all(&buf_u32[..]).await?;
-            debug!("StreamUnit::Empty write to socket succeded, stream_id {}", stream_id);
+            debug!("Frame::Empty write to socket succeded, stream_id {}", stream_id);
         }
     }
     Ok(())
@@ -727,13 +547,13 @@ pub struct MagicBall {
     hash_buf: BytesMut,
     addr_bytes_len: usize,
     hasher: SipHasher24,
-    pub write_tx: UnboundedSender<StreamUnit>,
+    pub write_tx: UnboundedSender<Frame>,
     rpc_inbound_tx: UnboundedSender<RpcMsg>
 }
 
 
 impl MagicBall {
-    pub fn new(addr: String, write_tx: UnboundedSender<StreamUnit>, rpc_inbound_tx: UnboundedSender<RpcMsg>) -> MagicBall {
+    pub fn new(addr: String, write_tx: UnboundedSender<Frame>, rpc_inbound_tx: UnboundedSender<RpcMsg>) -> MagicBall {
         let mut hash_buf = BytesMut::new();
         let addr_bytes = addr.as_bytes();
         let addr_bytes_len = addr_bytes.len();
@@ -774,13 +594,13 @@ impl MagicBall {
             let n = source.read(&mut data_buf).await?;
             match n {
                 0 => break,
-                _ => self.write_tx.send(StreamUnit::Array(stream_id, n, data_buf))?
+                _ => self.write_tx.send(Frame::Array(stream_id, n, data_buf))?
             }
         }
 
         match payload_size {
             0 => {
-                self.write_tx.send(StreamUnit::Empty(stream_id))?
+                self.write_tx.send(Frame::Empty(stream_id))?
             }
             _ => {            
                 let mut source = &data[msg_meta_offset..payload_offset];
@@ -789,7 +609,7 @@ impl MagicBall {
                     let n = source.read(&mut data_buf).await?;        
                     match n {
                         0 => break,
-                        _ => self.write_tx.send(StreamUnit::Array(stream_id, n, data_buf))?
+                        _ => self.write_tx.send(Frame::Array(stream_id, n, data_buf))?
                     }
                 }
             }
@@ -802,7 +622,7 @@ impl MagicBall {
 
             match attachment_size {
                 0 => {
-                    self.write_tx.send(StreamUnit::Empty(stream_id))?
+                    self.write_tx.send(Frame::Empty(stream_id))?
                 }
                 _ => {
                     let mut source = &data[prev..attachment_offset];
@@ -811,7 +631,7 @@ impl MagicBall {
                         let n = source.read(&mut data_buf).await?;        
                         match n {
                             0 => break,
-                            _ => self.write_tx.send(StreamUnit::Array(stream_id, n, data_buf))?
+                            _ => self.write_tx.send(Frame::Array(stream_id, n, data_buf))?
                         }
                     }                    
                 }
@@ -1137,6 +957,7 @@ pub enum ProcessError {
     FrameSizeExceeded,
     FrameSizeLessThanMin,
     ReadLoopCompleted,
+    IncorrectMsgType,
     StreamNotFoundInState,
     StreamLayoutNotFound,
     AuthStreamLayoutIsEmpty,
@@ -1153,7 +974,7 @@ pub enum ProcessError {
     Io(std::io::Error),
     SerdeJson(serde_json::Error),
     GetFile(GetFileError),    
-    SendStreamUnitError,
+    SendFrameError,
     SendServerMsgError,
     SendClientMsgError,
     SendRpcMsgError,
@@ -1162,7 +983,7 @@ pub enum ProcessError {
     NoneError,
     TrySendServerMsg,
     TrySendClientMsg,
-    TrySendStreamUnit,
+    TrySendFrame,
     TrySendRpcMsg
 }
 
@@ -1206,9 +1027,9 @@ impl From<option::NoneError> for ProcessError {
 	}
 }
 
-impl From<SendError<StreamUnit>> for ProcessError {
-	fn from(_: SendError<StreamUnit>) -> ProcessError {
-		ProcessError::SendStreamUnitError
+impl From<SendError<Frame>> for ProcessError {
+	fn from(_: SendError<Frame>) -> ProcessError {
+		ProcessError::SendFrameError
 	}
 }
 
@@ -1254,9 +1075,9 @@ impl From<TrySendError<ClientMsg>> for ProcessError {
 	}
 }
 
-impl From<TrySendError<StreamUnit>> for ProcessError {
-	fn from(_: TrySendError<StreamUnit>) -> ProcessError {
-		ProcessError::TrySendStreamUnit
+impl From<TrySendError<Frame>> for ProcessError {
+	fn from(_: TrySendError<Frame>) -> ProcessError {
+		ProcessError::TrySendFrame
 	}
 }
 

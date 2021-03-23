@@ -30,7 +30,7 @@ pub async fn start_future(config: ServerConfig, subscribes: Subscribes) -> Resul
                     };
                     clients.insert(addr, client);
                 }
-                ServerMsg::SendUnit(addr, stream_unit) => {
+                ServerMsg::Send(addr, stream_unit) => {
                     //info!("sending stream unit to client {}", addr);
                     match clients.get_mut(&addr) {
                         Some(client) => {
@@ -39,7 +39,7 @@ pub async fn start_future(config: ServerConfig, subscribes: Subscribes) -> Resul
                                 Ok(()) => {}
                                 /*
                                 Err(_) => {
-                                    error!("error processing ServerMsg::SendUnit, send failed");
+                                    error!("error processing ServerMsg::Send, send failed");
                                 }
                                 */                                
                                 Err(_) => panic!("ServerMsg::SendArray processing failed - send error")
@@ -199,7 +199,12 @@ async fn process_write_stream2(addr: String, event_subscribes: HashMap<Key, Vec<
 
     loop {
         match state.read(stream).await {
-            Ok(_) => {
+            Ok(frame) => {
+                match frame.get_msg_type() {
+                    MsgType::Event => {}
+                    MsgType::RpcRequest => {}
+                    MsgType::RpcResponse => {}
+                }
 
             }
             Err(e) => {
@@ -232,7 +237,7 @@ async fn process_write_stream(addr: String, event_subscribes: HashMap<Key, Vec<S
                     Some(targets) => {
                         for target in targets {     
                             debug!("Sending unit to {}", target);
-                            server_tx.send(ServerMsg::SendUnit(target.clone(), StreamUnit::Vector(stream_id, buf.clone())))?;
+                            server_tx.send(ServerMsg::Send(target.clone(), Frame::Vector(stream_id, buf.clone())))?;
                         }
                     }
                     None => warn!("No subscribes found for key {:#?}, msg_type {:#?}", msg_meta.key, msg_meta.msg_type)
@@ -251,7 +256,7 @@ async fn process_write_stream(addr: String, event_subscribes: HashMap<Key, Vec<S
                     Some(targets) => {
                         for target in targets {                            
                             debug!("Sending unit to addr9 {}", target);
-                            server_tx.send(ServerMsg::SendUnit(target.clone(), StreamUnit::Array(stream_id, n, buf.clone())))?;
+                            server_tx.send(ServerMsg::Send(target.clone(), Frame::Array(stream_id, n, buf.clone())))?;
                         }
                     }
                     None => warn!("No subscribes found for key {:#?}", key)
@@ -270,7 +275,7 @@ async fn process_write_stream(addr: String, event_subscribes: HashMap<Key, Vec<S
                     Some(targets) => {
                         for target in targets {                            
                             debug!("Sending unit to addr7 {}", target);
-                            server_tx.send(ServerMsg::SendUnit(target.clone(), StreamUnit::Array(stream_id, n, buf.clone())))?;
+                            server_tx.send(ServerMsg::Send(target.clone(), Frame::Array(stream_id, n, buf.clone())))?;
                         }
                     }
                     None => warn!("No subscribes found for key {:#?}", key)
@@ -289,7 +294,7 @@ async fn process_write_stream(addr: String, event_subscribes: HashMap<Key, Vec<S
                     Some(targets) => {
                         for target in targets {                            
                             debug!("Sending unit to addr5 {}", target);
-                            server_tx.send(ServerMsg::SendUnit(target.clone(), StreamUnit::Array(stream_id, n, buf.clone())))?;
+                            server_tx.send(ServerMsg::Send(target.clone(), Frame::Array(stream_id, n, buf.clone())))?;
                         }
                     }
                     None => warn!("No subscribes found for key {:#?}", key)
@@ -308,7 +313,7 @@ async fn process_write_stream(addr: String, event_subscribes: HashMap<Key, Vec<S
                     Some(targets) => {
                         for target in targets {                            
                             debug!("Sending unit to addr3 {}", target);
-                            server_tx.send(ServerMsg::SendUnit(target.clone(), StreamUnit::Array(stream_id, n, buf.clone())))?;
+                            server_tx.send(ServerMsg::Send(target.clone(), Frame::Array(stream_id, n, buf.clone())))?;
                         }
                     }
                     None => warn!("No subscribes found for key {:#?}", key)
@@ -330,7 +335,7 @@ async fn process_write_stream(addr: String, event_subscribes: HashMap<Key, Vec<S
                             Some(targets) => {
                                 for target in targets {                                    
                                     debug!("Sending unit to addr1 {}", target);
-                                    server_tx.send(ServerMsg::SendUnit(target.clone(), StreamUnit::Array(stream_id, n, buf.clone())))?;
+                                    server_tx.send(ServerMsg::Send(target.clone(), Frame::Array(stream_id, n, buf.clone())))?;
                                 }
                             }
                             None => warn!("No subscribes found for key {:#?}", key)

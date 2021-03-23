@@ -170,7 +170,7 @@ async fn download_file(mut mb: MagicBall, msg_meta: MsgMeta, path: String, file_
     mb.write_vec(stream_id, dto, msg_meta_size, payload_size, vec![]).await?;        
     match size {
         0 => {
-            mb.write_tx.send(StreamUnit::Empty(stream_id))?;
+            mb.write_tx.send(Frame::Empty(stream_id))?;
         }
         _ => {
             let mut file_buf = [0; DATA_BUF_SIZE];
@@ -178,7 +178,7 @@ async fn download_file(mut mb: MagicBall, msg_meta: MsgMeta, path: String, file_
                 match file.read(&mut file_buf).await? {
                     0 => break,
                     n => {                
-                        mb.write_tx.send(StreamUnit::Array(stream_id, n, file_buf))?;
+                        mb.write_tx.send(Frame::Array(stream_id, n, file_buf))?;
                     }
                 }
             }
@@ -193,7 +193,7 @@ pub enum Error {
 	Io(std::io::Error),	
     SerdeJson(serde_json::Error),
     StreamingPlatform(streaming_platform::ProcessError),
-    SendStreamUnit,
+    SendFrame,
     OptionIsNone,
     CustomError(String)
 }
@@ -216,9 +216,9 @@ impl From<streaming_platform::ProcessError> for Error {
     }
 }
 
-impl From<tokio::sync::mpsc::error::SendError<streaming_platform::StreamUnit>> for Error {
-    fn from(_: tokio::sync::mpsc::error::SendError<streaming_platform::StreamUnit>) -> Error {
-        Error::SendStreamUnit
+impl From<tokio::sync::mpsc::error::SendError<streaming_platform::Frame>> for Error {
+    fn from(_: tokio::sync::mpsc::error::SendError<streaming_platform::Frame>) -> Error {
+        Error::SendFrame
     }
 }
 

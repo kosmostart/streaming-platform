@@ -68,7 +68,7 @@ pub async fn process_rpc(config: HashMap<String, String>, mut mb: MagicBall, msg
                 while stdout.read(&mut buffer).unwrap() > 0 {
                     println!("{:?}", buffer);
                 }
-                
+
                 /*
                 let mut file = File::open(&path).await?;
                 let size = file.metadata().await?.len();
@@ -80,7 +80,7 @@ pub async fn process_rpc(config: HashMap<String, String>, mut mb: MagicBall, msg
                 mb.write_vec(stream_id, dto, msg_meta_size, payload_size, vec![]).await?;
                 match size {
                     0 => {
-                        mb.write_tx.send(StreamUnit::Empty(stream_id))?;
+                        mb.write_tx.send(Frame::Empty(stream_id))?;
                     }
                     _ => {
                         let mut file_buf = [0; DATA_BUF_SIZE];
@@ -88,7 +88,7 @@ pub async fn process_rpc(config: HashMap<String, String>, mut mb: MagicBall, msg
                             match file.read(&mut file_buf).await? {
                                 0 => break,
                                 n => {                
-                                    mb.write_tx.send(StreamUnit::Array(stream_id, n, file_buf))?;
+                                    mb.write_tx.send(Frame::Array(stream_id, n, file_buf))?;
                                 }
                             }
                         }

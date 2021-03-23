@@ -233,7 +233,7 @@ async fn auth(addr: String, access_key: String, stream: &mut TcpStream) -> Resul
 }
 
 
-async fn connect_stream_future(host: &str, addr: String, access_key: String, read_tx: UnboundedSender<ClientMsg>, write_rx: UnboundedReceiver<StreamUnit>) {
+async fn connect_stream_future(host: &str, addr: String, access_key: String, read_tx: UnboundedSender<ClientMsg>, write_rx: UnboundedReceiver<Frame>) {
     let mut write_stream = TcpStream::connect(host).await.expect("Connection to host failed");
     auth(addr.clone(), access_key.clone(), &mut write_stream).await.expect("Write stream authorization failed");
 
@@ -247,7 +247,7 @@ async fn connect_stream_future(host: &str, addr: String, access_key: String, rea
     info!("{:?}", res);
 }
 
-async fn connect_full_message_future(host: &str, addr: String, access_key: String, read_tx: UnboundedSender<ClientMsg>, write_rx: UnboundedReceiver<StreamUnit>) {    
+async fn connect_full_message_future(host: &str, addr: String, access_key: String, read_tx: UnboundedSender<ClientMsg>, write_rx: UnboundedReceiver<Frame>) {    
     let mut write_stream = TcpStream::connect(host).await.expect("Connection to host failed");
     auth(addr.clone(), access_key.clone(), &mut write_stream).await.expect("Write stream authorization failed");
 
@@ -261,7 +261,7 @@ async fn connect_full_message_future(host: &str, addr: String, access_key: Strin
     info!("{:?}", res);
 }
 
-async fn process_message_stream(addr: String, mut write_stream: TcpStream, mut read_stream: TcpStream, read_tx: UnboundedSender<ClientMsg>, write_rx: UnboundedReceiver<StreamUnit>) -> Result<(), ProcessError> {
+async fn process_message_stream(addr: String, mut write_stream: TcpStream, mut read_stream: TcpStream, read_tx: UnboundedSender<ClientMsg>, write_rx: UnboundedReceiver<Frame>) -> Result<(), ProcessError> {
     //let (auth_msg_meta, auth_payload, auth_attachments) = read_full(&mut socket_read).await?;
     //let auth_payload: Value = from_slice(&auth_payload)?;    
 
@@ -300,7 +300,7 @@ async fn process_message_stream(addr: String, mut write_stream: TcpStream, mut r
     }
 }
 
-async fn process_full_message(addr: String, mut write_stream: TcpStream, mut read_stream: TcpStream, read_tx: UnboundedSender<ClientMsg>, write_rx: UnboundedReceiver<StreamUnit>) -> Result<(), ProcessError> {    
+async fn process_full_message(addr: String, mut write_stream: TcpStream, mut read_stream: TcpStream, read_tx: UnboundedSender<ClientMsg>, write_rx: UnboundedReceiver<Frame>) -> Result<(), ProcessError> {    
     //let (auth_msg_meta, auth_payload, auth_attachments) = read_full(&mut socket_read).await?;
     //let auth_payload: Value = from_slice(&auth_payload)?;    
 

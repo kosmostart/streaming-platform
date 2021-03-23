@@ -3,7 +3,7 @@ use std::fs;
 use serde_json::{json, Value, from_slice, to_vec, to_string, from_str};
 use log::*;
 use tokio::{io::AsyncWriteExt, fs::File, sync::mpsc::UnboundedReceiver};
-use streaming_platform::{sp_cfg, client::start_stream, tokio::{self, io::AsyncReadExt}, DATA_BUF_SIZE, MagicBall, ClientMsg, RestreamMsg, StreamLayout, StreamUnit, sp_dto::{MsgMeta, MsgType, reply_to_rpc_dto2_sizes, Participator, RpcResult}};
+use streaming_platform::{sp_cfg, client::start_stream, tokio::{self, io::AsyncReadExt}, DATA_BUF_SIZE, MagicBall, ClientMsg, RestreamMsg, StreamLayout, Frame, sp_dto::{MsgMeta, MsgType, reply_to_rpc_dto2_sizes, Participator, RpcResult}};
 
 struct FileStreamLayout {
     stream: StreamLayout,
@@ -176,7 +176,7 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
 
                     if path.is_file() {                
                         let mb = mb.clone();
-                        
+
                         tokio::spawn(async move {                    
                             match download_file(mb, stream.msg_meta, path, file_name.clone()).await {
                                 Ok(()) => {
@@ -212,7 +212,7 @@ async fn download_file(mut mb: MagicBall, msg_meta: MsgMeta, path: std::path::Pa
 
     match size {
         0 => {
-            mb.write_tx.send(StreamUnit::Empty(stream_id))?;
+            mb.write_tx.send(Frame::Empty(stream_id))?;
         }
         _ => {
             let mut file_buf = [0; DATA_BUF_SIZE];
@@ -221,7 +221,7 @@ async fn download_file(mut mb: MagicBall, msg_meta: MsgMeta, path: std::path::Pa
                 match file.read(&mut file_buf).await? {
                     0 => break,
                     n => {                
-                        mb.write_tx.send(StreamUnit::Array(stream_id, n, file_buf))?;
+                        mb.write_tx.send(Frame::Array(stream_id, n, file_buf))?;
                     }
                 }
             }
@@ -236,7 +236,7 @@ pub enum Error {
 	Io(std::io::Error),	
     SerdeJson(serde_json::Error),
     StreamingPlatform(streaming_platform::ProcessError),
-    SendStreamUnit,
+    SendFrame,
     FileNameIsEmpty,
     TargetDirNotFoundByAccessKey,
     NoFilesInTargetDir,
@@ -262,8 +262,8 @@ impl From<streaming_platform::ProcessError> for Error {
     }
 }
 
-impl From<tokio::sync::mpsc::error::SendError<streaming_platform::StreamUnit>> for Error {
-    fn from(_: tokio::sync::mpsc::error::SendError<streaming_platform::StreamUnit>) -> Error {
-        Error::SendStreamUnit
+impl From<tokio::sync::mpsc::error::SendError<streaming_platform::Frame>> for Error {
+    fn from(_: tokio::sync::mpsc::error::SendError<streaming_platform::Frame>) -> Error {
+        Error::SendFrame
     }
 }

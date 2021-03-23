@@ -176,6 +176,7 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
 
                     if path.is_file() {                
                         let mb = mb.clone();
+                        
                         tokio::spawn(async move {                    
                             match download_file(mb, stream.msg_meta, path, file_name.clone()).await {
                                 Ok(()) => {
@@ -206,13 +207,16 @@ async fn download_file(mut mb: MagicBall, msg_meta: MsgMeta, path: std::path::Pa
     }))?;
     let (dto, msg_meta_size, payload_size, _) = reply_to_rpc_dto2_sizes(mb.addr.clone(), msg_meta.key.clone(), msg_meta.correlation_id, payload, vec![(file_name, size)], vec![], RpcResult::Ok, msg_meta.route.clone(), mb.auth_token.clone(), mb.auth_data.clone())?;
     let stream_id = mb.get_stream_id();
-    mb.write_vec(stream_id, dto, msg_meta_size, payload_size, vec![]).await?;        
+
+    mb.write_vec(stream_id, dto, msg_meta_size, payload_size, vec![]).await?;
+
     match size {
         0 => {
             mb.write_tx.send(StreamUnit::Empty(stream_id))?;
         }
         _ => {
             let mut file_buf = [0; DATA_BUF_SIZE];
+
             loop {
                 match file.read(&mut file_buf).await? {
                     0 => break,
@@ -222,7 +226,8 @@ async fn download_file(mut mb: MagicBall, msg_meta: MsgMeta, path: std::path::Pa
                 }
             }
         }
-    }        
+    }
+
     Ok(())
 }
 

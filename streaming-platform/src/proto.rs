@@ -632,7 +632,8 @@ impl MagicBall {
             write_tx,
             rpc_inbound_tx
         }
-    }    
+    }
+    /// This function generates new stream id
     pub fn get_stream_id(&mut self) -> u64 {
         self.hash_buf.truncate(self.addr_bytes_len);
         //self.hash_buf.put_u32(get_counter_value());
@@ -642,6 +643,8 @@ impl MagicBall {
     }
     /// This function should be called for single message or parts of it (not for multiple messages inside vec)
     /// stream_id value MUST BE ACQUIRED with get_stream_id() function. stream_id generation can be implicit, however this will leads to less flexible API (if for example you need stream payload or attachments data).
+    /// attachments_sizes parameter should be not empty ONLY IF data parameter contains attachments themself.
+    /// If you plan to write attachments data later (for example in streaming fashion), leave attachments_sizes parameter empty and only fill attachment sizes in msg_meta
     pub async fn write_vec(&mut self, stream_id: u64, data: Vec<u8>, msg_meta_size: u64, payload_size: u64, attachments_sizes: Vec<u64>) -> Result<(), ProcessError> {
         let msg_meta_offset = LEN_BUF_SIZE + msg_meta_size as usize;
         let payload_offset = msg_meta_offset + payload_size as usize;
@@ -650,7 +653,7 @@ impl MagicBall {
         let mut source = &data[LEN_BUF_SIZE..msg_meta_offset];    
 
         loop {        
-            let n = source.read(&mut data_buf).await?;        
+            let n = source.read(&mut data_buf).await?;
             match n {
                 0 => break,
                 _ => self.write_tx.send(StreamUnit::Array(stream_id, n, data_buf))?

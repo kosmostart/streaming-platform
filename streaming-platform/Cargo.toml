@@ -20,6 +20,7 @@ edition = "2018"
 log = "0.4"
 futures = { version = "0.3", features = ["async-await"] }
 rand = "0.8"
+byteorder = "*"
 siphasher = "0.3"
 serde = "1"
 serde_derive = "1"

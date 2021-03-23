@@ -1822,6 +1822,7 @@ dependencies = [
 name = "streaming-platform"
 version = "0.1.0"
 dependencies = [
+ "byteorder",
  "env_logger",
  "futures",
  "hyper",

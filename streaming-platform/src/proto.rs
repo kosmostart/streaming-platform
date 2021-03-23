@@ -8,6 +8,7 @@ use std::hash::Hasher;
 use std::time::Duration;
 use log::*;
 use rand::random;
+use byteorder::ByteOrder;
 use tokio::net::TcpStream;
 use tokio::sync::{mpsc::{UnboundedSender, UnboundedReceiver, error::{SendError, TrySendError}}, oneshot};
 //use tokio::time::{timeout, error::Elapsed};
@@ -22,24 +23,29 @@ pub const STREAM_ID_BUF_SIZE: usize = 8;
 pub const LEN_BUF_SIZE: usize = 4;
 pub const LENS_BUF_SIZE: usize = 12;
 pub const DATA_BUF_SIZE: usize = 1024;
+
+pub const MAX_FRAME_SIZE: usize = 1024;
+pub const MAX_FRAME_PAYLOAD_SIZE: usize = 1024;
+
 //pub const MPSC_SERVER_BUF_SIZE: usize = 1000000;
 //pub const MPSC_CLIENT_BUF_SIZE: usize = 1000000;
 //pub const MPSC_RPC_BUF_SIZE: usize = 1000000;
 pub const RPC_TIMEOUT_MS_AMOUNT: u64 = 30000;
 //pub const STREAM_UNIT_READ_TIMEOUT_MS_AMOUNT: u64 = 1000;
 
-/*
-static COUNTER: AtomicU32 = AtomicU32::new(1);
 
-pub fn get_counter_value() -> u32 {
-    if COUNTER.load(Ordering::Relaxed) == std::u32::MAX {
-        COUNTER.store(1, Ordering::Relaxed);
-    }
-    COUNTER.fetch_add(1, Ordering::Relaxed)
-}
+/*
+u8 frame_type 1
+u16 frame_size 2
+u64 stream_id 8
+u64 frame_signature 8
 */
 
-pub fn get_hasher() -> SipHasher24 {    
+pub fn get_frame_hasher() -> SipHasher24 {
+    SipHasher24::new_with_keys(0, random::<u64>())
+}
+
+pub fn get_stream_id_hasher() -> SipHasher24 {    
     SipHasher24::new_with_keys(0, random::<u64>())
 }
 
@@ -48,7 +54,7 @@ pub fn get_stream_id_onetime(addr: &str) -> u64 {
     buf.put(addr.as_bytes());
     //buf.put_u32(get_counter_value());
     buf.extend_from_slice(Uuid::new_v4().to_string().as_bytes());
-    let mut hasher = get_hasher();
+    let mut hasher = get_stream_id_hasher();
     hasher.write(&buf);
     hasher.finish()
 }
@@ -124,15 +130,84 @@ pub struct StreamLayout {
     pub attachments_data: Vec<u8>
 }
 
+pub struct State2 {
+    frame_buf: [u8; MAX_FRAME_SIZE],
+    read_buf: [u8; MAX_FRAME_SIZE],
+    offset: usize
+}
+
+impl State2 {
+    pub fn new() -> State2 {
+        State2 {
+            frame_buf: [0; MAX_FRAME_SIZE],
+            read_buf: [0; MAX_FRAME_SIZE],
+            offset: 0
+        }
+    }
+    pub async fn read(&mut self, tcp_stream: &mut TcpStream) -> Result<(), ProcessError> {
+        let mut i = 0;
+        let n = tcp_stream.read(&mut self.read_buf[..]).await?;
+
+        if n > 0 {
+            match self.offset + n >= MAX_FRAME_SIZE {
+                true => {
+                    while i < MAX_FRAME_SIZE - self.offset {
+                        self.frame_buf[self.offset + i] = self.read_buf[i];
+                        i = i + 1;
+                    }
+
+                    let frame_size = self.offset + i;
+                    
+                    debug!("Process frame, frame_size {}", frame_size);
+
+                    self.offset = 0;
+                    let bytes_moved = i;
+                    i = 0;
+
+                    debug!("Bytes moved: {}", bytes_moved);
+
+                    while i < n - bytes_moved {
+                        debug!("Index: {}", i);
+
+                        self.frame_buf[self.offset + i] = self.read_buf[bytes_moved + i];
+                        i = i + 1;
+                    }
+                }
+                false => {
+                    while i < n {
+                        self.frame_buf[self.offset + i] = self.read_buf[i];
+                        i = i + 1;
+                    }
+                    
+                    self.offset = self.offset + n;
+                }
+            }
+        }
+    
+        Ok(())
+    }
+    
+    pub async fn get_frame(&self) -> Result<(), ProcessError> {
+        let frame_type = self.frame_buf[0];
+        let frame_payload_size = byteorder::BigEndian::read_u16(&self.frame_buf[1..3]);
+    
+        if frame_payload_size as usize > MAX_FRAME_PAYLOAD_SIZE {
+            return Err(ProcessError::FramePayloadSizeExceeded);
+        }
+    
+        let stream_id = byteorder::BigEndian::read_u64(&self.frame_buf[3..11]);
+        let frame_signature = byteorder::BigEndian::read_u64(&self.frame_buf[11..19]);
+    
+        Ok(())
+    }
+}
+
 pub async fn read(state: &mut State, socket_read: &mut TcpStream) -> Result<ReadResult, ProcessError> {    
     let mut u64_buf = [0; STREAM_ID_BUF_SIZE];
     let mut u32_buf = [0; LEN_BUF_SIZE];
 
     debug!("{} read stream_id attempt", state.addr);
 
-    //let mut adapter = socket_read.take(LENS_BUF_SIZE as u64);
-    
-    //adapter.read(&mut u64_buf).await?;
     socket_read.read_exact(&mut u64_buf).await?;
 
     let mut buf = Cursor::new(&u64_buf[..]);
@@ -145,7 +220,6 @@ pub async fn read(state: &mut State, socket_read: &mut TcpStream) -> Result<Read
     debug!("{} read stream_id succeded, stream_id {}", state.addr, stream_id);
     debug!("{} read unit_size attempt, stream_id {}", state.addr, stream_id);
 
-    //adapter.read(&mut u32_buf).await?;
     socket_read.read_exact(&mut u32_buf).await?;
 
     /*
@@ -620,7 +694,7 @@ impl MagicBall {
         let addr_bytes = addr.as_bytes();
         let addr_bytes_len = addr_bytes.len();
         hash_buf.put(addr_bytes);
-        let hasher = get_hasher();
+        let hasher = get_stream_id_hasher();
         
         MagicBall {            
             addr,
@@ -1016,6 +1090,7 @@ impl MagicBall {
 
 #[derive(Debug)]
 pub enum ProcessError {
+    FramePayloadSizeExceeded,
     StreamNotFoundInState,
     StreamLayoutNotFound,
     AuthStreamLayoutIsEmpty,

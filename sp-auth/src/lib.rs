@@ -69,6 +69,8 @@ impl From<base64::DecodeError> for Error {
 
 #[test]
 fn check_auth_token_length() {
+    use serde_json::json;
+    
     let res = create_auth_token(b"asdqwe", &json!({
         "user_id": 123321123
     })).expect("Failed to create auth token");

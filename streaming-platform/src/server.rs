@@ -194,6 +194,22 @@ async fn process_read_stream(addr: String, mut stream: TcpStream, client_net_add
     write_loop(addr, client_rx, &mut stream).await
 }
 
+async fn process_write_stream2(addr: String, event_subscribes: HashMap<Key, Vec<String>>, rpc_subscribes: HashMap<Key, Vec<String>>, rpc_response_subscribes: HashMap<Key, Vec<String>>, stream: &mut TcpStream, _client_net_addr: SocketAddr, server_tx: UnboundedSender<ServerMsg>) -> Result<(), ProcessError> {
+    let mut state = State2::new();        
+
+    loop {
+        match state.read(stream).await {
+            Ok(_) => {
+
+            }
+            Err(e) => {
+                error!("Error on read from {}: {:?}", addr, e);
+                state.clear();
+            }
+        } 
+    }
+}
+
 async fn process_write_stream(addr: String, event_subscribes: HashMap<Key, Vec<String>>, rpc_subscribes: HashMap<Key, Vec<String>>, rpc_response_subscribes: HashMap<Key, Vec<String>>, stream: &mut TcpStream, _client_net_addr: SocketAddr, server_tx: UnboundedSender<ServerMsg>) -> Result<(), ProcessError> {    
     let mut state = State::new("Read stream from Server to ".to_owned() + &addr);        
     let mut client_addrs = HashMap::new();    

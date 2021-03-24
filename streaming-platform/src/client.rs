@@ -105,6 +105,7 @@ where
             match msg {
                 RpcMsg::AddRpc(correlation_id, rpc_tx) => {
                     rpcs.insert(correlation_id, rpc_tx);
+
                     info!("Add rpc ok {}", correlation_id);
                 }                
                 RpcMsg::RpcDataRequest(correlation_id) => {
@@ -144,7 +145,9 @@ where
                 ClientMsg::Message(_, msg_meta, payload, attachments_data) => {
                     match msg_meta.msg_type {
                         MsgType::Event => {          
+
                             debug!("Client got event {}", msg_meta.display());
+
                             tokio::spawn(async move {
                                 let key = msg_meta.key.clone();
                                 let payload: P = from_slice(&payload).expect("Failed to deserialize event payload");                                
@@ -156,6 +159,7 @@ where
                         }
                         MsgType::RpcRequest => {                        
                             debug!("Client got rpc request {}", msg_meta.display());
+
                             tokio::spawn(async move {                                
                                 let mut route = msg_meta.route.clone();
                                 let correlation_id = msg_meta.correlation_id;                                
@@ -184,6 +188,7 @@ where
                         }
                         MsgType::RpcResponse(_) => {           
                             debug!("Client got rpc response {}", msg_meta.display());
+
                             match rpc_inbound_tx2.send(RpcMsg::RpcDataRequest(msg_meta.correlation_id)) {
                                 Ok(()) => {
                                     debug!("Client RpcDataRequest send succeeded {}", msg_meta.display());
@@ -215,6 +220,7 @@ where
             }
         }    
     });
+
     connect_full_message_future(host, addr3, access_key, read_tx, write_rx).await;
 }
 
@@ -242,7 +248,7 @@ async fn connect_stream_future(host: &str, addr: String, access_key: String, rea
 
     info!("Connected in stream mode to {} as {}", host, addr);
 
-    let res = process_message_stream(addr, write_stream, read_stream, read_tx, write_rx).await;
+    let res = process_stream_mode(addr, write_stream, read_stream, read_tx, write_rx).await;
 
     info!("{:?}", res);
 }
@@ -256,12 +262,12 @@ async fn connect_full_message_future(host: &str, addr: String, access_key: Strin
 
     info!("Connected in full message mode to {} as {}", host, addr);
 
-    let res = process_full_message(addr, write_stream, read_stream, read_tx, write_rx).await;
+    let res = process_full_message_mode(addr, write_stream, read_stream, read_tx, write_rx).await;
 
     info!("{:?}", res);
 }
 
-async fn process_message_stream(addr: String, mut write_stream: TcpStream, mut read_stream: TcpStream, read_tx: UnboundedSender<ClientMsg>, write_rx: UnboundedReceiver<Frame>) -> Result<(), ProcessError> {
+async fn process_stream_mode(addr: String, mut write_stream: TcpStream, mut read_stream: TcpStream, read_tx: UnboundedSender<ClientMsg>, write_rx: UnboundedReceiver<Frame>) -> Result<(), ProcessError> {
     //let (auth_msg_meta, auth_payload, auth_attachments) = read_full(&mut socket_read).await?;
     //let auth_payload: Value = from_slice(&auth_payload)?;    
 
@@ -300,7 +306,7 @@ async fn process_message_stream(addr: String, mut write_stream: TcpStream, mut r
     }
 }
 
-async fn process_full_message(addr: String, mut write_stream: TcpStream, mut read_stream: TcpStream, read_tx: UnboundedSender<ClientMsg>, write_rx: UnboundedReceiver<Frame>) -> Result<(), ProcessError> {    
+async fn process_full_message_mode(addr: String, mut write_stream: TcpStream, mut read_stream: TcpStream, read_tx: UnboundedSender<ClientMsg>, write_rx: UnboundedReceiver<Frame>) -> Result<(), ProcessError> {    
     //let (auth_msg_meta, auth_payload, auth_attachments) = read_full(&mut socket_read).await?;
     //let auth_payload: Value = from_slice(&auth_payload)?;    
 

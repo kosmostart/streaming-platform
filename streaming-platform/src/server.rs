@@ -98,9 +98,11 @@ pub async fn start_future(config: ServerConfig, subscribes: Subscribes) -> Resul
         match auth_tcp_stream(&mut stream, client_net_addr, &config).await {
             Ok(addr) => {
                 info!("Stream from {} authorized as {}", client_net_addr, addr);
+                
                 if !client_states.contains_key(&addr) {
                     client_states.insert(addr.clone(), ClientState::new());
                 }
+
                 match client_states.get_mut(&addr) {
                     Some(client_state) => {
                         
@@ -109,12 +111,14 @@ pub async fn start_future(config: ServerConfig, subscribes: Subscribes) -> Resul
                             let event_subscribes = event_subscribes.clone();
                             let rpc_subscribes = rpc_subscribes.clone();
                             let rpc_response_subscribes = rpc_response_subscribes.clone();
+
                             tokio::spawn(async move {                                
                                 let res = process_write_tcp_stream(addr.clone(), event_subscribes, rpc_subscribes, rpc_response_subscribes, &mut stream, client_net_addr, server_tx).await;
                                 error!("{} write process ended, {:?}", addr, res);
                             });
                         } else {
                             client_state.has_writer = false;
+
                             tokio::spawn(async move {            
                                 let res = process_read_tcp_stream(addr.clone(), stream, client_net_addr, server_tx).await;
                                 error!("{} read process ended, {:?}", addr, res);

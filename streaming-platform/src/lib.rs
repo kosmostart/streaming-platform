@@ -8,4 +8,4 @@ pub use proto::{LEN_BUF_SIZE, LENS_BUF_SIZE, MAX_FRAME_PAYLOAD_SIZE, MAX_FRAME_S
 
 mod proto;
 pub mod server;
-//pub mod client;
+pub mod client;

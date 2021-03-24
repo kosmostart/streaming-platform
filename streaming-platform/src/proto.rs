@@ -9,27 +9,29 @@ use std::time::Duration;
 use log::*;
 use rand::random;
 use byteorder::ByteOrder;
+use serde_json::{from_slice, Value, to_vec};
+use siphasher::sip::SipHasher24;
 use tokio::net::TcpStream;
 use tokio::sync::{mpsc::{UnboundedSender, UnboundedReceiver, error::{SendError, TrySendError}}, oneshot};
 //use tokio::time::{timeout, error::Elapsed};
 use tokio::time::timeout;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use serde_json::{from_slice, Value, to_vec};
-use siphasher::sip::SipHasher24;
 use sp_dto::bytes::{Buf, BytesMut, BufMut};
 use sp_dto::{*, uuid::Uuid};
 
 pub const STREAM_ID_BUF_SIZE: usize = 8;
 pub const LEN_BUF_SIZE: usize = 4;
 pub const LENS_BUF_SIZE: usize = 12;
-pub const DATA_BUF_SIZE: usize = 1024;
+pub const MAX_FRAME_PAYLOAD_SIZE: usize = 1024;
 
-pub const MIN_FRAME_SIZE: usize = 20;
-pub const MAX_FRAME_SIZE: usize = 1024;
+pub const FRAME_HEADER_SIZE: usize = 28;
+pub const MAX_FRAME_SIZE: usize = 1052;
 
 /*
 u8 frame_type 1
 u16 frame_size 2
+u8 msg_type 1
+u64 key_hash 8
 u64 stream_id 8
 u64 frame_signature 8
 */
@@ -40,11 +42,11 @@ u64 frame_signature 8
 pub const RPC_TIMEOUT_MS_AMOUNT: u64 = 30000;
 //pub const STREAM_UNIT_READ_TIMEOUT_MS_AMOUNT: u64 = 1000;
 
-pub fn get_frame_hasher() -> SipHasher24 {
+fn get_key_hasher() -> SipHasher24 {    
     SipHasher24::new_with_keys(0, random::<u64>())
 }
 
-pub fn get_stream_id_hasher() -> SipHasher24 {    
+fn get_stream_id_hasher() -> SipHasher24 {    
     SipHasher24::new_with_keys(0, random::<u64>())
 }
 
@@ -63,13 +65,13 @@ pub enum ReadResult {
     /// Message data stream is prepended with MsgMeta struct
     MsgMeta(u64, MsgMeta, Vec<u8>),
     /// Payload data stream message
-    PayloadData(u64, usize, [u8; DATA_BUF_SIZE]),
+    PayloadData(u64, usize, [u8; MAX_FRAME_PAYLOAD_SIZE]),
     /// This one indicates payload data stream finished
-    PayloadFinished(u64, usize, [u8; DATA_BUF_SIZE]),
+    PayloadFinished(u64, usize, [u8; MAX_FRAME_PAYLOAD_SIZE]),
     /// Attachment whith index data stream message
-    AttachmentData(u64, usize, usize, [u8; DATA_BUF_SIZE]),
+    AttachmentData(u64, usize, usize, [u8; MAX_FRAME_PAYLOAD_SIZE]),
     /// This one indicates attachment data stream by index finished
-    AttachmentFinished(u64, usize, usize, [u8; DATA_BUF_SIZE]),
+    AttachmentFinished(u64, usize, usize, [u8; MAX_FRAME_PAYLOAD_SIZE]),
     /// Message stream finished, simple as that
     MessageFinished(u64, MessageFinishBytes),
     /// Message was aborted, through cancelation or error
@@ -79,9 +81,9 @@ pub enum ReadResult {
 /// Part of result of reading function for message finish
 pub enum MessageFinishBytes {
     /// This indicates message was finished with payload
-    Payload(usize, [u8; DATA_BUF_SIZE]),
+    Payload(usize, [u8; MAX_FRAME_PAYLOAD_SIZE]),
     /// This indicates message was finished with attachment
-    Attachment(usize, usize, [u8; DATA_BUF_SIZE])    
+    Attachment(usize, usize, [u8; MAX_FRAME_PAYLOAD_SIZE])    
 }
 
 #[derive(Debug)]
@@ -131,11 +133,13 @@ pub struct StreamLayout {
 
 pub struct Frame {
     pub frame_type: u8,
-    pub frame_size: u16,
+    pub payload_size: u16,
     pub msg_type: u8,
+    pub key_hash: u64,
     pub stream_id: u64,
     pub frame_signature: u64,
-    pub payload: [u8; MAX_FRAME_SIZE]
+    pub payload: Option<[u8; MAX_FRAME_PAYLOAD_SIZE]>,
+    pub data: Option<[u8; MAX_FRAME_SIZE]>
 }
 
 pub enum FrameType {
@@ -145,7 +149,32 @@ pub enum FrameType {
 }
 
 impl Frame {
-    pub fn get_msg_type(self) -> Result<MsgType, ProcessError> {
+    pub fn new(frame_type: u8, payload_size: u16, msg_type: u8, key_hash: u64, stream_id: u64, payload: [u8; MAX_FRAME_PAYLOAD_SIZE]) -> Frame {
+        let frame_signature = 0;
+        
+        /*
+        let mut data = [0; MAX_FRAME_SIZE];
+
+        data[0] = frame_type;
+        byteorder::BigEndian::write_u16(&mut data[1..3], payload_size);
+        data[3] = msg_type;
+        byteorder::BigEndian::write_u64(&mut data[4..12], key_hash);
+        byteorder::BigEndian::write_u64(&mut data[12..20], stream_id);
+        byteorder::BigEndian::write_u64(&mut data[20..28], frame_signature);
+        */
+
+        Frame {
+            frame_type,
+            payload_size,
+            msg_type,
+            key_hash,
+            stream_id,
+            frame_signature,
+            payload: Some(payload),
+            data: None
+        }
+    }
+    pub fn get_msg_type(&self) -> Result<MsgType, ProcessError> {
         Ok(match self.msg_type {
             0 => MsgType::Event,
             1 => MsgType::RpcRequest,
@@ -206,7 +235,7 @@ impl State2 {
                     return Err(ProcessError::FrameSizeExceeded);
                 }
 
-                if frame_size < MIN_FRAME_SIZE {
+                if frame_size < FRAME_HEADER_SIZE {
                     return Err(ProcessError::FrameSizeLessThanMin);
                 }
 
@@ -224,10 +253,11 @@ impl State2 {
                                 i = i + 1;
                             }
                             
-                            let stream_id = byteorder::BigEndian::read_u64(&self.frame_buf[4..12]);
-                            let frame_signature = byteorder::BigEndian::read_u64(&self.frame_buf[12..20]);
+                            let key_hash = byteorder::BigEndian::read_u64(&self.frame_buf[4..12]);
+                            let stream_id = byteorder::BigEndian::read_u64(&self.frame_buf[12..20]);
+                            let frame_signature = byteorder::BigEndian::read_u64(&self.frame_buf[20..28]);
                             
-                            debug!("Got frame, frame_= size {}", frame_size);
+                            debug!("Got frame, frame size: {}", frame_size);
         
                             self.offset = 0;
                             let bytes_moved = i;
@@ -244,11 +274,13 @@ impl State2 {
 
                             return Ok(Frame {
                                 frame_type: self.frame_type?,
-                                frame_size: self.frame_size_u16?,
+                                payload_size: (self.frame_size? - FRAME_HEADER_SIZE) as u16,
                                 msg_type: self.frame_buf[3],
+                                key_hash,
                                 stream_id,
                                 frame_signature,
-                                payload: self.frame_buf.clone()
+                                payload: None,
+                                data: Some(self.frame_buf.clone())
                             })
                         }
                         false => {
@@ -302,13 +334,13 @@ pub enum ClientMsg {
     /// This is sent in Stream mode without fs future
     MsgMeta(u64, MsgMeta),
     /// This is sent in Stream mode without fs future
-    PayloadData(u64, usize, [u8; DATA_BUF_SIZE]),
+    PayloadData(u64, usize, [u8; MAX_FRAME_PAYLOAD_SIZE]),
     /// This is sent in Stream mode without fs future
-    PayloadFinished(u64, usize, [u8; DATA_BUF_SIZE]),
+    PayloadFinished(u64, usize, [u8; MAX_FRAME_PAYLOAD_SIZE]),
     /// This is sent in Stream mode without fs future. First field is index, second is number of bytes read, last is data itself.
-    AttachmentData(u64, usize, usize, [u8; DATA_BUF_SIZE]),
+    AttachmentData(u64, usize, usize, [u8; MAX_FRAME_PAYLOAD_SIZE]),
     /// This is sent in Stream mode without fs future
-    AttachmentFinished(u64, usize, usize, [u8; DATA_BUF_SIZE]),
+    AttachmentFinished(u64, usize, usize, [u8; MAX_FRAME_PAYLOAD_SIZE]),
     /// This is sent in Stream mode without fs future
     MessageFinished(u64),
     /// This is sent in FullMessage mode without fs future
@@ -343,11 +375,12 @@ pub enum StreamCompletion {
     Err
 }
 
+/*
 pub async fn write(stream_id: u64, data: Vec<u8>, msg_meta_size: u64, payload_size: u64, attachments_sizes: Vec<u64>, write_tx: &mut UnboundedSender<Frame>) -> Result<(), ProcessError> {    
     let msg_meta_offset = LEN_BUF_SIZE + msg_meta_size as usize;
     let payload_offset = msg_meta_offset + payload_size as usize;
     debug!("write stream_id {}, data len {}, msg_meta_offset {}, payload_offset {}", stream_id, data.len(), msg_meta_offset, payload_offset);    
-    let mut data_buf = [0; DATA_BUF_SIZE];    
+    let mut data_buf = [0; MAX_FRAME_PAYLOAD_SIZE];    
 
     write_tx.send(Frame::Vector(stream_id, data[LEN_BUF_SIZE..msg_meta_offset].to_vec()))?;
 
@@ -398,42 +431,100 @@ pub async fn write(stream_id: u64, data: Vec<u8>, msg_meta_size: u64, payload_si
 
     Ok(())
 }
+*/
 
-pub async fn write_to_stream(stream_id: u64, data: Vec<u8>, msg_meta_size: u64, payload_size: u64, attachments_sizes: Vec<u64>, stream: &mut TcpStream) -> Result<(), ProcessError> {
+fn get_key_hash(hasher: &mut SipHasher24, buf: &mut BytesMut, key: Key) -> u64 {
+    debug!("Creating hash for: {:?}", key);
+    buf.clear();
+    buf.put((key.service + &key.action + &key.domain).as_bytes());  
+    hasher.write(&buf);
+
+    let res = hasher.finish();
+
+    debug!("Created hash for key, hash {}", res);
+
+    res
+}
+
+pub async fn write_frame(tcp_stream: &mut TcpStream, frame: Frame) -> Result<(), ProcessError> {
+    debug!("Frame write to socket attempt, stream_id {}", frame.stream_id);
+
+    let mut header = [0; FRAME_HEADER_SIZE];
+
+    header[0] = frame.frame_type;
+    byteorder::BigEndian::write_u16(&mut header[1..3], frame.payload_size);
+    header[3] = frame.msg_type;
+    byteorder::BigEndian::write_u64(&mut header[4..12], frame.key_hash);
+    byteorder::BigEndian::write_u64(&mut header[12..20], frame.stream_id);
+    byteorder::BigEndian::write_u64(&mut header[20..28], frame.frame_signature);
+
+    tcp_stream.write_all(&header[..]).await?;
+
+    match frame.payload {
+        Some(payload) => {
+            tcp_stream.write_all(&payload[..frame.payload_size as usize]).await?;
+        }
+        None => {}
+    }
+
+    Ok(())
+}
+
+pub async fn write_loop(addr: String, mut client_rx: UnboundedReceiver<Frame>, tcp_stream: &mut TcpStream) -> Result<(), ProcessError> {    
+    loop {       
+        match client_rx.recv().await {
+            Some(frame) => {
+                match write_frame(tcp_stream, frame).await {
+                    Ok(()) => {}
+                    Err(e) => error!("Error writing frame in write loop: {:?}", e)
+                }
+            }
+            None => return Err(ProcessError::WriteChannelDropped)
+        }
+    }
+}
+
+// Use this only for single message or parts of it
+pub async fn write_to_tcp_stream(tcp_stream: &mut TcpStream, msg_type: u8, key_hash: u64, stream_id: u64, data: Vec<u8>, msg_meta_size: u64, payload_size: u64, attachments_sizes: Vec<u64>) -> Result<(), ProcessError> {
     let msg_meta_offset = LEN_BUF_SIZE + msg_meta_size as usize;
     let payload_offset = msg_meta_offset + payload_size as usize;
+    let mut data_buf = [0; MAX_FRAME_PAYLOAD_SIZE];
 
-    debug!("write stream_id {}, data len {}, msg_meta_offset {}, payload_offset {}", stream_id, data.len(), msg_meta_offset, payload_offset);    
+    let mut source = &data[LEN_BUF_SIZE..msg_meta_offset];    
 
-    let mut data_buf = [0; DATA_BUF_SIZE];    
-
-    write_stream_unit(stream, Frame::Vector(stream_id, data[LEN_BUF_SIZE..msg_meta_offset].to_vec())).await?;
+    loop {        
+        let n = source.read(&mut data_buf).await?;
+        match n {
+            0 => break,
+            _ => write_frame(tcp_stream, Frame::new(FrameType::MsgMeta as u8, n as u16, msg_type, key_hash, stream_id, data_buf)).await?
+        }
+    }
 
     match payload_size {
         0 => {
-            write_stream_unit(stream, Frame::Empty(stream_id)).await?;
+            //self.write_tx.send(Frame::Empty(stream_id))?
         }
-        _ => {
+        _ => {            
             let mut source = &data[msg_meta_offset..payload_offset];
 
             loop {        
                 let n = source.read(&mut data_buf).await?;        
                 match n {
                     0 => break,
-                    _ => write_stream_unit(stream, Frame::Array(stream_id, n, data_buf)).await?
+                    _ => write_frame(tcp_stream, Frame::new(FrameType::Payload as u8, n as u16, msg_type, key_hash, stream_id, data_buf)).await?
                 }
             }
         }
-    }    
+    }
 
     let mut prev = payload_offset as usize;
 
     for attachment_size in attachments_sizes {
-        let attachment_offset = prev + attachment_size as usize;
+        let attachment_offset = prev + attachment_size as usize;            
 
         match attachment_size {
             0 => {
-                write_stream_unit(stream, Frame::Empty(stream_id)).await?;
+                //self.write_tx.send(Frame::Empty(stream_id))?
             }
             _ => {
                 let mut source = &data[prev..attachment_offset];
@@ -442,93 +533,15 @@ pub async fn write_to_stream(stream_id: u64, data: Vec<u8>, msg_meta_size: u64, 
                     let n = source.read(&mut data_buf).await?;        
                     match n {
                         0 => break,
-                        _ => write_stream_unit(stream, Frame::Array(stream_id, n, data_buf)).await?
+                        _ => write_frame(tcp_stream, Frame::new(FrameType::Attachment as u8, n as u16, msg_type, key_hash, stream_id, data_buf)).await?
                     }
-                }
+                }                    
             }
-        }        
+        }            
 
         prev = attachment_offset;
     }
 
-    debug!("stream_id {} write succeeded", stream_id);
-
-    Ok(())
-}
-
-pub async fn write_loop(addr: String, mut client_rx: UnboundedReceiver<Frame>, socket_write: &mut TcpStream) -> Result<(), ProcessError> {    
-    loop {       
-        match client_rx.recv().await {
-            Some(res) => {
-                let mut buf_u64 = BytesMut::new();
-                let mut buf_u32 = BytesMut::new();
-
-                match res {
-                    Frame::Array(stream_id, n, buf) => {
-                        debug!("{} Frame::Array write to socket attempt, n {}, stream_id {}", addr, n, stream_id);                        
-                        buf_u64.put_u64(stream_id);
-                        socket_write.write_all(&buf_u64[..]).await?;                        
-                        buf_u32.put_u32(n as u32);
-                        socket_write.write_all(&buf_u32[..]).await?;
-                        socket_write.write_all(&buf[..n]).await?;
-                        debug!("{} Frame::Array write to socket succeded, stream_id {}", addr, stream_id);
-                    }
-                    Frame::Vector(stream_id, buf) => {                        
-                        debug!("{} Frame::Vector write to socket attempt, len {}, stream_id {}", addr, buf.len(), stream_id);                        
-                        buf_u64.put_u64(stream_id);
-                        socket_write.write_all(&buf_u64[..]).await?;                        
-                        buf_u32.put_u32(buf.len() as u32);
-                        socket_write.write_all(&buf_u32[..]).await?;
-                        socket_write.write_all(&buf).await?;
-                        debug!("{} Frame::Vector write to socket succeded, stream_id {}", addr, stream_id);
-                    }
-                    Frame::Empty(stream_id) => {       
-                        debug!("{} Frame::Empty write to socket attempt, stream_id {}", addr, stream_id);                                         
-                        buf_u64.put_u64(stream_id);
-                        socket_write.write_all(&buf_u64[..]).await?;                        
-                        buf_u32.put_u32(0);
-                        socket_write.write_all(&buf_u32[..]).await?;
-                        debug!("{} Frame::Empty write to socket succeded, stream_id {}", addr, stream_id);
-                    }
-                }
-            }
-            None => return Err(ProcessError::WriteChannelDropped)
-        }
-    }
-}
-
-pub async fn write_stream_unit(socket_write: &mut TcpStream, stream_unit: Frame) -> Result<(), ProcessError> {
-    let mut buf_u64 = BytesMut::new();
-    let mut buf_u32 = BytesMut::new();
-
-    match stream_unit {
-        Frame::Array(stream_id, n, buf) => {
-            debug!("Frame::Array write to socket attempt, n {}, stream_id {}", n, stream_id);            
-            buf_u64.put_u64(stream_id);
-            socket_write.write_all(&buf_u64[..]).await?;            
-            buf_u32.put_u32(n as u32);
-            socket_write.write_all(&buf_u32[..]).await?;
-            socket_write.write_all(&buf[..n]).await?;
-            debug!("Frame::Array write to socket succeded, stream_id {}", stream_id);
-        }
-        Frame::Vector(stream_id, buf) => {                        
-            debug!("Frame::Vector write to socket attempt, len {}, stream_id {}", buf.len(), stream_id);            
-            buf_u64.put_u64(stream_id);
-            socket_write.write_all(&buf_u64[..]).await?;            
-            buf_u32.put_u32(buf.len() as u32);
-            socket_write.write_all(&buf_u32[..]).await?;
-            socket_write.write_all(&buf).await?;
-            debug!("Frame::Vector write to socket succeded, stream_id {}", stream_id);
-        }
-        Frame::Empty(stream_id) => {       
-            debug!("Frame::Empty write to socket attempt, stream_id {}", stream_id);                             
-            buf_u64.put_u64(stream_id);
-            socket_write.write_all(&buf_u64[..]).await?;            
-            buf_u32.put_u32(0);
-            socket_write.write_all(&buf_u32[..]).await?;
-            debug!("Frame::Empty write to socket succeded, stream_id {}", stream_id);
-        }
-    }
     Ok(())
 }
 
@@ -544,9 +557,11 @@ pub struct MagicBall {
     pub addr: String,
     pub auth_token: Option<String>,
     pub auth_data: Option<Value>,
+    key_hasher: SipHasher24,
+    key_hash_buf: BytesMut,
+    hasher: SipHasher24,
     hash_buf: BytesMut,
     addr_bytes_len: usize,
-    hasher: SipHasher24,
     pub write_tx: UnboundedSender<Frame>,
     rpc_inbound_tx: UnboundedSender<RpcMsg>
 }
@@ -554,19 +569,26 @@ pub struct MagicBall {
 
 impl MagicBall {
     pub fn new(addr: String, write_tx: UnboundedSender<Frame>, rpc_inbound_tx: UnboundedSender<RpcMsg>) -> MagicBall {
+        let key_hasher = get_key_hasher();
+        let mut key_hash_buf = BytesMut::new();
+
+        let hasher = get_stream_id_hasher();
         let mut hash_buf = BytesMut::new();
+
         let addr_bytes = addr.as_bytes();
         let addr_bytes_len = addr_bytes.len();
+
         hash_buf.put(addr_bytes);
-        let hasher = get_stream_id_hasher();
         
         MagicBall {            
             addr,
             auth_token: None,
             auth_data: None,
+            key_hasher,
+            key_hash_buf,
+            hasher,
             hash_buf,
             addr_bytes_len,
-            hasher,
             write_tx,
             rpc_inbound_tx
         }
@@ -583,10 +605,10 @@ impl MagicBall {
     /// stream_id value MUST BE ACQUIRED with get_stream_id() function. stream_id generation can be implicit, however this will leads to less flexible API (if for example you need stream payload or attachments data).
     /// attachments_sizes parameter should be not empty ONLY IF data parameter contains attachments themself.
     /// If you plan to write attachments data later (for example in streaming fashion), leave attachments_sizes parameter empty and only fill attachment sizes in msg_meta
-    pub async fn write_vec(&mut self, stream_id: u64, data: Vec<u8>, msg_meta_size: u64, payload_size: u64, attachments_sizes: Vec<u64>) -> Result<(), ProcessError> {
+    pub async fn write(&mut self, msg_type: u8, key_hash: u64, stream_id: u64, data: Vec<u8>, msg_meta_size: u64, payload_size: u64, attachments_sizes: Vec<u64>) -> Result<(), ProcessError> {
         let msg_meta_offset = LEN_BUF_SIZE + msg_meta_size as usize;
         let payload_offset = msg_meta_offset + payload_size as usize;
-        let mut data_buf = [0; DATA_BUF_SIZE];
+        let mut data_buf = [0; MAX_FRAME_PAYLOAD_SIZE];
 
         let mut source = &data[LEN_BUF_SIZE..msg_meta_offset];    
 
@@ -594,13 +616,13 @@ impl MagicBall {
             let n = source.read(&mut data_buf).await?;
             match n {
                 0 => break,
-                _ => self.write_tx.send(Frame::Array(stream_id, n, data_buf))?
+                _ => self.write_tx.send(Frame::new(FrameType::MsgMeta as u8, n as u16, msg_type, key_hash, stream_id, data_buf))?
             }
         }
 
         match payload_size {
             0 => {
-                self.write_tx.send(Frame::Empty(stream_id))?
+                //self.write_tx.send(Frame::Empty(stream_id))?
             }
             _ => {            
                 let mut source = &data[msg_meta_offset..payload_offset];
@@ -609,7 +631,7 @@ impl MagicBall {
                     let n = source.read(&mut data_buf).await?;        
                     match n {
                         0 => break,
-                        _ => self.write_tx.send(Frame::Array(stream_id, n, data_buf))?
+                        _ => self.write_tx.send(Frame::new(FrameType::Payload as u8, n as u16, msg_type, key_hash, stream_id, data_buf))?
                     }
                 }
             }
@@ -622,7 +644,7 @@ impl MagicBall {
 
             match attachment_size {
                 0 => {
-                    self.write_tx.send(Frame::Empty(stream_id))?
+                    //self.write_tx.send(Frame::Empty(stream_id))?
                 }
                 _ => {
                     let mut source = &data[prev..attachment_offset];
@@ -631,7 +653,7 @@ impl MagicBall {
                         let n = source.read(&mut data_buf).await?;        
                         match n {
                             0 => break,
-                            _ => self.write_tx.send(Frame::Array(stream_id, n, data_buf))?
+                            _ => self.write_tx.send(Frame::new(FrameType::Attachment as u8, n as u16, msg_type, key_hash, stream_id, data_buf))?
                         }
                     }                    
                 }
@@ -649,9 +671,12 @@ impl MagicBall {
             points: vec![Participator::Service(self.addr.to_owned())]
         };
 
-        let (dto, msg_meta_size, payload_size, attachments_sizes) = event_dto_with_sizes(self.addr.clone(), key.to_owned(), payload, route, self.auth_token.clone(), self.auth_data.clone())?;
+        let (dto, msg_meta_size, payload_size, attachments_sizes) = event_dto_with_sizes(self.addr.clone(), key.clone(), payload, route, self.auth_token.clone(), self.auth_data.clone())?;
 
-        write(self.get_stream_id(), dto, msg_meta_size, payload_size, attachments_sizes, &mut self.write_tx).await?;
+        let key_hash = get_key_hash(&mut self.key_hasher, &mut self.key_hash_buf, key);
+        let stream_id = self.get_stream_id();
+
+        self.write(MsgType::Event.get_u8(), key_hash, stream_id, dto, msg_meta_size, payload_size, attachments_sizes).await?;
         
         Ok(())
     }
@@ -660,9 +685,12 @@ impl MagicBall {
 
         route.points.push(Participator::Service(self.addr.clone()));
 
-        let (dto, msg_meta_size, payload_size, attachments_sizes) = event_dto_with_sizes(self.addr.clone(), key.to_owned(), payload, route, self.auth_token.clone(), self.auth_data.clone())?;
+        let (dto, msg_meta_size, payload_size, attachments_sizes) = event_dto_with_sizes(self.addr.clone(), key.clone(), payload, route, self.auth_token.clone(), self.auth_data.clone())?;
 
-        write(self.get_stream_id(), dto, msg_meta_size, payload_size, attachments_sizes, &mut self.write_tx).await?;
+        let key_hash = get_key_hash(&mut self.key_hasher, &mut self.key_hash_buf, key);
+        let stream_id = self.get_stream_id();
+
+        self.write(MsgType::Event.get_u8(), key_hash, stream_id, dto, msg_meta_size, payload_size, attachments_sizes).await?;
         
         Ok(())
     }    
@@ -675,11 +703,15 @@ impl MagicBall {
 
 		//info!("send_rpc, route {:?}, key {}, payload {:?}, ", route, key, payload);
 		
-        let (correlation_id, dto, msg_meta_size, payload_size, attachments_sizes) = rpc_dto_with_correlation_id_sizes(self.addr.clone(), key.to_owned(), payload, route, self.auth_token.clone(), self.auth_data.clone())?;
+        let (correlation_id, dto, msg_meta_size, payload_size, attachments_sizes) = rpc_dto_with_correlation_id_sizes(self.addr.clone(), key.clone(), payload, route, self.auth_token.clone(), self.auth_data.clone())?;
         let (rpc_tx, rpc_rx) = oneshot::channel();
         
         self.rpc_inbound_tx.send(RpcMsg::AddRpc(correlation_id, rpc_tx))?;
-        write(self.get_stream_id(), dto, msg_meta_size, payload_size, attachments_sizes, &mut self.write_tx).await?;        
+
+        let key_hash = get_key_hash(&mut self.key_hasher, &mut self.key_hash_buf, key);
+        let stream_id = self.get_stream_id();
+
+        self.write(MsgType::RpcRequest.get_u8(), key_hash, stream_id, dto, msg_meta_size, payload_size, attachments_sizes).await?;       
 
         let (msg_meta, payload, attachments_data) = timeout(Duration::from_millis(RPC_TIMEOUT_MS_AMOUNT), rpc_rx).await??;
         let payload: R = from_slice(&payload)?;        
@@ -695,11 +727,15 @@ impl MagicBall {
 
         route.points.push(Participator::Service(self.addr.to_owned()));
 		
-        let (correlation_id, dto, msg_meta_size, payload_size, attachments_sizes) = rpc_dto_with_correlation_id_sizes(self.addr.clone(), key.to_owned(), payload, route, self.auth_token.clone(), self.auth_data.clone())?;
+        let (correlation_id, dto, msg_meta_size, payload_size, attachments_sizes) = rpc_dto_with_correlation_id_sizes(self.addr.clone(), key.clone(), payload, route, self.auth_token.clone(), self.auth_data.clone())?;
         let (rpc_tx, rpc_rx) = oneshot::channel();
         
         self.rpc_inbound_tx.send(RpcMsg::AddRpc(correlation_id, rpc_tx))?;
-        write(self.get_stream_id(), dto, msg_meta_size, payload_size, attachments_sizes, &mut self.write_tx).await?;
+
+        let key_hash = get_key_hash(&mut self.key_hasher, &mut self.key_hash_buf, key);
+        let stream_id = self.get_stream_id();
+
+        self.write(MsgType::RpcRequest.get_u8(), key_hash, stream_id, dto, msg_meta_size, payload_size, attachments_sizes).await?;
 
         let (msg_meta, payload, attachments_data) = timeout(Duration::from_millis(RPC_TIMEOUT_MS_AMOUNT), rpc_rx).await??;
         let payload: R = from_slice(&payload)?;        
@@ -732,18 +768,21 @@ impl MagicBall {
         let payload_size = msg_meta.payload_size;
         let attachments_sizes = msg_meta.attachments_sizes();
 
-        let mut msg_meta = serde_json::to_vec(&msg_meta)?;
-        let msg_meta_size = msg_meta.len() as u64;
+        let mut msg_meta_vec = to_vec(&msg_meta)?;
+        let msg_meta_size = msg_meta_vec.len() as u64;
                                                       
         let mut payload_with_attachments: Vec<_> = data.drain(4 + len..).collect();
         let mut buf = vec![];
 
-        buf.put_u32(msg_meta.len() as u32);
+        buf.put_u32(msg_meta_vec.len() as u32);
 
-        buf.append(&mut msg_meta);
+        buf.append(&mut msg_meta_vec);
         buf.append(&mut payload_with_attachments);
 
-        write(self.get_stream_id(), buf, msg_meta_size, payload_size, attachments_sizes,  &mut self.write_tx).await?;
+        let key_hash = get_key_hash(&mut self.key_hasher, &mut self.key_hash_buf, msg_meta.key);
+        let stream_id = self.get_stream_id();
+
+        self.write(msg_meta.msg_type.get_u8(), key_hash, stream_id, buf, msg_meta_size, payload_size, attachments_sizes).await?;
         
         Ok(())
     }
@@ -774,18 +813,21 @@ impl MagicBall {
         let payload_size = msg_meta.payload_size;
         let attachments_sizes = msg_meta.attachments_sizes();
 
-        let mut msg_meta = serde_json::to_vec(&msg_meta)?;
-        let msg_meta_size = msg_meta.len() as u64;
+        let mut msg_meta_vec = serde_json::to_vec(&msg_meta)?;
+        let msg_meta_size = msg_meta_vec.len() as u64;
                                                       
         let mut payload_with_attachments: Vec<_> = data.drain(4 + len..).collect();
         let mut buf = vec![];
 
-        buf.put_u32(msg_meta.len() as u32);
+        buf.put_u32(msg_meta_vec.len() as u32);
 
-        buf.append(&mut msg_meta);
+        buf.append(&mut msg_meta_vec);
         buf.append(&mut payload_with_attachments);
 
-        write(self.get_stream_id(), buf, msg_meta_size, payload_size, attachments_sizes,  &mut self.write_tx).await?;
+        let key_hash = get_key_hash(&mut self.key_hasher, &mut self.key_hash_buf, msg_meta.key);
+        let stream_id = self.get_stream_id();
+
+        self.write(msg_meta.msg_type.get_u8(), key_hash, stream_id, buf, msg_meta_size, payload_size, attachments_sizes).await?;
         
         Ok(())
     }
@@ -813,22 +855,28 @@ impl MagicBall {
         let payload_size = msg_meta.payload_size;
         let attachments_sizes = msg_meta.attachments_sizes();
 
-        let mut msg_meta = to_vec(&msg_meta)?;
-        let msg_meta_size = msg_meta.len() as u64;
+        let mut msg_meta_vec = to_vec(&msg_meta)?;
+        let msg_meta_size = msg_meta_vec.len() as u64;
                                                       
         let mut payload_with_attachments: Vec<_> = data.drain(4 + len..).collect();
         let mut buf = vec![];
 
-        buf.put_u32(msg_meta.len() as u32);
+        buf.put_u32(msg_meta_vec.len() as u32);
 
-        buf.append(&mut msg_meta);
+        buf.append(&mut msg_meta_vec);
         buf.append(&mut payload_with_attachments);
 
         let (rpc_tx, rpc_rx) = oneshot::channel();
                 
         self.rpc_inbound_tx.send(RpcMsg::AddRpc(correlation_id, rpc_tx))?;
+
         debug!("proxy_rpc write attempt");
-        write(self.get_stream_id(), buf, msg_meta_size, payload_size, attachments_sizes, &mut self.write_tx).await?;
+
+        let key_hash = get_key_hash(&mut self.key_hasher, &mut self.key_hash_buf, msg_meta.key);
+        let stream_id = self.get_stream_id();
+
+        self.write(msg_meta.msg_type.get_u8(), key_hash, stream_id, buf, msg_meta_size, payload_size, attachments_sizes).await?;
+
         debug!("proxy_rpc write attempt succeeded");
 
         let (msg_meta, mut payload, mut attachments_data) = timeout(Duration::from_millis(RPC_TIMEOUT_MS_AMOUNT), rpc_rx).await??;
@@ -872,22 +920,28 @@ impl MagicBall {
         let payload_size = msg_meta.payload_size;
         let attachments_sizes = msg_meta.attachments_sizes();
 
-        let mut msg_meta = to_vec(&msg_meta)?;
-        let msg_meta_size = msg_meta.len() as u64;
+        let mut msg_meta_vec = to_vec(&msg_meta)?;
+        let msg_meta_size = msg_meta_vec.len() as u64;
                                                       
         let mut payload_with_attachments: Vec<_> = data.drain(4 + len..).collect();
         let mut buf = vec![];
 
-        buf.put_u32(msg_meta.len() as u32);
+        buf.put_u32(msg_meta_vec.len() as u32);
 
-        buf.append(&mut msg_meta);
+        buf.append(&mut msg_meta_vec);
         buf.append(&mut payload_with_attachments);
 
         let (rpc_tx, rpc_rx) = oneshot::channel();
                 
         self.rpc_inbound_tx.send(RpcMsg::AddRpc(correlation_id, rpc_tx))?;
+
         debug!("proxy_rpc_with_auth_data write attempt");
-        write(self.get_stream_id(), buf, msg_meta_size, payload_size, attachments_sizes, &mut self.write_tx).await?;
+
+        let key_hash = get_key_hash(&mut self.key_hasher, &mut self.key_hash_buf, msg_meta.key);
+        let stream_id = self.get_stream_id();
+
+        self.write(msg_meta.msg_type.get_u8(), key_hash, stream_id, buf, msg_meta_size, payload_size, attachments_sizes).await?;
+
         debug!("proxy_rpc_with_auth_data write attempt succeeded");
 
         let (msg_meta, mut payload, mut attachments_data) = timeout(Duration::from_millis(RPC_TIMEOUT_MS_AMOUNT), rpc_rx).await??;
@@ -926,22 +980,28 @@ impl MagicBall {
         let payload_size = msg_meta.payload_size;
         let attachments_sizes = msg_meta.attachments_sizes();
 
-        let mut msg_meta = to_vec(&msg_meta)?;
-        let msg_meta_size = msg_meta.len() as u64;
+        let mut msg_meta_vec = to_vec(&msg_meta)?;
+        let msg_meta_size = msg_meta_vec.len() as u64;
                                                       
         let mut payload_with_attachments: Vec<_> = data.drain(4 + len..).collect();
         let mut buf = vec![];
 
-        buf.put_u32(msg_meta.len() as u32);
+        buf.put_u32(msg_meta_vec.len() as u32);
 
-        buf.append(&mut msg_meta);
+        buf.append(&mut msg_meta_vec);
         buf.append(&mut payload_with_attachments);
 
         let (rpc_tx, rpc_rx) = oneshot::channel();
                 
         self.rpc_inbound_tx.send(RpcMsg::AddRpc(correlation_id, rpc_tx))?;
+
         debug!("proxy_rpc_with_payload write attempt");
-        write(self.get_stream_id(), buf, msg_meta_size, payload_size, attachments_sizes, &mut self.write_tx).await?;
+
+        let key_hash = get_key_hash(&mut self.key_hasher, &mut self.key_hash_buf, msg_meta.key);
+        let stream_id = self.get_stream_id();
+
+        self.write(msg_meta.msg_type.get_u8(), key_hash, stream_id, buf, msg_meta_size, payload_size, attachments_sizes).await?;
+
         debug!("proxy_rpc_with_payload write attempt succeeded");
 
         let (msg_meta, payload, attachments_data) = timeout(Duration::from_millis(RPC_TIMEOUT_MS_AMOUNT), rpc_rx).await??;

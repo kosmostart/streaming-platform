@@ -242,7 +242,7 @@ pub enum MsgType {
 }
 
 impl MsgType {
-    pub fn to_u8(&self) -> u8 {
+    pub fn get_u8(&self) -> u8 {
         match self {
             MsgType::Event => 0,
             MsgType::RpcRequest => 1,

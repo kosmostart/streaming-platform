@@ -42,11 +42,11 @@ u64 frame_signature 8
 pub const RPC_TIMEOUT_MS_AMOUNT: u64 = 30000;
 //pub const STREAM_UNIT_READ_TIMEOUT_MS_AMOUNT: u64 = 1000;
 
-fn get_key_hasher() -> SipHasher24 {    
+pub fn get_key_hasher() -> SipHasher24 {    
     SipHasher24::new_with_keys(0, random::<u64>())
 }
 
-fn get_stream_id_hasher() -> SipHasher24 {    
+pub fn get_stream_id_hasher() -> SipHasher24 {    
     SipHasher24::new_with_keys(0, random::<u64>())
 }
 
@@ -131,6 +131,7 @@ pub struct StreamLayout {
     pub attachments_data: Vec<u8>
 }
 
+#[derive(Debug, Clone)]
 pub struct Frame {
     pub frame_type: u8,
     pub payload_size: u16,
@@ -201,7 +202,7 @@ impl State2 {
         self.payload_size_u16 = None;
         self.msg_type = None;
     }
-    pub async fn read(&mut self, tcp_stream: &mut TcpStream) -> Result<Frame, ProcessError> {
+    pub async fn read_frame(&mut self, tcp_stream: &mut TcpStream) -> Result<Frame, ProcessError> {
         let mut i = 0;
         let n = tcp_stream.read(&mut self.read_buf[..]).await?;
 
@@ -427,7 +428,7 @@ pub async fn write(stream_id: u64, data: Vec<u8>, msg_meta_size: u64, payload_si
 }
 */
 
-fn get_key_hash(hasher: &mut SipHasher24, buf: &mut BytesMut, key: Key) -> u64 {
+pub fn get_key_hash(hasher: &mut SipHasher24, buf: &mut BytesMut, key: Key) -> u64 {
     debug!("Creating hash for: {:?}", key);
     buf.clear();
     buf.put((key.service + &key.action + &key.domain).as_bytes());  
@@ -479,7 +480,7 @@ pub async fn write_to_tcp_stream(tcp_stream: &mut TcpStream, msg_type: u8, key_h
     let payload_offset = msg_meta_offset + payload_size as usize;
     let mut data_buf = [0; MAX_FRAME_PAYLOAD_SIZE];
 
-    let mut source = &data[LEN_BUF_SIZE..msg_meta_offset];    
+    let mut source = &data[LEN_BUF_SIZE..msg_meta_offset];
 
     loop {        
         let n = source.read(&mut data_buf).await?;

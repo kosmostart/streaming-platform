@@ -11,13 +11,13 @@ use sp_dto::{Key, MsgType, Subscribes};
 use sp_cfg::ServerConfig;
 use crate::proto::*;
 
-fn to_hashed_subscribes(hasher: &mut SipHasher24, subscribes: HashMap<Key, Vec<String>>) -> HashMap<u64, Vec<String>> {
-    let res = HashMap::new();
+fn to_hashed_subscribes(key_hasher: &mut SipHasher24, subscribes: HashMap<Key, Vec<String>>) -> HashMap<u64, Vec<String>> {
+    let mut res = HashMap::new();
     let mut buf = BytesMut::new();
 
     for (key, value) in subscribes {
-        let key_hash = get_key_hash(hasher, buf, key);
-        res.insert(key_hash, data);
+        let key_hash = get_key_hash(key_hasher, &mut buf, key);
+        res.insert(key_hash, value);
     }
 
     res
@@ -33,8 +33,10 @@ pub fn start(config: ServerConfig, subscribes: Subscribes) {
 pub async fn start_future(config: ServerConfig, subscribes: Subscribes) -> Result<(), ProcessError> {
     let listener = TcpListener::bind(config.host.clone()).await?;
     let (server_tx, mut server_rx) = mpsc::unbounded_channel();
+
     tokio::spawn(async move {        
         let mut clients = HashMap::new();
+
         loop {
             let msg = server_rx.recv().await.expect("ServerMsg receive failed");
             match msg {
@@ -77,7 +79,7 @@ pub async fn start_future(config: ServerConfig, subscribes: Subscribes) -> Resul
     };
 
     let mut client_states = HashMap::new();
-    let key_hasher = SipHasher24::new_with_keys(0, random::<u64>());
+    let mut key_hasher = get_key_hasher();
 
     let event_subscribes = to_hashed_subscribes(&mut key_hasher, event_subscribes);
     let rpc_subscribes = to_hashed_subscribes(&mut key_hasher, rpc_subscribes);
@@ -87,10 +89,13 @@ pub async fn start_future(config: ServerConfig, subscribes: Subscribes) -> Resul
 
     loop {                
         let (mut stream, client_net_addr) = listener.accept().await?;
+
         info!("New connection from {}", client_net_addr);
+
         let config = config.clone();
         let server_tx = server_tx.clone();
-        match auth_stream(&mut stream, client_net_addr, &config).await {
+
+        match auth_tcp_stream(&mut stream, client_net_addr, &config).await {
             Ok(addr) => {
                 info!("Stream from {} authorized as {}", client_net_addr, addr);
                 if !client_states.contains_key(&addr) {
@@ -105,13 +110,13 @@ pub async fn start_future(config: ServerConfig, subscribes: Subscribes) -> Resul
                             let rpc_subscribes = rpc_subscribes.clone();
                             let rpc_response_subscribes = rpc_response_subscribes.clone();
                             tokio::spawn(async move {                                
-                                let res = process_write_stream(addr.clone(), event_subscribes, rpc_subscribes, rpc_response_subscribes, &mut stream, client_net_addr, server_tx).await;
+                                let res = process_write_tcp_stream(addr.clone(), event_subscribes, rpc_subscribes, rpc_response_subscribes, &mut stream, client_net_addr, server_tx).await;
                                 error!("{} write process ended, {:?}", addr, res);
                             });
                         } else {
                             client_state.has_writer = false;
                             tokio::spawn(async move {            
-                                let res = process_read_stream(addr.clone(), stream, client_net_addr, server_tx).await;
+                                let res = process_read_tcp_stream(addr.clone(), stream, client_net_addr, server_tx).await;
                                 error!("{} read process ended, {:?}", addr, res);
                             });
                         }
@@ -137,45 +142,46 @@ impl ClientState {
     }
 }
 
-async fn auth_stream(stream: &mut TcpStream, _client_net_addr: SocketAddr, _config: &ServerConfig) -> Result<String, ProcessError> {    
-    let mut state = State2::new();        
+async fn auth_tcp_stream(tcp_stream: &mut TcpStream, _client_net_addr: SocketAddr, _config: &ServerConfig) -> Result<String, ProcessError> {    
+    let mut state = State2::new();
+    
+    //let mut msg_meta_vec = vec![];
 
     loop {
-        match state.read(stream).await {
+        match state.read_frame(tcp_stream).await {
             Ok(frame) => {
-                debug!("Process auth stream: got frame, stream_id {}", frame.stream_id);
 
+                debug!("Process auth tcp stream: got frame, stream_id {}", frame.stream_id);
             }
             Err(e) => {
-                error!("Error on read from {}: {:?}", addr, e);
+                error!("Error on read from {}: {:?}", "addr", e);
                 state.clear();
             }
         } 
     }
-    
-    let auth_stream_layout = auth_stream_layout.ok_or(ProcessError::AuthStreamLayoutIsEmpty)?;    
+       
     //let auth_payload: Value = from_slice(&auth_stream_layout.payload)?;
 
-    Ok(auth_stream_layout.msg_meta.tx)
+    Ok("".to_owned())
 }
 
 
-async fn process_read_stream(addr: String, mut stream: TcpStream, client_net_addr: SocketAddr, server_tx: UnboundedSender<ServerMsg>) -> Result<(), ProcessError> {
-    let mut _state = State::new("Write stream from Server to ".to_owned() + &addr);    
+async fn process_read_tcp_stream(addr: String, mut tcp_stream: TcpStream, client_net_addr: SocketAddr, server_tx: UnboundedSender<ServerMsg>) -> Result<(), ProcessError> {
+    let mut _state = State::new("Write tcp stream from Server to ".to_owned() + &addr);    
     let (client_tx, client_rx) = mpsc::unbounded_channel();
 
     server_tx.send(ServerMsg::AddClient(addr.clone(), client_net_addr, client_tx))?;    
 
-    write_loop(addr, client_rx, &mut stream).await
+    write_loop(addr, client_rx, &mut tcp_stream).await
 }
 
-async fn process_write_stream(addr: String, event_subscribes: HashMap<u64, Vec<String>>, rpc_subscribes: HashMap<u64, Vec<String>>, rpc_response_subscribes: HashMap<u64, Vec<String>>, stream: &mut TcpStream, _client_net_addr: SocketAddr, server_tx: UnboundedSender<ServerMsg>) -> Result<(), ProcessError> {
+async fn process_write_tcp_stream(addr: String, event_subscribes: HashMap<u64, Vec<String>>, rpc_subscribes: HashMap<u64, Vec<String>>, rpc_response_subscribes: HashMap<u64, Vec<String>>, tcp_stream: &mut TcpStream, _client_net_addr: SocketAddr, server_tx: UnboundedSender<ServerMsg>) -> Result<(), ProcessError> {
     let mut state = State2::new();        
 
     loop {
-        match state.read(stream).await {
+        match state.read_frame(tcp_stream).await {
             Ok(frame) => {
-                debug!("Process write stream: got frame, stream_id {}", frame.stream_id);
+                debug!("Process write tcp stream: got frame, stream_id {}", frame.stream_id);
 
                 let subscribes = match frame.get_msg_type()? {
                     MsgType::Event => &event_subscribes,
@@ -185,9 +191,29 @@ async fn process_write_stream(addr: String, event_subscribes: HashMap<u64, Vec<S
                 
                 match subscribes.get(&frame.key_hash) {
                     Some(targets) => {
-                        for target in targets {     
-                            debug!("Sending frame to {}", target);
-                            server_tx.send(ServerMsg::Send(target.clone(), frame))?;
+                        match targets.len() {
+                            0 => {
+                                warn!("Subscribes empty for key hash {}, msg_type {:?}", frame.key_hash, frame.get_msg_type())
+                            }
+                            1 => {
+                                let target = targets[0].clone();
+
+                                debug!("Sending frame to {}", target);
+                                server_tx.send(ServerMsg::Send(target, frame))?;
+                            }
+                            _ => {
+                                let index = targets.len() - 1;
+
+                                for target in targets.iter().take(index) {     
+                                    debug!("Sending frame to {}", target);
+                                    server_tx.send(ServerMsg::Send(target.clone(), frame.clone()))?;
+                                }
+
+                                let target = &targets[index];
+
+                                debug!("Sending frame to {}", target);
+                                server_tx.send(ServerMsg::Send(target.clone(), frame))?;
+                            }
                         }
                     }
                     None => warn!("No subscribes found for key hash {}, msg_type {:?}", frame.key_hash, frame.get_msg_type())
@@ -203,7 +229,7 @@ async fn process_write_stream(addr: String, event_subscribes: HashMap<u64, Vec<S
 }
 
 /*
-async fn process_write_stream(addr: String, event_subscribes: HashMap<Key, Vec<String>>, rpc_subscribes: HashMap<Key, Vec<String>>, rpc_response_subscribes: HashMap<Key, Vec<String>>, stream: &mut TcpStream, _client_net_addr: SocketAddr, server_tx: UnboundedSender<ServerMsg>) -> Result<(), ProcessError> {    
+async fn process_write_tcp_stream(addr: String, event_subscribes: HashMap<Key, Vec<String>>, rpc_subscribes: HashMap<Key, Vec<String>>, rpc_response_subscribes: HashMap<Key, Vec<String>>, stream: &mut TcpStream, _client_net_addr: SocketAddr, server_tx: UnboundedSender<ServerMsg>) -> Result<(), ProcessError> {    
     let mut state = State::new("Read stream from Server to ".to_owned() + &addr);        
     let mut client_addrs = HashMap::new();    
 

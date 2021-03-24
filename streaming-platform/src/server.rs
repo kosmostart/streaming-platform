@@ -19,7 +19,7 @@ fn to_hashed_subscribes(hasher: &mut SipHasher24, subscribes: HashMap<Key, Vec<S
         let key_hash = get_key_hash(hasher, buf, key);
         res.insert(key_hash, data);
     }
-    
+
     res
 }
 
@@ -79,9 +79,9 @@ pub async fn start_future(config: ServerConfig, subscribes: Subscribes) -> Resul
     let mut client_states = HashMap::new();
     let key_hasher = SipHasher24::new_with_keys(0, random::<u64>());
 
-    let event_subscribes = to_hashed_subscribes(key_hasher, event_subscribes);
-    let rpc_subscribes = to_hashed_subscribes(key_hasher, rpc_subscribes);
-    let rpc_response_subscribes = to_hashed_subscribes(key_hasher, rpc_response_subscribes);
+    let event_subscribes = to_hashed_subscribes(&mut key_hasher, event_subscribes);
+    let rpc_subscribes = to_hashed_subscribes(&mut key_hasher, rpc_subscribes);
+    let rpc_response_subscribes = to_hashed_subscribes(&mut key_hasher, rpc_response_subscribes);
 
     info!("Started on {}", config.host);
 
@@ -138,64 +138,19 @@ impl ClientState {
 }
 
 async fn auth_stream(stream: &mut TcpStream, _client_net_addr: SocketAddr, _config: &ServerConfig) -> Result<String, ProcessError> {    
-    let mut state = State::new("Server".to_owned());
-    let mut stream_layouts = HashMap::new();
-    let auth_stream_layout;
+    let mut state = State2::new();        
 
     loop {
-        match read(&mut state, stream).await? {
-            ReadResult::MsgMeta(stream_id, msg_meta, _) => {
-                //info!("{} {:?}", stream_id, msg_meta);
-                stream_layouts.insert(stream_id, StreamLayout {
-                    id: stream_id,
-                    msg_meta,
-                    payload: vec![],
-                    attachments_data: vec![]
-                });
-            }
-            ReadResult::PayloadData(stream_id, n, buf) => {
-                //info!("payload data {} {}", stream_id, n);
-                let stream_layout = stream_layouts.get_mut(&stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
-                stream_layout.payload.extend_from_slice(&buf[..n]);
+        match state.read(stream).await {
+            Ok(frame) => {
+                debug!("Process auth stream: got frame, stream_id {}", frame.stream_id);
 
             }
-            ReadResult::PayloadFinished(stream_id, n, buf) => {
-                //info!("payload finished {} {}", stream_id, n);
-                let stream_layout = stream_layouts.get_mut(&stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
-                stream_layout.payload.extend_from_slice(&buf[..n]);
+            Err(e) => {
+                error!("Error on read from {}: {:?}", addr, e);
+                state.clear();
             }
-            ReadResult::AttachmentData(stream_id, _, n, buf) => {
-                let stream_layout = stream_layouts.get_mut(&stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
-                stream_layout.attachments_data.extend_from_slice(&buf[..n]);
-            }
-            ReadResult::AttachmentFinished(stream_id, _, n, buf) => {
-                let stream_layout = stream_layouts.get_mut(&stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
-                stream_layout.attachments_data.extend_from_slice(&buf[..n]);
-            }
-            ReadResult::MessageFinished(stream_id, finish_bytes) => {
-                //info!("message finished {}", stream_id);
-                let stream_layout = stream_layouts.get_mut(&stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
-                match finish_bytes {
-                    MessageFinishBytes::Payload(n, buf) => {
-                        stream_layout.payload.extend_from_slice(&buf[..n]);
-                    }
-                    MessageFinishBytes::Attachment(_, n, buf) => {
-                        stream_layout.attachments_data.extend_from_slice(&buf[..n]);
-                    }                    
-                }
-                auth_stream_layout = stream_layouts.remove(&stream_id);
-                //read_tx.send(ClientMsg::Message(stream_layout.msg_meta, stream_layout.payload, stream_layout.attachments_data)).await?;
-                break;
-            }
-            ReadResult::MessageAborted(stream_id) => {
-                match stream_id {
-                    Some(stream_id) => {
-                        let _ = stream_layouts.remove(&stream_id);
-                    }
-                    None => {}
-                }
-            }
-        }
+        } 
     }
     
     let auth_stream_layout = auth_stream_layout.ok_or(ProcessError::AuthStreamLayoutIsEmpty)?;    

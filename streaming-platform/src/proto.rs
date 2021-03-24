@@ -138,8 +138,7 @@ pub struct Frame {
     pub key_hash: u64,
     pub stream_id: u64,
     pub frame_signature: u64,
-    pub payload: Option<[u8; MAX_FRAME_PAYLOAD_SIZE]>,
-    pub data: Option<[u8; MAX_FRAME_SIZE]>
+    pub payload: [u8; MAX_FRAME_PAYLOAD_SIZE]
 }
 
 pub enum FrameType {
@@ -151,17 +150,6 @@ pub enum FrameType {
 impl Frame {
     pub fn new(frame_type: u8, payload_size: u16, msg_type: u8, key_hash: u64, stream_id: u64, payload: [u8; MAX_FRAME_PAYLOAD_SIZE]) -> Frame {
         let frame_signature = 0;
-        
-        /*
-        let mut data = [0; MAX_FRAME_SIZE];
-
-        data[0] = frame_type;
-        byteorder::BigEndian::write_u16(&mut data[1..3], payload_size);
-        data[3] = msg_type;
-        byteorder::BigEndian::write_u64(&mut data[4..12], key_hash);
-        byteorder::BigEndian::write_u64(&mut data[12..20], stream_id);
-        byteorder::BigEndian::write_u64(&mut data[20..28], frame_signature);
-        */
 
         Frame {
             frame_type,
@@ -170,8 +158,7 @@ impl Frame {
             key_hash,
             stream_id,
             frame_signature,
-            payload: Some(payload),
-            data: None
+            payload
         }
     }
     pub fn get_msg_type(&self) -> Result<MsgType, ProcessError> {
@@ -190,8 +177,8 @@ pub struct State2 {
     read_buf: [u8; MAX_FRAME_SIZE],
     offset: usize,
     frame_type: Option<u8>,
-    frame_size: Option<usize>,
-    frame_size_u16: Option<u16>,
+    payload_size: Option<usize>,
+    payload_size_u16: Option<u16>,
     msg_type: Option<u8>
 }
 
@@ -202,16 +189,16 @@ impl State2 {
             read_buf: [0; MAX_FRAME_SIZE],
             offset: 0,
             frame_type: None,
-            frame_size: None,
-            frame_size_u16: None,
+            payload_size: None,
+            payload_size_u16: None,
             msg_type: None
         }
     }
     pub fn clear(&mut self) {
         self.offset = 0;
         self.frame_type = None;
-        self.frame_size = None;
-        self.frame_size_u16 = None;
+        self.payload_size = None;
+        self.payload_size_u16 = None;
         self.msg_type = None;
     }
     pub async fn read(&mut self, tcp_stream: &mut TcpStream) -> Result<Frame, ProcessError> {
@@ -225,45 +212,53 @@ impl State2 {
                 self.frame_type = Some(self.read_buf[0]);
             }
 
-            if self.frame_size.is_none() && n >= 3 {
-                let frame_size_u16 = byteorder::BigEndian::read_u16(&self.read_buf[1..3]);
-                let frame_size = frame_size_u16 as usize;
+            if self.payload_size.is_none() && n >= 3 {
+                let payload_size_u16 = byteorder::BigEndian::read_u16(&self.read_buf[1..3]);
+                let payload_size = payload_size_u16 as usize;
 
-                debug!("Got frame_size {}", frame_size);
+                debug!("Got payload size {}", payload_size);
 
-                if frame_size > MAX_FRAME_SIZE {
-                    return Err(ProcessError::FrameSizeExceeded);
+                if payload_size > MAX_FRAME_PAYLOAD_SIZE {
+                    return Err(ProcessError::FramePayloadSizeExceeded);
                 }
 
-                if frame_size < FRAME_HEADER_SIZE {
-                    return Err(ProcessError::FrameSizeLessThanMin);
-                }
-
-                self.frame_size = Some(frame_size);
-                self.frame_size_u16 = Some(frame_size_u16);
+                self.payload_size = Some(payload_size);
+                self.payload_size_u16 = Some(payload_size_u16);
             }
 
-            match self.frame_size {
-                Some(frame_size) => {
+            match self.payload_size {
+                Some(payload_size) => {
+
+                    let frame_size = FRAME_HEADER_SIZE + payload_size;
 
                     match self.offset + n >= frame_size {
                         true => {
+                            debug!("Got frame, frame size: {}", frame_size);
+
                             while i < frame_size - self.offset {
                                 self.frame_buf[self.offset + i] = self.read_buf[i];
                                 i = i + 1;
                             }
+
+                            let bytes_moved = i;
+                            self.offset = 0;
+
+                            debug!("Bytes moved: {}", bytes_moved);
                             
                             let key_hash = byteorder::BigEndian::read_u64(&self.frame_buf[4..12]);
                             let stream_id = byteorder::BigEndian::read_u64(&self.frame_buf[12..20]);
                             let frame_signature = byteorder::BigEndian::read_u64(&self.frame_buf[20..28]);
-                            
-                            debug!("Got frame, frame size: {}", frame_size);
-        
-                            self.offset = 0;
-                            let bytes_moved = i;
+
                             i = 0;
-        
-                            debug!("Bytes moved: {}", bytes_moved);
+
+                            let mut payload = [0; MAX_FRAME_PAYLOAD_SIZE];
+
+                            while i < frame_size {
+                                payload[i] = self.frame_buf[FRAME_HEADER_SIZE..frame_size][i];
+                                i = i + 1;
+                            }
+
+                            i = 0;
         
                             while i < n - bytes_moved {
                                 debug!("Index: {}", i);
@@ -274,13 +269,12 @@ impl State2 {
 
                             return Ok(Frame {
                                 frame_type: self.frame_type?,
-                                payload_size: (self.frame_size? - FRAME_HEADER_SIZE) as u16,
+                                payload_size: payload_size as u16,
                                 msg_type: self.frame_buf[3],
                                 key_hash,
                                 stream_id,
                                 frame_signature,
-                                payload: None,
-                                data: Some(self.frame_buf.clone())
+                                payload
                             })
                         }
                         false => {
@@ -460,12 +454,7 @@ pub async fn write_frame(tcp_stream: &mut TcpStream, frame: Frame) -> Result<(),
 
     tcp_stream.write_all(&header[..]).await?;
 
-    match frame.payload {
-        Some(payload) => {
-            tcp_stream.write_all(&payload[..frame.payload_size as usize]).await?;
-        }
-        None => {}
-    }
+    tcp_stream.write_all(&frame.payload[..frame.payload_size as usize]).await?;
 
     Ok(())
 }
@@ -1014,8 +1003,7 @@ impl MagicBall {
 
 #[derive(Debug)]
 pub enum ProcessError {
-    FrameSizeExceeded,
-    FrameSizeLessThanMin,
+    FramePayloadSizeExceeded,
     ReadLoopCompleted,
     IncorrectMsgType,
     StreamNotFoundInState,

@@ -151,24 +151,39 @@ impl State2 {
     pub async fn read_from_tcp_stream(&mut self, tcp_stream: &mut TcpStream) -> Result<NextAction, ProcessError> {
         let bytes_read = tcp_stream.read(&mut self.read_buf[..]).await?;
 
-        self.bytes_read = self.bytes_read + bytes_read;
-
-        debug!("Bytes read from tcp stream: {}, bytes read in state: {}", bytes_read, self.bytes_read);
-
-        match self.bytes_read >= FRAME_HEADER_SIZE {
-            true => {
-                self.offset = 0;
-
-                Ok(NextAction::ReadFrame)
+        match bytes_read {
+            0 => {
+                error!("Read 0 bytes");
+                Ok(NextAction::ReadMoreBytes)
             }
-            false => Ok(NextAction::ReadMoreBytes)
+            _ => {
+                let mut i = 0;
+
+                while i < bytes_read {
+                    self.frame_buf[self.bytes_read + i] = self.read_buf[i];
+
+                    i = i + 1;
+                }
+
+                self.bytes_read = self.bytes_read + bytes_read;
+
+                debug!("Bytes read from tcp stream: {}, bytes read in state: {}", bytes_read, self.bytes_read);
+
+                match self.bytes_read >= FRAME_HEADER_SIZE {
+                    true => {
+                        self.offset = 0;
+
+                        Ok(NextAction::ReadFrame)
+                    }
+                    false => Ok(NextAction::ReadMoreBytes)
+                }
+            }
         }
     }
     pub fn read_frame(&mut self) -> ReadFrameResult {
+        debug!("Got frame type {}, offset {}", self.frame_buf[self.offset], self.offset);
 
-        
-
-        debug!("Got frame type {}", self.frame_buf[self.offset]);
+        //debug!("{:?}", self.frame_buf);
 
         let payload_size_u16 = byteorder::BigEndian::read_u16(&self.frame_buf[self.offset + 1..self.offset + 3]);
         let payload_size = payload_size_u16 as usize;

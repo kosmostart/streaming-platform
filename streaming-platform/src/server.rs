@@ -3,11 +3,12 @@ use std::net::SocketAddr;
 use std::hash::Hasher;
 use log::*;
 use siphasher::sip::SipHasher24;
+use serde_json::from_slice;
 use tokio::runtime::Runtime;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc::{self, UnboundedSender};
 use sp_dto::bytes::{Buf, BytesMut, BufMut};
-use sp_dto::{Key, MsgType, Subscribes};
+use sp_dto::{Key, MsgMeta, MsgType, Subscribes};
 use sp_cfg::ServerConfig;
 use crate::proto::*;
 
@@ -146,27 +147,53 @@ impl ClientState {
     }
 }
 
-async fn auth_tcp_stream(tcp_stream: &mut TcpStream, _client_net_addr: SocketAddr, _config: &ServerConfig) -> Result<String, ProcessError> {    
+async fn auth_tcp_stream(tcp_stream: &mut TcpStream, client_net_addr: SocketAddr, _config: &ServerConfig) -> Result<String, ProcessError> {    
     let mut state = State2::new();
     
-    //let mut msg_meta_vec = vec![];
+    let mut stream_layout = StreamLayout {
+        id: 0,
+        msg_meta: vec![],
+        payload: vec![],
+        attachments_data: vec![]
+    };
 
     loop {
         match state.read_frame(tcp_stream).await {
             Ok(frame) => {
 
-                debug!("Process auth tcp stream: got frame, stream_id {}", frame.stream_id);
+                match frame.get_frame_type() {
+                    Ok(frame_type) => {
+
+                        match frame_type {
+                            FrameType::MsgMeta => {
+                                stream_layout.msg_meta.extend_from_slice(&frame.payload[..frame.payload_size as usize]);
+                            }
+                            FrameType::Payload => {
+                                stream_layout.payload.extend_from_slice(&frame.payload[..frame.payload_size as usize]);
+                            }
+                            FrameType::Attachment => {
+                                stream_layout.attachments_data.extend_from_slice(&frame.payload[..frame.payload_size as usize]);
+                            }
+                            FrameType::End => {
+                                break;
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        error!("Error on auth stream read for {:?}, get frame type failed, {:?}", client_net_addr, e);
+                    }
+                }
             }
             Err(e) => {
-                error!("Error on read from {}: {:?}", "addr", e);
+                error!("Error on auth stream read for {:?}, {:?}", client_net_addr, e);
                 state.clear();
             }
-        } 
+        }  
     }
        
-    //let auth_payload: Value = from_slice(&auth_stream_layout.payload)?;
+    let msg_meta: MsgMeta = from_slice(&stream_layout.msg_meta)?;
 
-    Ok("".to_owned())
+    Ok(msg_meta.tx)
 }
 
 

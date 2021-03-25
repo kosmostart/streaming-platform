@@ -105,6 +105,7 @@ impl Frame {
             0 => FrameType::MsgMeta,
             1 => FrameType::Payload,
             2 => FrameType::Attachment,
+            3 => FrameType::End,
             _ => return Err(ProcessError::IncorrectFrameType)
         })
     }

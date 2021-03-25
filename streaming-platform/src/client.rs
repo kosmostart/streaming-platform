@@ -269,14 +269,14 @@ async fn connect_full_message_future(host: &str, addr: String, access_key: Strin
     let mut write_stream = TcpStream::connect(host).await.expect("Connection to host failed");
     auth(addr.clone(), access_key.clone(), &mut write_stream).await.expect("Write stream authorization failed");
 
-    //let mut read_stream = TcpStream::connect(host).await.expect("Connection to host failed");
-    //auth(addr.clone(), access_key, &mut read_stream).await.expect("Read stream authorization failed");
+    let mut read_stream = TcpStream::connect(host).await.expect("Connection to host failed");
+    auth(addr.clone(), access_key, &mut read_stream).await.expect("Read stream authorization failed");
 
-    //info!("Connected in full message mode to {} as {}", host, addr);
+    info!("Connected in full message mode to {} as {}", host, addr);
 
-    //let res = process_full_message_mode(addr, write_stream, read_stream, read_tx, write_rx).await;
+    let res = process_full_message_mode(addr, write_stream, read_stream, read_tx, write_rx).await;
 
-    //info!("{:?}", res);
+    info!("{:?}", res);
 }
 
 async fn process_stream_mode(addr: String, mut write_tcp_stream: TcpStream, mut read_tcp_stream: TcpStream, read_tx: UnboundedSender<ClientMsg>, write_rx: UnboundedReceiver<Frame>) -> Result<(), ProcessError> {

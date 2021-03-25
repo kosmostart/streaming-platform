@@ -296,23 +296,36 @@ async fn process_stream_mode(addr: String, mut write_tcp_stream: TcpStream, mut 
     let mut state = State2::new();
 
     loop {
-        match state.read_frame(&mut read_tcp_stream).await {
-            Ok(frame) => {
-                match read_tx.send(ClientMsg::Frame(frame)) {
-                    Ok(()) => {}
-                    Err(_) => {                        
-                        panic!("Client message send with read_tx in stream mode failed");
+        let n = state.read_from_tcp_stream(&mut read_tcp_stream).await?;
+
+        loop {
+            match state.read_frame(n).await {
+                Ok(frame) => {
+                    match frame {
+                        Some(frame) => {
+                            match read_tx.send(ClientMsg::Frame(frame)) {
+                                Ok(()) => {}
+                                Err(_) => {                        
+                                    panic!("Client message send with read_tx in stream mode failed");
+                                }
+                            }
+                        }
+                        None => {
+                            debug!("Auth frame read return None");
+                            
+                            break;
+                        }
                     }
                 }
-            }
-            Err(e) => {
-                error!("Error on read for {}: {:?}", addr, e);
-
-                break Ok(());
-
-                state.clear();
-            }
-        }  
+                Err(e) => {
+                    error!("Error on read for {}: {:?}", addr, e);
+    
+                    break;
+    
+                    state.clear();
+                }
+            }  
+        }
     }
 }
 
@@ -334,63 +347,77 @@ async fn process_full_message_mode(addr: String, mut write_tcp_stream: TcpStream
     });
     
     loop {
-        match state.read_frame(&mut read_tcp_stream).await {
-            Ok(frame) => {
+        let n = state.read_from_tcp_stream(&mut read_tcp_stream).await?;
 
-                match frame.get_frame_type() {
-                    Ok(frame_type) => {
-
-                        match frame_type {
-                            FrameType::MsgMeta => {
-                                match stream_layouts.get_mut(&frame.stream_id) {
-                                    Some(stream_layout) => {
-                                        stream_layout.msg_meta.extend_from_slice(&frame.payload[..frame.payload_size as usize]);
-                                    }
-                                    None => {
-                                        stream_layouts.insert(frame.stream_id, StreamLayout {
-                                            id: frame.stream_id,
-                                            msg_meta: frame.payload[..frame.payload_size as usize].to_vec(),
-                                            payload: vec![],
-                                            attachments_data: vec![]
-                                        });
+        loop {
+            match state.read_frame(n).await {
+                Ok(frame) => {
+            
+                    match frame {
+                        Some(frame) => {
+                            match frame.get_frame_type() {
+                                Ok(frame_type) => {
+            
+                                    match frame_type {
+                                        FrameType::MsgMeta => {
+                                            match stream_layouts.get_mut(&frame.stream_id) {
+                                                Some(stream_layout) => {
+                                                    stream_layout.msg_meta.extend_from_slice(&frame.payload[..frame.payload_size as usize]);
+                                                }
+                                                None => {
+                                                    stream_layouts.insert(frame.stream_id, StreamLayout {
+                                                        id: frame.stream_id,
+                                                        msg_meta: frame.payload[..frame.payload_size as usize].to_vec(),
+                                                        payload: vec![],
+                                                        attachments_data: vec![]
+                                                    });
+                                                }
+                                            }
+                                        }
+                                        FrameType::Payload => {
+                                            let stream_layout = stream_layouts.get_mut(&frame.stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
+                                            stream_layout.payload.extend_from_slice(&frame.payload[..frame.payload_size as usize]);
+                                        }
+                                        FrameType::Attachment => {
+                                            let stream_layout = stream_layouts.get_mut(&frame.stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
+                                            stream_layout.attachments_data.extend_from_slice(&frame.payload[..frame.payload_size as usize]);
+                                        }
+                                        FrameType::End => {
+                                            let stream_layout = stream_layouts.remove(&frame.stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
+            
+                                            let msg_meta = from_slice(&stream_layout.msg_meta)?;
+                    
+                                            match read_tx.send(ClientMsg::Message(frame.stream_id, msg_meta, stream_layout.payload, stream_layout.attachments_data)) {
+                                                Ok(()) => {}
+                                                Err(_) => {
+                                                    panic!("Client message send with read_tx in full message mode failed")
+                                                }
+                                            }
+                                        }
                                     }
                                 }
-                            }
-                            FrameType::Payload => {
-                                let stream_layout = stream_layouts.get_mut(&frame.stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
-                                stream_layout.payload.extend_from_slice(&frame.payload[..frame.payload_size as usize]);
-                            }
-                            FrameType::Attachment => {
-                                let stream_layout = stream_layouts.get_mut(&frame.stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
-                                stream_layout.attachments_data.extend_from_slice(&frame.payload[..frame.payload_size as usize]);
-                            }
-                            FrameType::End => {
-                                let stream_layout = stream_layouts.remove(&frame.stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
-
-                                let msg_meta = from_slice(&stream_layout.msg_meta)?;
-        
-                                match read_tx.send(ClientMsg::Message(frame.stream_id, msg_meta, stream_layout.payload, stream_layout.attachments_data)) {
-                                    Ok(()) => {}
-                                    Err(_) => {
-                                        panic!("Client message send with read_tx in full message mode failed")
-                                    }
+                                Err(e) => {
+                                    error!("Get frame type failed in read: {:?}, addr {}", e, addr);
                                 }
                             }
+                            
+                        }
+                        None => {
+                            debug!("Auth frame read return None");
+
+                            break;
                         }
                     }
-                    Err(e) => {
-                        error!("Error on read for {}, get frame type failed: {:?}", addr, e);
-                    }
                 }
-            }
-            Err(e) => {
-                error!("Error on read for {}: {:?}", addr, e);
+                Err(e) => {
+                    error!("Error on read for {}: {:?}", addr, e);
 
-                break Ok(());
+                    break;
 
-                state.clear();
+                    state.clear();
+                }   
             }
-        }  
+        }
     }
 }
 

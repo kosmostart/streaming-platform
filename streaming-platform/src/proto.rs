@@ -22,10 +22,11 @@ use sp_dto::{*, uuid::Uuid};
 pub const STREAM_ID_BUF_SIZE: usize = 8;
 pub const LEN_BUF_SIZE: usize = 4;
 pub const LENS_BUF_SIZE: usize = 12;
-pub const MAX_FRAME_PAYLOAD_SIZE: usize = 1024;
 
 pub const FRAME_HEADER_SIZE: usize = 28;
-pub const MAX_FRAME_SIZE: usize = 1052;
+pub const MAX_FRAME_PAYLOAD_SIZE: usize = 1024;
+
+pub const MAX_FRAME_SIZE: usize = FRAME_HEADER_SIZE + MAX_FRAME_PAYLOAD_SIZE;
 
 /*
 u8 frame_type 1
@@ -117,43 +118,111 @@ impl Frame {
         })
     }
 }
-
 pub struct State2 {
+    bytes_read: usize,
     frame_buf: [u8; MAX_FRAME_SIZE],
     read_buf: [u8; MAX_FRAME_SIZE],
-    offset: usize,
-    frame_type: Option<u8>,
-    payload_size: Option<usize>,
-    payload_size_u16: Option<u16>,
-    msg_type: Option<u8>
+    offset: usize
+}
+
+pub enum NextAction {
+    ReadFrame,
+    ReadMoreBytes
+}
+
+pub enum ReadFrameResult {
+    Frame(Frame),
+    ReadMoreBytes
 }
 
 impl State2 {
     pub fn new() -> State2 {
         State2 {
+            bytes_read: 0,
             frame_buf: [0; MAX_FRAME_SIZE],
             read_buf: [0; MAX_FRAME_SIZE],
-            offset: 0,
-            frame_type: None,
-            payload_size: None,
-            payload_size_u16: None,
-            msg_type: None
+            offset: 0
         }
     }
     pub fn clear(&mut self) {
+        self.bytes_read = 0;
         self.offset = 0;
-        self.frame_type = None;
-        self.payload_size = None;
-        self.payload_size_u16 = None;
-        self.msg_type = None;
     }
-    pub async fn read_from_tcp_stream(&mut self, tcp_stream: &mut TcpStream) -> Result<usize, ProcessError> {
-        let res = tcp_stream.read(&mut self.read_buf[..]).await?;
+    pub async fn read_from_tcp_stream(&mut self, tcp_stream: &mut TcpStream) -> Result<NextAction, ProcessError> {
+        let bytes_read = tcp_stream.read(&mut self.read_buf[..]).await?;
 
-        debug!("Bytes read from tcp stream: {}", res);
+        self.bytes_read = self.bytes_read + bytes_read;
 
-        Ok(res)
+        debug!("Bytes read from tcp stream: {}, bytes read in state: {}", bytes_read, self.bytes_read);
+
+        match self.bytes_read >= FRAME_HEADER_SIZE {
+            true => {
+                self.offset = 0;
+
+                Ok(NextAction::ReadFrame)
+            }
+            false => Ok(NextAction::ReadMoreBytes)
+        }
     }
+    pub fn read_frame(&mut self) -> ReadFrameResult {
+
+        
+
+        debug!("Got frame type {}", self.frame_buf[self.offset]);
+
+        let payload_size_u16 = byteorder::BigEndian::read_u16(&self.frame_buf[self.offset + 1..self.offset + 3]);
+        let payload_size = payload_size_u16 as usize;
+
+        debug!("Got payload size {}", payload_size_u16);
+
+        let frame_size = FRAME_HEADER_SIZE + payload_size;
+
+        match self.offset + frame_size <= self.bytes_read {
+            true => {
+                let key_hash = byteorder::BigEndian::read_u64(&self.frame_buf[self.offset + 4..self.offset + 12]);
+                let stream_id = byteorder::BigEndian::read_u64(&self.frame_buf[self.offset + 12..self.offset + 20]);
+                let frame_signature = byteorder::BigEndian::read_u64(&self.frame_buf[self.offset + 20..self.offset + 28]);
+
+                let payload_slice = &self.frame_buf[self.offset + FRAME_HEADER_SIZE..self.offset + frame_size];
+                let mut payload = [0; MAX_FRAME_PAYLOAD_SIZE];
+
+                let mut i = 0;
+
+                while i < payload_size {
+                    payload[i] = payload_slice[i];
+                    i = i + 1;
+                }
+
+                let res = Frame {
+                    frame_type: self.frame_buf[self.offset],
+                    payload_size: payload_size_u16,
+                    msg_type: self.frame_buf[self.offset + 3],
+                    key_hash,
+                    stream_id,
+                    frame_signature,
+                    payload
+                };
+
+                self.offset = self.offset + frame_size;
+
+                ReadFrameResult::Frame(res)
+            },
+            false => {
+                let mut i = 0;
+                let frame_part_len = self.bytes_read - self.offset;
+
+                while i < frame_part_len {
+                    self.frame_buf[i] = self.frame_buf[self.offset + i];
+                    i = i + 1;
+                }
+
+                self.bytes_read = frame_part_len;
+
+                ReadFrameResult::ReadMoreBytes
+            }
+        }
+    }
+    /*
     pub async fn read_frame(&mut self, n: usize) -> Result<Option<Frame>, ProcessError> {
         let mut i = 0;
 
@@ -244,6 +313,7 @@ impl State2 {
             None => Ok(None)
         }
     }
+    */
 }
 
 pub struct Client {
@@ -301,64 +371,6 @@ pub enum StreamCompletion {
     Ok,
     Err
 }
-
-/*
-pub async fn write(stream_id: u64, data: Vec<u8>, msg_meta_size: u64, payload_size: u64, attachments_sizes: Vec<u64>, write_tx: &mut UnboundedSender<Frame>) -> Result<(), ProcessError> {    
-    let msg_meta_offset = LEN_BUF_SIZE + msg_meta_size as usize;
-    let payload_offset = msg_meta_offset + payload_size as usize;
-    debug!("write stream_id {}, data len {}, msg_meta_offset {}, payload_offset {}", stream_id, data.len(), msg_meta_offset, payload_offset);    
-    let mut data_buf = [0; MAX_FRAME_PAYLOAD_SIZE];    
-
-    write_tx.send(Frame::Vector(stream_id, data[LEN_BUF_SIZE..msg_meta_offset].to_vec()))?;
-
-
-    match payload_size {
-        0 => {
-            write_tx.send(Frame::Empty(stream_id))?;
-        }
-        _ => {
-            let mut source = &data[msg_meta_offset..payload_offset];
-
-            loop {        
-                let n = source.read(&mut data_buf).await?;        
-                match n {
-                    0 => break,
-                    _ => write_tx.send(Frame::Array(stream_id, n, data_buf))?
-                }
-            }
-        }
-    }    
-
-    let mut prev = payload_offset as usize;
-
-    for attachment_size in attachments_sizes {
-        let attachment_offset = prev + attachment_size as usize;
-
-        match attachment_size {
-            0 => {
-                write_tx.send(Frame::Empty(stream_id))?;
-            }
-            _ => {
-                let mut source = &data[prev..attachment_offset];
-
-                loop {        
-                    let n = source.read(&mut data_buf).await?;        
-                    match n {
-                        0 => break,
-                        _ => write_tx.send(Frame::Array(stream_id, n, data_buf))?
-                    }
-                }
-            }
-        }        
-
-        prev = attachment_offset;
-    }
-
-    debug!("stream_id {} write succeeded", stream_id);
-
-    Ok(())
-}
-*/
 
 pub fn get_key_hash(hasher: &mut SipHasher24, buf: &mut BytesMut, key: Key) -> u64 {
     debug!("Creating hash for: {:?}", key);

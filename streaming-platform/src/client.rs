@@ -296,13 +296,11 @@ async fn process_stream_mode(addr: String, mut write_tcp_stream: TcpStream, mut 
     let mut state = State2::new();
 
     loop {
-        let n = state.read_from_tcp_stream(&mut read_tcp_stream).await?;
-
-        loop {
-            match state.read_frame(n).await {
-                Ok(frame) => {
-                    match frame {
-                        Some(frame) => {
+        match state.read_from_tcp_stream(&mut read_tcp_stream).await? {
+            NextAction::ReadFrame => {
+                loop {
+                    match state.read_frame() {
+                        ReadFrameResult::Frame(frame) => {
                             match read_tx.send(ClientMsg::Frame(frame)) {
                                 Ok(()) => {}
                                 Err(_) => {                        
@@ -310,21 +308,17 @@ async fn process_stream_mode(addr: String, mut write_tcp_stream: TcpStream, mut 
                                 }
                             }
                         }
-                        None => {
-                            debug!("Auth frame read return None");
-                            
+                        ReadFrameResult::ReadMoreBytes => {
+                            debug!("ReadFrameResult::ReadMoreBytes");
                             break;
                         }
                     }
                 }
-                Err(e) => {
-                    error!("Error on read for {}: {:?}", addr, e);
-    
-                    break;
-    
-                    state.clear();
-                }
-            }  
+
+            }
+            NextAction::ReadMoreBytes => {
+                debug!("NextAction::ReadMoreBytes");
+            }
         }
     }
 }
@@ -347,14 +341,12 @@ async fn process_full_message_mode(addr: String, mut write_tcp_stream: TcpStream
     });
     
     loop {
-        let n = state.read_from_tcp_stream(&mut read_tcp_stream).await?;
+        match state.read_from_tcp_stream(&mut read_tcp_stream).await? {
+            NextAction::ReadFrame => {
+                loop {
+                    match state.read_frame() {
+                        ReadFrameResult::Frame(frame) => {
 
-        loop {
-            match state.read_frame(n).await {
-                Ok(frame) => {
-            
-                    match frame {
-                        Some(frame) => {
                             match frame.get_frame_type() {
                                 Ok(frame_type) => {
             
@@ -402,20 +394,16 @@ async fn process_full_message_mode(addr: String, mut write_tcp_stream: TcpStream
                             }
                             
                         }
-                        None => {
-                            debug!("Auth frame read return None");
-
+                        ReadFrameResult::ReadMoreBytes => {
+                            debug!("ReadFrameResult::ReadMoreBytes");
                             break;
                         }
                     }
                 }
-                Err(e) => {
-                    error!("Error on read for {}: {:?}", addr, e);
 
-                    break;
-
-                    state.clear();
-                }   
+            }
+            NextAction::ReadMoreBytes => {
+                debug!("NextAction::ReadMoreBytes");
             }
         }
     }

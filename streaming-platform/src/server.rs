@@ -157,13 +157,11 @@ async fn auth_tcp_stream(tcp_stream: &mut TcpStream, state: &mut State2, client_
     };
 
     loop {
-        let n = state.read_from_tcp_stream(tcp_stream).await?;
-        
-        loop {
-            match state.read_frame(n).await {
-                Ok(frame) => {
-                    match frame {
-                        Some(frame) => {
+        match state.read_from_tcp_stream(tcp_stream).await? {
+            NextAction::ReadFrame => {
+                loop {
+                    match state.read_frame() {
+                        ReadFrameResult::Frame(frame) => {
                             debug!("Auth stream frame read, frame type {}, stream id {}", frame.frame_type, frame.stream_id);
     
                             match frame.get_frame_type() {
@@ -189,19 +187,18 @@ async fn auth_tcp_stream(tcp_stream: &mut TcpStream, state: &mut State2, client_
                                 }
                             }
                         }
-                        None => {
-                            debug!("Auth frame read return None");
+                        ReadFrameResult::ReadMoreBytes => {
+                            debug!("ReadFrameResult::ReadMoreBytes");
+                            break;
                         }
                     }
                 }
-                Err(e) => {
-                    error!("Error on auth stream read for {:?}, {:?}", client_net_addr, e);
-                    state.clear();
-                }
+
+            }
+            NextAction::ReadMoreBytes => {
+                debug!("NextAction::ReadMoreBytes");
             }
         }
-
-        break;
     }
        
     let msg_meta: MsgMeta = from_slice(&stream_layout.msg_meta)?;
@@ -220,14 +217,13 @@ async fn process_read_tcp_stream(addr: String, mut tcp_stream: TcpStream, client
 
 async fn process_write_tcp_stream(tcp_stream: &mut TcpStream, state: &mut State2, addr: String, event_subscribes: HashMap<u64, Vec<String>>, rpc_subscribes: HashMap<u64, Vec<String>>, rpc_response_subscribes: HashMap<u64, Vec<String>>, _client_net_addr: SocketAddr, server_tx: UnboundedSender<ServerMsg>) -> Result<(), ProcessError> {
     loop {
-        let n = state.read_from_tcp_stream(tcp_stream).await?;
 
-        loop {
-            match state.read_frame(n).await {
-                Ok(frame) => {
+        match state.read_from_tcp_stream(tcp_stream).await? {
+            NextAction::ReadFrame => {
+                loop {
 
-                    match frame {
-                        Some(frame) => {
+                    match state.read_frame() {
+                        ReadFrameResult::Frame(frame) => {
                             debug!("Main stream frame read, frame type {}, stream id {}", frame.frame_type, frame.stream_id);
     
                             let subscribes = match frame.get_msg_type()? {
@@ -265,20 +261,18 @@ async fn process_write_tcp_stream(tcp_stream: &mut TcpStream, state: &mut State2
                                 }
                                 None => warn!("No subscribes found for key hash {}, msg_type {:?}", frame.key_hash, frame.get_msg_type())
                             }
-
                         }
-                        None => {
-                            debug!("Main frame read return None");
+                        ReadFrameResult::ReadMoreBytes => {
+                            debug!("ReadFrameResult::ReadMoreBytes");
                             break;
                         }
                     }
                 }
-                Err(e) => {
-                    error!("Error on read from {}: {:?}", addr, e);
-                    state.clear();
-                    break;
-                }
-            } 
+
+            }
+            NextAction::ReadMoreBytes => {
+                debug!("NextAction::ReadMoreBytes");
+            }
         }
     }
 }

@@ -151,6 +151,8 @@ impl State2 {
         let mut i = 0;
         let n = tcp_stream.read(&mut self.read_buf[..]).await?;
 
+        debug!("Bytes read from socket: {}", n);
+
         if n > 0 {
             if self.frame_type.is_none() {
                 debug!("Got frame type {}", self.read_buf[0]);
@@ -187,7 +189,6 @@ impl State2 {
                             }
 
                             let bytes_moved = i;
-                            self.offset = 0;
 
                             debug!("Bytes moved: {}", bytes_moved);
                             
@@ -197,14 +198,26 @@ impl State2 {
 
                             i = 0;
 
+                            let payload_slice = &self.frame_buf[FRAME_HEADER_SIZE..frame_size];
                             let mut payload = [0; MAX_FRAME_PAYLOAD_SIZE];
 
-                            while i < frame_size {
-                                payload[i] = self.frame_buf[FRAME_HEADER_SIZE..frame_size][i];
+                            while i < payload_size {
+                                payload[i] = payload_slice[i];
                                 i = i + 1;
                             }
 
+                            let res = Frame {
+                                frame_type: self.frame_type?,
+                                payload_size: payload_size as u16,
+                                msg_type: self.frame_buf[3],
+                                key_hash,
+                                stream_id,
+                                frame_signature,
+                                payload
+                            };
+
                             i = 0;
+                            self.clear();
         
                             while i < n - bytes_moved {
                                 debug!("Index: {}", i);
@@ -213,15 +226,7 @@ impl State2 {
                                 i = i + 1;
                             }
 
-                            return Ok(Frame {
-                                frame_type: self.frame_type?,
-                                payload_size: payload_size as u16,
-                                msg_type: self.frame_buf[3],
-                                key_hash,
-                                stream_id,
-                                frame_signature,
-                                payload
-                            })
+                            return Ok(res)
                         }
                         false => {
                             while i < n {

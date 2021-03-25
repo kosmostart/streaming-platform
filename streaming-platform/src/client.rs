@@ -308,6 +308,8 @@ async fn process_stream_mode(addr: String, mut write_tcp_stream: TcpStream, mut 
             Err(e) => {
                 error!("Error on read for {}: {:?}", addr, e);
 
+                break Ok(());
+
                 state.clear();
             }
         }  
@@ -383,6 +385,9 @@ async fn process_full_message_mode(addr: String, mut write_tcp_stream: TcpStream
             }
             Err(e) => {
                 error!("Error on read for {}: {:?}", addr, e);
+
+                break Ok(());
+
                 state.clear();
             }
         }  

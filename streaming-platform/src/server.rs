@@ -156,10 +156,17 @@ async fn auth_tcp_stream(tcp_stream: &mut TcpStream, state: &mut State2, client_
         attachments_data: vec![]
     };
 
+    let mut is_completed = false;
+
     loop {
+        if is_completed {
+            break;
+        }
+
         match state.read_from_tcp_stream(tcp_stream).await? {
             NextAction::ReadFrame => {
                 loop {
+                    debug!("Read frame call for {:?}", client_net_addr);
                     match state.read_frame() {
                         ReadFrameResult::Frame(frame) => {
                             debug!("Auth stream frame read, frame type {}, stream id {}", frame.frame_type, frame.stream_id);
@@ -178,6 +185,7 @@ async fn auth_tcp_stream(tcp_stream: &mut TcpStream, state: &mut State2, client_
                                             stream_layout.attachments_data.extend_from_slice(&frame.payload[..frame.payload_size as usize]);
                                         }
                                         FrameType::End => {
+                                            is_completed = true;
                                             break;
                                         }
                                     }

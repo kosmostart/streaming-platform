@@ -154,7 +154,7 @@ impl State2 {
         match bytes_read {
             0 => {
                 error!("Read 0 bytes");
-                Ok(NextAction::ReadMoreBytes)
+                Err(ProcessError::StreamClosed)
             }
             _ => {
                 let mut i = 0;
@@ -169,18 +169,17 @@ impl State2 {
 
                 debug!("Bytes read from tcp stream: {}, bytes read in state: {}", bytes_read, self.bytes_read);
 
-                match self.bytes_read >= FRAME_HEADER_SIZE {
-                    true => {
-                        self.offset = 0;
-
-                        Ok(NextAction::ReadFrame)
-                    }
-                    false => Ok(NextAction::ReadMoreBytes)
+                match self.bytes_read < self.offset + FRAME_HEADER_SIZE {
+                    true => Ok(NextAction::ReadMoreBytes),
+                    false => Ok(NextAction::ReadFrame)
                 }
             }
         }
     }
     pub fn read_frame(&mut self) -> ReadFrameResult {
+        if self.bytes_read < self.offset + 3 {
+            return ReadFrameResult::ReadMoreBytes;
+        }
         debug!("Got frame type {}, offset {}", self.frame_buf[self.offset], self.offset);
 
         //debug!("{:?}", self.frame_buf);
@@ -220,6 +219,8 @@ impl State2 {
 
                 self.offset = self.offset + frame_size;
 
+                debug!("Offset set to {}", self.offset);
+
                 ReadFrameResult::Frame(res)
             },
             false => {
@@ -231,7 +232,9 @@ impl State2 {
                     i = i + 1;
                 }
 
+                debug!("Setting bytes read to {}, offset to 0", frame_part_len);
                 self.bytes_read = frame_part_len;
+                self.offset = 0;
 
                 ReadFrameResult::ReadMoreBytes
             }
@@ -401,7 +404,7 @@ pub fn get_key_hash(hasher: &mut SipHasher24, buf: &mut BytesMut, key: Key) -> u
 }
 
 pub async fn write_frame(tcp_stream: &mut TcpStream, frame: Frame) -> Result<(), ProcessError> {
-    debug!("Frame write to socket attempt, stream_id {}, frame type {}", frame.stream_id, frame.frame_type);
+    debug!("Frame write to socket attempt, stream_id {}, frame type {}, payload size {}", frame.stream_id, frame.frame_type, frame.payload_size);
 
     let mut header = [0; FRAME_HEADER_SIZE];
 

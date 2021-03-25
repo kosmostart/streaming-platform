@@ -170,8 +170,7 @@ async fn auth_tcp_stream(tcp_stream: &mut TcpStream, _client_net_addr: SocketAdd
 }
 
 
-async fn process_read_tcp_stream(addr: String, mut tcp_stream: TcpStream, client_net_addr: SocketAddr, server_tx: UnboundedSender<ServerMsg>) -> Result<(), ProcessError> {
-    let mut _state = State::new("Write tcp stream from Server to ".to_owned() + &addr);    
+async fn process_read_tcp_stream(addr: String, mut tcp_stream: TcpStream, client_net_addr: SocketAddr, server_tx: UnboundedSender<ServerMsg>) -> Result<(), ProcessError> {  
     let (client_tx, client_rx) = mpsc::unbounded_channel();
 
     server_tx.send(ServerMsg::AddClient(addr.clone(), client_net_addr, client_tx))?;    

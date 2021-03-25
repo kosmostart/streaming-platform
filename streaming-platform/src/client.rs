@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, hash::Hash};
 use std::future::Future;
 use std::error::Error;
 use log::*;
@@ -128,7 +128,9 @@ where
 
     tokio::spawn(async move {
         let mb = MagicBall::new(addr2, write_tx2, rpc_inbound_tx);        
+
         tokio::spawn(startup(config.clone(), mb.clone(), startup_data, dependency.clone()));
+
         loop {                        
             let msg = match read_rx.recv().await {
                 Some(msg) => msg,
@@ -139,8 +141,8 @@ where
             };
             let mut mb = mb.clone();
             let config = config.clone();
-            let mut write_tx3 = write_tx3.clone();
             let dependency = dependency.clone();
+
             match msg {
                 ClientMsg::Message(_, msg_meta, payload, attachments_data) => {
                     match msg_meta.msg_type {
@@ -164,7 +166,8 @@ where
                                 let mut route = msg_meta.route.clone();
                                 let correlation_id = msg_meta.correlation_id;                                
                                 let key = msg_meta.key.clone();
-                                let payload: P = from_slice(&payload).expect("failed to deserialize rpc request payload");                            
+                                let payload: P = from_slice(&payload).expect("failed to deserialize rpc request payload");
+
                                 let (payload, attachments, attachments_data, rpc_result) = match process_rpc(config.clone(), mb.clone(), Message {meta: msg_meta, payload, attachments_data}, dependency).await {
                                     Ok(res) => {
                                         debug!("Client {} process_rpc succeeded", mb.addr);
@@ -179,10 +182,19 @@ where
                                         (to_vec(&json!({ "err": e.to_string() })).expect("failed to serialize rpc process error result"), vec![], vec![], RpcResult::Err)
                                     }
                                 };                                
+
                                 route.points.push(Participator::Service(mb.addr.clone()));
-                                let (res, msg_meta_size, payload_size, attacchments_size) = reply_to_rpc_dto2_sizes(mb.addr.clone(),  key, correlation_id, payload, attachments, attachments_data, rpc_result, route, None, None).expect("failed to create rpc reply");
+
+                                let key_hash = mb.get_key_hash(key.clone());
+
+                                let (res, msg_meta_size, payload_size, attachments_sizes) = reply_to_rpc_dto2_sizes(mb.addr.clone(),  key, correlation_id, payload, attachments, attachments_data, rpc_result, route, None, None).expect("failed to create rpc reply");
+
                                 debug!("Client {} attempt to write rpc response", mb.addr);
-                                write(mb.get_stream_id(), res, msg_meta_size, payload_size, attacchments_size, &mut write_tx3).await.expect("failed to write rpc response");                                
+
+                                let stream_id = mb.get_stream_id();
+
+                                mb.write(MsgType::RpcResponse(RpcResult::Ok).get_u8(), key_hash, stream_id, res, msg_meta_size, payload_size, attachments_sizes).await.expect("Failed to write rpc response");
+                             
                                 debug!("Client {} write rpc response succeded", mb.addr);
                             });                            
                         }
@@ -224,7 +236,7 @@ where
     connect_full_message_future(host, addr3, access_key, read_tx, write_rx).await;
 }
 
-async fn auth(addr: String, access_key: String, stream: &mut TcpStream) -> Result<(), ProcessError> {
+async fn auth(addr: String, access_key: String, tcp_stream: &mut TcpStream) -> Result<(), ProcessError> {
     let route = Route {
         source: Participator::Service(addr.clone()),
         spec: RouteSpec::Simple,
@@ -235,7 +247,7 @@ async fn auth(addr: String, access_key: String, stream: &mut TcpStream) -> Resul
         "access_key": access_key
     }), route, None, None).expect("Failed to create auth dto");
 
-    write_to_stream(get_stream_id_onetime(&addr), dto, msg_meta_size, payload_size, attachments_size, stream).await
+    write_to_tcp_stream(tcp_stream, 0, 0, get_stream_id_onetime(&addr), dto, msg_meta_size, payload_size, attachments_size).await
 }
 
 
@@ -267,111 +279,114 @@ async fn connect_full_message_future(host: &str, addr: String, access_key: Strin
     info!("{:?}", res);
 }
 
-async fn process_stream_mode(addr: String, mut write_stream: TcpStream, mut read_stream: TcpStream, read_tx: UnboundedSender<ClientMsg>, write_rx: UnboundedReceiver<Frame>) -> Result<(), ProcessError> {
+async fn process_stream_mode(addr: String, mut write_tcp_stream: TcpStream, mut read_tcp_stream: TcpStream, read_tx: UnboundedSender<ClientMsg>, write_rx: UnboundedReceiver<Frame>) -> Result<(), ProcessError> {
     //let (auth_msg_meta, auth_payload, auth_attachments) = read_full(&mut socket_read).await?;
     //let auth_payload: Value = from_slice(&auth_payload)?;    
 
     //println!("auth {:?}", auth_msg_meta);
-    //println!("auth {:?}", auth_payload);        
-        
-    let mut state = State::new(addr.clone());    
+    //println!("auth {:?}", auth_payload);
+    
+    let addr2 = addr.clone();
 
     tokio::spawn(async move {
-        let res = write_loop(addr, write_rx, &mut write_stream).await;
+        let res = write_loop(addr2, write_rx, &mut write_tcp_stream).await;
         error!("{:?}", res);
     });
 
+    let mut state = State2::new();
+
     loop {
-        match read(&mut state, &mut read_stream).await? {
-            ReadResult::MsgMeta(stream_id, msg_meta, _) => read_tx.send(ClientMsg::MsgMeta(stream_id, msg_meta))?,
-            ReadResult::PayloadData(stream_id, n, buf) => read_tx.send(ClientMsg::PayloadData(stream_id, n, buf))?,
-            ReadResult::PayloadFinished(stream_id, n, buf) => read_tx.send(ClientMsg::PayloadFinished(stream_id, n, buf))?,
-            ReadResult::AttachmentData(stream_id, index, n, buf) => read_tx.send(ClientMsg::AttachmentData(stream_id, index, n, buf))?,
-            ReadResult::AttachmentFinished(stream_id, index, n, buf) => read_tx.send(ClientMsg::AttachmentFinished(stream_id, index, n, buf))?,
-            ReadResult::MessageFinished(stream_id, finish_bytes) => {
-                match finish_bytes {
-                    MessageFinishBytes::Payload(n, buf) => {
-                        read_tx.send(ClientMsg::PayloadFinished(stream_id, n, buf))?;
+        match state.read_frame(&mut read_tcp_stream).await {
+            Ok(frame) => {
+                match read_tx.send(ClientMsg::Frame(frame)) {
+                    Ok(()) => {}
+                    Err(_) => {                        
+                        panic!("Client message send with read_tx in stream mode failed");
                     }
-                    MessageFinishBytes::Attachment(index, n, buf) => {
-                        read_tx.send(ClientMsg::AttachmentFinished(stream_id, index, n, buf))?;
-                    }                            
                 }
-                read_tx.send(ClientMsg::MessageFinished(stream_id))?;
             }
-            ReadResult::MessageAborted(stream_id) => {
-                read_tx.send(ClientMsg::MessageAborted(stream_id))?;
+            Err(e) => {
+                error!("Error on read for {}: {:?}", addr, e);
+
+                state.clear();
             }
-        }
+        }  
     }
 }
 
-async fn process_full_message_mode(addr: String, mut write_stream: TcpStream, mut read_stream: TcpStream, read_tx: UnboundedSender<ClientMsg>, write_rx: UnboundedReceiver<Frame>) -> Result<(), ProcessError> {    
+async fn process_full_message_mode(addr: String, mut write_tcp_stream: TcpStream, mut read_tcp_stream: TcpStream, read_tx: UnboundedSender<ClientMsg>, write_rx: UnboundedReceiver<Frame>) -> Result<(), ProcessError> {    
     //let (auth_msg_meta, auth_payload, auth_attachments) = read_full(&mut socket_read).await?;
     //let auth_payload: Value = from_slice(&auth_payload)?;    
 
     //println!("auth {:?}", auth_msg_meta);
     //println!("auth {:?}", auth_payload);
             
-    let mut stream_layouts = HashMap::new();
-    let mut state = State::new(addr.clone());
+    let mut stream_layouts: HashMap<u64, StreamLayout> = HashMap::new();
+    let mut state = State2::new();
+
+    let addr2 = addr.clone();
 
     tokio::spawn(async move {
-        let res = write_loop(addr, write_rx, &mut write_stream).await;
+        let res = write_loop(addr2, write_rx, &mut write_tcp_stream).await;
         error!("{:?}", res);
     });
     
     loop {
-        match read(&mut state, &mut read_stream).await? {
-            ReadResult::MsgMeta(stream_id, msg_meta, _) => {
-                stream_layouts.insert(stream_id, StreamLayout {
-                    id: stream_id,
-                    msg_meta,
-                    payload: vec![],
-                    attachments_data: vec![]
-                });
-            }
-            ReadResult::PayloadData(stream_id, n, buf) => {
-                let stream_layout = stream_layouts.get_mut(&stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
-                stream_layout.payload.extend_from_slice(&buf[..n]);
+        match state.read_frame(&mut read_tcp_stream).await {
+            Ok(frame) => {
 
-            }
-            ReadResult::PayloadFinished(stream_id, n, buf) => {
-                let stream_layout = stream_layouts.get_mut(&stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
-                stream_layout.payload.extend_from_slice(&buf[..n]);
-            }
-            ReadResult::AttachmentData(stream_id, _, n, buf) => {
-                let stream_layout = stream_layouts.get_mut(&stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
-                stream_layout.attachments_data.extend_from_slice(&buf[..n]);
-            }
-            ReadResult::AttachmentFinished(stream_id, _, n, buf) => {
-                let stream_layout = stream_layouts.get_mut(&stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
-                stream_layout.attachments_data.extend_from_slice(&buf[..n]);
-            }
-            ReadResult::MessageFinished(stream_id, finish_bytes) => {
-                let stream_layout = stream_layouts.get_mut(&stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
-                match finish_bytes {
-                    MessageFinishBytes::Payload(n, buf) => {
-                        stream_layout.payload.extend_from_slice(&buf[..n]);
+                match frame.get_frame_type() {
+                    Ok(frame_type) => {
+
+                        match frame_type {
+                            FrameType::MsgMeta => {
+                                match stream_layouts.get_mut(&frame.stream_id) {
+                                    Some(stream_layout) => {
+                                        stream_layout.msg_meta.extend_from_slice(&frame.payload[..frame.payload_size as usize]);
+                                    }
+                                    None => {
+                                        stream_layouts.insert(frame.stream_id, StreamLayout {
+                                            id: frame.stream_id,
+                                            msg_meta: frame.payload[..frame.payload_size as usize].to_vec(),
+                                            payload: vec![],
+                                            attachments_data: vec![]
+                                        });
+                                    }
+                                }
+                            }
+                            FrameType::Payload => {
+                                let stream_layout = stream_layouts.get_mut(&frame.stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
+                                stream_layout.payload.extend_from_slice(&frame.payload[..frame.payload_size as usize]);
+                            }
+                            FrameType::Attachment => {
+                                let stream_layout = stream_layouts.get_mut(&frame.stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
+                                stream_layout.attachments_data.extend_from_slice(&frame.payload[..frame.payload_size as usize]);
+                            }
+                            FrameType::End => {
+                                let stream_layout = stream_layouts.remove(&frame.stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
+
+                                let msg_meta = from_slice(&stream_layout.msg_meta)?;
+        
+                                match read_tx.send(ClientMsg::Message(frame.stream_id, msg_meta, stream_layout.payload, stream_layout.attachments_data)) {
+                                    Ok(()) => {}
+                                    Err(_) => {
+                                        panic!("Client message send with read_tx in full message mode failed")
+                                    }
+                                }
+                            }
+                        }
                     }
-                    MessageFinishBytes::Attachment(_, n, buf) => {
-                        stream_layout.attachments_data.extend_from_slice(&buf[..n]);
-                    }                            
-                }
-                let stream_layout = stream_layouts.remove(&stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
-                read_tx.send(ClientMsg::Message(stream_id, stream_layout.msg_meta, stream_layout.payload, stream_layout.attachments_data))?;
-            }
-            ReadResult::MessageAborted(stream_id) => {
-                match stream_id {
-                    Some(stream_id) => {
-                        let _ = stream_layouts.remove(&stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
+                    Err(e) => {
+                        error!("Error on read for {}, get frame type failed: {:?}", addr, e);
                     }
-                    None => {}
                 }
-                read_tx.send(ClientMsg::MessageAborted(stream_id))?;
             }
-        };
-    }    
+            Err(e) => {
+                error!("Error on read for {}: {:?}", addr, e);
+                state.clear();
+            }
+        }  
+    }
 }
 
 /// Starts a stream based client based on provided config. Creates new runtime and blocks.

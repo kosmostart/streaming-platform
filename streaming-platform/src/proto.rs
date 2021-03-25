@@ -60,73 +60,9 @@ pub fn get_stream_id_onetime(addr: &str) -> u64 {
     hasher.finish()
 }
 
-/// The result of reading function
-pub enum ReadResult {    
-    /// Message data stream is prepended with MsgMeta struct
-    MsgMeta(u64, MsgMeta, Vec<u8>),
-    /// Payload data stream message
-    PayloadData(u64, usize, [u8; MAX_FRAME_PAYLOAD_SIZE]),
-    /// This one indicates payload data stream finished
-    PayloadFinished(u64, usize, [u8; MAX_FRAME_PAYLOAD_SIZE]),
-    /// Attachment whith index data stream message
-    AttachmentData(u64, usize, usize, [u8; MAX_FRAME_PAYLOAD_SIZE]),
-    /// This one indicates attachment data stream by index finished
-    AttachmentFinished(u64, usize, usize, [u8; MAX_FRAME_PAYLOAD_SIZE]),
-    /// Message stream finished, simple as that
-    MessageFinished(u64, MessageFinishBytes),
-    /// Message was aborted, through cancelation or error
-    MessageAborted(Option<u64>)
-}
-
-/// Part of result of reading function for message finish
-pub enum MessageFinishBytes {
-    /// This indicates message was finished with payload
-    Payload(usize, [u8; MAX_FRAME_PAYLOAD_SIZE]),
-    /// This indicates message was finished with attachment
-    Attachment(usize, usize, [u8; MAX_FRAME_PAYLOAD_SIZE])    
-}
-
-#[derive(Debug)]
-pub enum Step {    
-    MsgMeta,
-    Payload(u64, u64),
-    // current attachment index
-    Attachment(usize, u64, u64)    
-}
-
-// Data structure used for convenience when streaming data from source
-
-pub struct State {
-    pub addr: String,
-    pub stream_states: HashMap<u64, StreamState>
-}
-
-impl State {
-    pub fn new(addr: String) -> State {
-        State {
-            addr,
-            stream_states: HashMap::new()
-        }
-    }
-}
-
-pub struct StreamState {
-    pub step: Step,
-    pub attachments: Vec<u64>
-}
-
-impl StreamState {
-    pub fn new() -> StreamState {
-        StreamState {            
-            step: Step::MsgMeta,
-            attachments: vec![]
-        }  
-    }    
-}
-
 pub struct StreamLayout {
     pub id: u64,
-    pub msg_meta: MsgMeta,
+    pub msg_meta: Vec<u8>,
     pub payload: Vec<u8>,
     pub attachments_data: Vec<u8>
 }
@@ -145,7 +81,8 @@ pub struct Frame {
 pub enum FrameType {
     MsgMeta = 0,
     Payload = 1,
-    Attachment = 2
+    Attachment = 2,
+    End = 3
 }
 
 impl Frame {
@@ -161,6 +98,14 @@ impl Frame {
             frame_signature,
             payload
         }
+    }
+    pub fn get_frame_type(&self) -> Result<FrameType, ProcessError> {
+        Ok(match self.frame_type {
+            0 => FrameType::MsgMeta,
+            1 => FrameType::Payload,
+            2 => FrameType::Attachment,
+            _ => return Err(ProcessError::IncorrectFrameType)
+        })
     }
     pub fn get_msg_type(&self) -> Result<MsgType, ProcessError> {
         Ok(match self.msg_type {
@@ -326,35 +271,17 @@ pub type Startup<T, D> = fn(HashMap<String, String>, MagicBall, Option<Value>, D
 
 /// Messages received from client
 pub enum ClientMsg {    
-    /// This is sent in Stream mode without fs future
-    MsgMeta(u64, MsgMeta),
-    /// This is sent in Stream mode without fs future
-    PayloadData(u64, usize, [u8; MAX_FRAME_PAYLOAD_SIZE]),
-    /// This is sent in Stream mode without fs future
-    PayloadFinished(u64, usize, [u8; MAX_FRAME_PAYLOAD_SIZE]),
-    /// This is sent in Stream mode without fs future. First field is index, second is number of bytes read, last is data itself.
-    AttachmentData(u64, usize, usize, [u8; MAX_FRAME_PAYLOAD_SIZE]),
-    /// This is sent in Stream mode without fs future
-    AttachmentFinished(u64, usize, usize, [u8; MAX_FRAME_PAYLOAD_SIZE]),
-    /// This is sent in Stream mode without fs future
-    MessageFinished(u64),
-    /// This is sent in FullMessage mode without fs future
-    Message(u64, MsgMeta, Vec<u8>, Vec<u8>),
-    /// Message was aborted, through cancelation or error
-    MessageAborted(Option<u64>)
+    /// This is sent in Stream mode
+    Frame(Frame),
+    /// This is sent in FullMessage mode
+    Message(u64, MsgMeta, Vec<u8>, Vec<u8>)
 }
 
 impl ClientMsg {
-    pub fn get_stream_id(&self) -> Option<u64> {
+    pub fn get_stream_id(&self) -> u64 {
         match self {
-            ClientMsg::MsgMeta(stream_id, _) |
-            ClientMsg::PayloadData(stream_id, _, _) |
-            ClientMsg::PayloadFinished(stream_id, _, _) |
-            ClientMsg::AttachmentData(stream_id, _, _, _) |
-            ClientMsg::AttachmentFinished(stream_id, _, _, _) |
-            ClientMsg::MessageFinished(stream_id) |
-            ClientMsg::Message(stream_id, _, _, _) => Some(*stream_id),
-            ClientMsg::MessageAborted(stream_id) => *stream_id
+            ClientMsg::Frame(frame) => frame.stream_id, 
+            ClientMsg::Message(stream_id, _, _, _) => *stream_id
         }
     }
 }
@@ -532,6 +459,8 @@ pub async fn write_to_tcp_stream(tcp_stream: &mut TcpStream, msg_type: u8, key_h
         prev = attachment_offset;
     }
 
+    write_frame(tcp_stream, Frame::new(FrameType::End as u8, 0, msg_type, key_hash, stream_id, [0; MAX_FRAME_PAYLOAD_SIZE])).await?;
+
     Ok(())
 }
 
@@ -552,7 +481,7 @@ pub struct MagicBall {
     hasher: SipHasher24,
     hash_buf: BytesMut,
     addr_bytes_len: usize,
-    pub write_tx: UnboundedSender<Frame>,
+    write_tx: UnboundedSender<Frame>,
     rpc_inbound_tx: UnboundedSender<RpcMsg>
 }
 
@@ -590,6 +519,11 @@ impl MagicBall {
         self.hash_buf.extend_from_slice(Uuid::new_v4().to_string().as_bytes());
         self.hasher.write(&self.hash_buf);
         self.hasher.finish()
+    }
+
+    /// This function generates hash for key
+    pub fn get_key_hash(&mut self, key: Key) -> u64 {
+        get_key_hash(&mut self.key_hasher, &mut self.key_hash_buf, key)
     }
     /// This function should be called for single message or parts of it (not for multiple messages inside vec)
     /// stream_id value MUST BE ACQUIRED with get_stream_id() function. stream_id generation can be implicit, however this will leads to less flexible API (if for example you need stream payload or attachments data).
@@ -1006,6 +940,7 @@ impl MagicBall {
 pub enum ProcessError {
     FramePayloadSizeExceeded,
     ReadLoopCompleted,
+    IncorrectFrameType,
     IncorrectMsgType,
     StreamNotFoundInState,
     StreamLayoutNotFound,

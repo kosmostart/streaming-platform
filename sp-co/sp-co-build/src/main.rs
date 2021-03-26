@@ -62,7 +62,7 @@ pub async fn process_rpc(config: HashMap<String, String>, mut mb: MagicBall, msg
 
                 let mut stdout = handle.stdout.take().unwrap();
             
-                let mut buffer = [0; 10];
+                let mut buffer = [0; 100];
             
                 // read up to 10 bytes
                 while stdout.read(&mut buffer).unwrap() > 0 {

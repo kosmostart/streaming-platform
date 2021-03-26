@@ -452,6 +452,8 @@ pub struct MagicBall {
     pub auth_data: Option<Value>,    
     hash_buf: BytesMut,
     addr_bytes_len: usize,
+	key_hash: u64,
+	stream_id: u64,
     write_tx: UnboundedSender<Frame>,
     rpc_inbound_tx: UnboundedSender<RpcMsg>
 }
@@ -476,6 +478,8 @@ impl MagicBall {
             auth_data: None,            
             hash_buf,
             addr_bytes_len,
+			key_hash: 0,
+			stream_id: 0,
             write_tx,
             rpc_inbound_tx
         }
@@ -563,10 +567,10 @@ impl MagicBall {
 
         let (dto, msg_meta_size, payload_size, attachments_sizes) = event_dto_with_sizes(self.addr.clone(), key.clone(), payload, route, self.auth_token.clone(), self.auth_data.clone())?;
 
-        let key_hash = get_key_hash(key);
-        let stream_id = self.get_stream_id();
+        self.key_hash = get_key_hash(key);
+        self.stream_id = self.get_stream_id();
 
-        self.write_full_message(MsgType::Event.get_u8(), key_hash, stream_id, dto, msg_meta_size, payload_size, attachments_sizes).await?;
+        self.write_full_message(MsgType::Event.get_u8(), self.key_hash, self.stream_id, dto, msg_meta_size, payload_size, attachments_sizes).await?;
         
         Ok(())
     }
@@ -577,10 +581,10 @@ impl MagicBall {
 
         let (dto, msg_meta_size, payload_size, attachments_sizes) = event_dto_with_sizes(self.addr.clone(), key.clone(), payload, route, self.auth_token.clone(), self.auth_data.clone())?;
 
-        let key_hash = get_key_hash(key);
-        let stream_id = self.get_stream_id();
+        self.key_hash = get_key_hash(key);
+        self.stream_id = self.get_stream_id();
 
-        self.write_full_message(MsgType::Event.get_u8(), key_hash, stream_id, dto, msg_meta_size, payload_size, attachments_sizes).await?;
+        self.write_full_message(MsgType::Event.get_u8(), self.key_hash, self.stream_id, dto, msg_meta_size, payload_size, attachments_sizes).await?;
         
         Ok(())
     }    
@@ -598,10 +602,10 @@ impl MagicBall {
         
         self.rpc_inbound_tx.send(RpcMsg::AddRpc(correlation_id, rpc_tx))?;
 
-        let key_hash = get_key_hash(key);
-        let stream_id = self.get_stream_id();
+        self.key_hash = get_key_hash(key);
+        self.stream_id = self.get_stream_id();
 
-        self.write_full_message(MsgType::RpcRequest.get_u8(), key_hash, stream_id, dto, msg_meta_size, payload_size, attachments_sizes).await?;       
+        self.write_full_message(MsgType::RpcRequest.get_u8(), self.key_hash, self.stream_id, dto, msg_meta_size, payload_size, attachments_sizes).await?;       
 
         let (msg_meta, payload, attachments_data) = timeout(Duration::from_millis(RPC_TIMEOUT_MS_AMOUNT), rpc_rx).await??;
         let payload: R = from_slice(&payload)?;        
@@ -622,10 +626,10 @@ impl MagicBall {
         
         self.rpc_inbound_tx.send(RpcMsg::AddRpc(correlation_id, rpc_tx))?;
 
-        let key_hash = get_key_hash(key);
-        let stream_id = self.get_stream_id();
+        self.key_hash = get_key_hash(key);
+        self.stream_id = self.get_stream_id();
 
-        self.write_full_message(MsgType::RpcRequest.get_u8(), key_hash, stream_id, dto, msg_meta_size, payload_size, attachments_sizes).await?;
+        self.write_full_message(MsgType::RpcRequest.get_u8(), self.key_hash, self.stream_id, dto, msg_meta_size, payload_size, attachments_sizes).await?;
 
         let (msg_meta, payload, attachments_data) = timeout(Duration::from_millis(RPC_TIMEOUT_MS_AMOUNT), rpc_rx).await??;
         let payload: R = from_slice(&payload)?;        
@@ -669,10 +673,10 @@ impl MagicBall {
         buf.append(&mut msg_meta_vec);
         buf.append(&mut payload_with_attachments);
 
-        let key_hash = get_key_hash(msg_meta.key);
-        let stream_id = self.get_stream_id();
+        self.key_hash = get_key_hash(msg_meta.key);
+        self.stream_id = self.get_stream_id();
 
-        self.write_full_message(msg_meta.msg_type.get_u8(), key_hash, stream_id, buf, msg_meta_size, payload_size, attachments_sizes).await?;
+        self.write_full_message(msg_meta.msg_type.get_u8(), self.key_hash, self.stream_id, buf, msg_meta_size, payload_size, attachments_sizes).await?;
         
         Ok(())
     }
@@ -714,10 +718,10 @@ impl MagicBall {
         buf.append(&mut msg_meta_vec);
         buf.append(&mut payload_with_attachments);
 
-        let key_hash = get_key_hash(msg_meta.key);
-        let stream_id = self.get_stream_id();
+        self.key_hash = get_key_hash(msg_meta.key);
+        self.stream_id = self.get_stream_id();
 
-        self.write_full_message(msg_meta.msg_type.get_u8(), key_hash, stream_id, buf, msg_meta_size, payload_size, attachments_sizes).await?;
+        self.write_full_message(msg_meta.msg_type.get_u8(), self.key_hash, self.stream_id, buf, msg_meta_size, payload_size, attachments_sizes).await?;
         
         Ok(())
     }
@@ -762,10 +766,10 @@ impl MagicBall {
 
         debug!("proxy_rpc write attempt");
 
-        let key_hash = get_key_hash(msg_meta.key);
-        let stream_id = self.get_stream_id();
+        self.key_hash = get_key_hash(msg_meta.key);
+        self.stream_id = self.get_stream_id();
 
-        self.write_full_message(msg_meta.msg_type.get_u8(), key_hash, stream_id, buf, msg_meta_size, payload_size, attachments_sizes).await?;
+        self.write_full_message(msg_meta.msg_type.get_u8(), self.key_hash, self.stream_id, buf, msg_meta_size, payload_size, attachments_sizes).await?;
 
         debug!("proxy_rpc write attempt succeeded");
 
@@ -827,10 +831,10 @@ impl MagicBall {
 
         debug!("proxy_rpc_with_auth_data write attempt");
 
-        let key_hash = get_key_hash(msg_meta.key);
-        let stream_id = self.get_stream_id();
+        self.key_hash = get_key_hash(msg_meta.key);
+        self.stream_id = self.get_stream_id();
 
-        self.write_full_message(msg_meta.msg_type.get_u8(), key_hash, stream_id, buf, msg_meta_size, payload_size, attachments_sizes).await?;
+        self.write_full_message(msg_meta.msg_type.get_u8(), self.key_hash, self.stream_id, buf, msg_meta_size, payload_size, attachments_sizes).await?;
 
         debug!("proxy_rpc_with_auth_data write attempt succeeded");
 
@@ -887,10 +891,10 @@ impl MagicBall {
 
         debug!("proxy_rpc_with_payload write attempt");
 
-        let key_hash = get_key_hash(msg_meta.key);
-        let stream_id = self.get_stream_id();
+        self.key_hash = get_key_hash(msg_meta.key);
+        self.stream_id = self.get_stream_id();
 
-        self.write_full_message(msg_meta.msg_type.get_u8(), key_hash, stream_id, buf, msg_meta_size, payload_size, attachments_sizes).await?;
+        self.write_full_message(msg_meta.msg_type.get_u8(), self.key_hash, self.stream_id, buf, msg_meta_size, payload_size, attachments_sizes).await?;
 
         debug!("proxy_rpc_with_payload write attempt succeeded");
 
@@ -904,47 +908,20 @@ impl MagicBall {
 
 #[derive(Debug)]
 pub enum ProcessError {
+	Io(std::io::Error),
+    SerdeJson(serde_json::Error),
     FramePayloadSizeExceeded,
     ReadLoopCompleted,
     IncorrectFrameType,
     IncorrectMsgType,
-    StreamNotFoundInState,
     StreamLayoutNotFound,
-    AuthStreamLayoutIsEmpty,
-    ClientAddrNotFound,
-    BytesReadAmountExceededPayloadSize,
-    PayloadSizeChecksFailed,
-    BytesReadAmountExceededAttachmentSize,
-    AttachmentSizeChecksFailed,    
-    StreamClosed,
-    StreamIdIsZero,
-    NotEnoughBytesForLen,
-    WriteChannelDropped,
-    IncorrectReadResult,    
-    Io(std::io::Error),
-    SerdeJson(serde_json::Error),
-    GetFile(GetFileError),    
+    StreamClosed,    
+    WriteChannelDropped,        
     SendFrameError,
     SendServerMsgError,
-    SendClientMsgError,
     SendRpcMsgError,
     OneshotRecvError(oneshot::error::RecvError),
-    Timeout,
-    NoneError,
-    TrySendServerMsg,
-    TrySendClientMsg,
-    TrySendFrame,
-    TrySendRpcMsg
-}
-
-#[derive(Debug)]
-pub enum GetFileError {
-    ConfigDirsIsEmpty,
-    NoAccessKeyInPayload,
-    TargetDirNotFound,
-    NoFilesInTargetDir,
-    FileNameIsEmpty,
-    AttachmentsAreEmpty
+    Timeout
 }
 
 impl Display for ProcessError {
@@ -971,12 +948,6 @@ impl From<serde_json::Error> for ProcessError {
 	}
 }
 
-impl From<option::NoneError> for ProcessError {
-	fn from(_: option::NoneError) -> ProcessError {
-		ProcessError::NoneError
-	}
-}
-
 impl From<SendError<Frame>> for ProcessError {
 	fn from(_: SendError<Frame>) -> ProcessError {
 		ProcessError::SendFrameError
@@ -986,12 +957,6 @@ impl From<SendError<Frame>> for ProcessError {
 impl From<SendError<ServerMsg>> for ProcessError {
 	fn from(_: SendError<ServerMsg>) -> ProcessError {
 		ProcessError::SendServerMsgError
-	}
-}
-
-impl From<SendError<ClientMsg>> for ProcessError {
-	fn from(_: SendError<ClientMsg>) -> ProcessError {
-		ProcessError::SendClientMsgError
 	}
 }
 
@@ -1010,30 +975,6 @@ impl From<oneshot::error::RecvError> for ProcessError {
 impl From<tokio::time::error::Elapsed> for ProcessError {
 	fn from(_: tokio::time::error::Elapsed) -> ProcessError {
 		ProcessError::Timeout
-	}
-}
-
-impl From<TrySendError<ServerMsg>> for ProcessError {
-	fn from(_: TrySendError<ServerMsg>) -> ProcessError {
-		ProcessError::TrySendServerMsg
-	}
-}
-
-impl From<TrySendError<ClientMsg>> for ProcessError {
-	fn from(_: TrySendError<ClientMsg>) -> ProcessError {
-		ProcessError::TrySendClientMsg
-	}
-}
-
-impl From<TrySendError<Frame>> for ProcessError {
-	fn from(_: TrySendError<Frame>) -> ProcessError {
-		ProcessError::TrySendFrame
-	}
-}
-
-impl From<TrySendError<RpcMsg>> for ProcessError {
-	fn from(_: TrySendError<RpcMsg>) -> ProcessError {
-		ProcessError::TrySendRpcMsg
 	}
 }
 

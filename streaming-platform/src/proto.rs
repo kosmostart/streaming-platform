@@ -19,9 +19,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use sp_dto::bytes::{Buf, BytesMut, BufMut};
 use sp_dto::{*, uuid::Uuid};
 
-pub const STREAM_ID_BUF_SIZE: usize = 8;
 pub const LEN_BUF_SIZE: usize = 4;
-pub const LENS_BUF_SIZE: usize = 12;
 
 pub const FRAME_HEADER_SIZE: usize = 28;
 pub const MAX_FRAME_PAYLOAD_SIZE: usize = 1024;
@@ -44,11 +42,11 @@ pub const RPC_TIMEOUT_MS_AMOUNT: u64 = 30000;
 //pub const STREAM_UNIT_READ_TIMEOUT_MS_AMOUNT: u64 = 1000;
 
 pub fn get_key_hasher() -> SipHasher24 {    
-    SipHasher24::new_with_keys(0, random::<u64>())
+    SipHasher24::new_with_keys(0, 0)
 }
 
 pub fn get_stream_id_hasher() -> SipHasher24 {    
-    SipHasher24::new_with_keys(0, random::<u64>())
+    SipHasher24::new_with_keys(0, 0)
 }
 
 pub fn get_stream_id_onetime(addr: &str) -> u64 {
@@ -330,11 +328,10 @@ pub enum StreamCompletion {
     Err
 }
 
-pub fn get_key_hash(hasher: &mut SipHasher24, buf: &mut BytesMut, key: Key) -> u64 {
-    debug!("Creating hash for: {:?}", key);
-    buf.clear();
-    buf.put((key.service + &key.action + &key.domain).as_bytes());  
-    hasher.write(&buf);
+pub fn get_key_hash(key: Key) -> u64 {	
+	let mut hasher = get_key_hasher();
+
+    hasher.write(&(key.service + &key.action + &key.domain).as_bytes());
 
     let res = hasher.finish();
 
@@ -452,10 +449,7 @@ pub enum RpcMsg {
 pub struct MagicBall {    
     pub addr: String,
     pub auth_token: Option<String>,
-    pub auth_data: Option<Value>,
-    key_hasher: SipHasher24,
-    key_hash_buf: BytesMut,
-    hasher: SipHasher24,
+    pub auth_data: Option<Value>,    
     hash_buf: BytesMut,
     addr_bytes_len: usize,
     write_tx: UnboundedSender<Frame>,
@@ -479,10 +473,7 @@ impl MagicBall {
         MagicBall {            
             addr,
             auth_token: None,
-            auth_data: None,
-            key_hasher,
-            key_hash_buf,
-            hasher,
+            auth_data: None,            
             hash_buf,
             addr_bytes_len,
             write_tx,
@@ -494,14 +485,11 @@ impl MagicBall {
         self.hash_buf.truncate(self.addr_bytes_len);
         //self.hash_buf.put_u32(get_counter_value());
         self.hash_buf.extend_from_slice(Uuid::new_v4().to_string().as_bytes());
-        self.hasher.write(&self.hash_buf);
-        self.hasher.finish()
+		let mut hasher = get_stream_id_hasher();
+        hasher.write(&self.hash_buf);
+        hasher.finish()
     }
 
-    /// This function generates hash for key
-    pub fn get_key_hash(&mut self, key: Key) -> u64 {
-        get_key_hash(&mut self.key_hasher, &mut self.key_hash_buf, key)
-    }
     /// This function should be called for single message write.
     /// stream_id value MUST BE ACQUIRED with get_stream_id() function. stream_id generation can be implicit, however this will leads to less flexible API (if for example you need stream payload or attachments data).
     /// If you plan to write attachments data later (for example in streaming fashion), leave attachments_sizes parameter empty and only fill attachment sizes in msg_meta
@@ -575,7 +563,7 @@ impl MagicBall {
 
         let (dto, msg_meta_size, payload_size, attachments_sizes) = event_dto_with_sizes(self.addr.clone(), key.clone(), payload, route, self.auth_token.clone(), self.auth_data.clone())?;
 
-        let key_hash = get_key_hash(&mut self.key_hasher, &mut self.key_hash_buf, key);
+        let key_hash = get_key_hash(key);
         let stream_id = self.get_stream_id();
 
         self.write_full_message(MsgType::Event.get_u8(), key_hash, stream_id, dto, msg_meta_size, payload_size, attachments_sizes).await?;
@@ -589,7 +577,7 @@ impl MagicBall {
 
         let (dto, msg_meta_size, payload_size, attachments_sizes) = event_dto_with_sizes(self.addr.clone(), key.clone(), payload, route, self.auth_token.clone(), self.auth_data.clone())?;
 
-        let key_hash = get_key_hash(&mut self.key_hasher, &mut self.key_hash_buf, key);
+        let key_hash = get_key_hash(key);
         let stream_id = self.get_stream_id();
 
         self.write_full_message(MsgType::Event.get_u8(), key_hash, stream_id, dto, msg_meta_size, payload_size, attachments_sizes).await?;
@@ -610,7 +598,7 @@ impl MagicBall {
         
         self.rpc_inbound_tx.send(RpcMsg::AddRpc(correlation_id, rpc_tx))?;
 
-        let key_hash = get_key_hash(&mut self.key_hasher, &mut self.key_hash_buf, key);
+        let key_hash = get_key_hash(key);
         let stream_id = self.get_stream_id();
 
         self.write_full_message(MsgType::RpcRequest.get_u8(), key_hash, stream_id, dto, msg_meta_size, payload_size, attachments_sizes).await?;       
@@ -634,7 +622,7 @@ impl MagicBall {
         
         self.rpc_inbound_tx.send(RpcMsg::AddRpc(correlation_id, rpc_tx))?;
 
-        let key_hash = get_key_hash(&mut self.key_hasher, &mut self.key_hash_buf, key);
+        let key_hash = get_key_hash(key);
         let stream_id = self.get_stream_id();
 
         self.write_full_message(MsgType::RpcRequest.get_u8(), key_hash, stream_id, dto, msg_meta_size, payload_size, attachments_sizes).await?;
@@ -681,7 +669,7 @@ impl MagicBall {
         buf.append(&mut msg_meta_vec);
         buf.append(&mut payload_with_attachments);
 
-        let key_hash = get_key_hash(&mut self.key_hasher, &mut self.key_hash_buf, msg_meta.key);
+        let key_hash = get_key_hash(msg_meta.key);
         let stream_id = self.get_stream_id();
 
         self.write_full_message(msg_meta.msg_type.get_u8(), key_hash, stream_id, buf, msg_meta_size, payload_size, attachments_sizes).await?;
@@ -726,7 +714,7 @@ impl MagicBall {
         buf.append(&mut msg_meta_vec);
         buf.append(&mut payload_with_attachments);
 
-        let key_hash = get_key_hash(&mut self.key_hasher, &mut self.key_hash_buf, msg_meta.key);
+        let key_hash = get_key_hash(msg_meta.key);
         let stream_id = self.get_stream_id();
 
         self.write_full_message(msg_meta.msg_type.get_u8(), key_hash, stream_id, buf, msg_meta_size, payload_size, attachments_sizes).await?;
@@ -774,7 +762,7 @@ impl MagicBall {
 
         debug!("proxy_rpc write attempt");
 
-        let key_hash = get_key_hash(&mut self.key_hasher, &mut self.key_hash_buf, msg_meta.key);
+        let key_hash = get_key_hash(msg_meta.key);
         let stream_id = self.get_stream_id();
 
         self.write_full_message(msg_meta.msg_type.get_u8(), key_hash, stream_id, buf, msg_meta_size, payload_size, attachments_sizes).await?;
@@ -839,7 +827,7 @@ impl MagicBall {
 
         debug!("proxy_rpc_with_auth_data write attempt");
 
-        let key_hash = get_key_hash(&mut self.key_hasher, &mut self.key_hash_buf, msg_meta.key);
+        let key_hash = get_key_hash(msg_meta.key);
         let stream_id = self.get_stream_id();
 
         self.write_full_message(msg_meta.msg_type.get_u8(), key_hash, stream_id, buf, msg_meta_size, payload_size, attachments_sizes).await?;
@@ -899,7 +887,7 @@ impl MagicBall {
 
         debug!("proxy_rpc_with_payload write attempt");
 
-        let key_hash = get_key_hash(&mut self.key_hasher, &mut self.key_hash_buf, msg_meta.key);
+        let key_hash = get_key_hash(msg_meta.key);
         let stream_id = self.get_stream_id();
 
         self.write_full_message(msg_meta.msg_type.get_u8(), key_hash, stream_id, buf, msg_meta_size, payload_size, attachments_sizes).await?;

@@ -227,7 +227,7 @@ where
 
                                 route.points.push(Participator::Service(mb.addr.clone()));
 
-                                let key_hash = mb.get_key_hash(key.clone());
+                                let key_hash = get_key_hash(key.clone());
 
                                 let (res, msg_meta_size, payload_size, attachments_sizes) = reply_to_rpc_dto2_sizes(mb.addr.clone(),  key, correlation_id, payload, attachments, attachments_data, rpc_result, route, None, None).expect("failed to create rpc reply");
 

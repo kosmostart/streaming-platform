@@ -119,45 +119,55 @@ impl Frame {
         })
     }
 }
-pub struct State2 {
+pub struct State {
+	frame_reading_status: FrameReadingStatus,
     bytes_read: usize,
+	bytes_processed: usize,
+	read_buf: [u8; MAX_FRAME_SIZE],
     frame_buf: [u8; MAX_FRAME_SIZE],
-    read_buf: [u8; MAX_FRAME_SIZE],
-    offset: usize
+	payload_size_u16: u16,
+	payload_size: usize,
+	key_hash: u64,
+	stream_id: u64,
+	frame_signature: u64,
+	frame_size: usize
 }
 
-pub enum NextAction {
-    ReadFrame,
-    ReadMoreBytes
+pub enum FrameReadingStatus {
+	Header,
+	Payload
 }
-
 pub enum ReadFrameResult {
-    Frame(Frame),
-    ReadMoreBytes
+	NotEnoughBytesForFrame,
+	NextStep,
+    Frame(Frame)
 }
 
-impl State2 {
-    pub fn new() -> State2 {
-        State2 {
+impl State {
+    pub fn new() -> State {
+        State {
+			frame_reading_status: FrameReadingStatus::Header,
             bytes_read: 0,
+			bytes_processed: 0,
             frame_buf: [0; MAX_FRAME_SIZE],
             read_buf: [0; MAX_FRAME_SIZE],
-            offset: 0
+			payload_size_u16: 0,
+			payload_size: 0,
+			key_hash: 0,
+			stream_id: 0,
+			frame_signature: 0,
+			frame_size: 0
         }
     }
     pub fn clear(&mut self) {
+		self.frame_reading_status = FrameReadingStatus::Header;
         self.bytes_read = 0;
-        self.offset = 0;
+        self.bytes_processed = 0;
     }
-    pub async fn read_from_tcp_stream(&mut self, tcp_stream: &mut TcpStream) -> Result<NextAction, ProcessError> {
+    pub async fn read_from_tcp_stream(&mut self, tcp_stream: &mut TcpStream) -> Result<(), ProcessError> {
         let bytes_read = tcp_stream.read(&mut self.read_buf[..]).await?;
 
-		enum ReadFromStreamResult {
-			LessThanOneFrame,
-			OneFrameExactly,
-			OneFrameAndPart,
-			SeveralFrames
-		}
+		debug!("Read {} bytes", bytes_read);
 
         match bytes_read {
             0 => {
@@ -165,17 +175,9 @@ impl State2 {
                 Err(ProcessError::StreamClosed)
             }
             _ => {
-				debug!("Bytes read from tcp stream before move: {}, bytes read in state: {}", bytes_read, self.bytes_read);
-
                 let mut i = 0;
 
-				if (self.bytes_read > MAX_FRAME_SIZE) {
-					panic!("Self bytes read exceeded max frame size");
-				}
-
-				let free_space_in_frame_buf = MAX_FRAME_SIZE - self.bytes_read;
-
-                while i < bytes_read {
+				while i < bytes_read {
                     self.frame_buf[self.bytes_read + i] = self.read_buf[i];
 
                     i = i + 1;
@@ -183,171 +185,93 @@ impl State2 {
 
                 self.bytes_read = self.bytes_read + bytes_read;
 
-                debug!("Bytes read from tcp stream: {}, bytes read in state: {}", bytes_read, self.bytes_read);
-
-                match self.bytes_read < self.offset + FRAME_HEADER_SIZE {
-                    true => Ok(NextAction::ReadMoreBytes),
-                    false => Ok(NextAction::ReadFrame)
-                }
+				Ok(())
             }
         }
     }
     pub fn read_frame(&mut self) -> ReadFrameResult {
-        if self.bytes_read < self.offset + 3 {
-            return ReadFrameResult::ReadMoreBytes;
-        }
-        debug!("Got frame type {}, offset {}", self.frame_buf[self.offset], self.offset);
+		match self.frame_reading_status {
+			FrameReadingStatus::Header => {
+				if self.bytes_read < self.bytes_processed + FRAME_HEADER_SIZE {
+					return ReadFrameResult::NotEnoughBytesForFrame;
+				}            
+		
+				self.payload_size_u16 = byteorder::BigEndian::read_u16(&self.frame_buf[self.bytes_processed + 1..self.bytes_processed + 3]);
+				self.payload_size = self.payload_size_u16 as usize;
+				self.key_hash = byteorder::BigEndian::read_u64(&self.frame_buf[self.bytes_processed + 4..self.bytes_processed + 12]);
+				self.stream_id = byteorder::BigEndian::read_u64(&self.frame_buf[self.bytes_processed + 12..self.bytes_processed + 20]);
+				self.frame_signature = byteorder::BigEndian::read_u64(&self.frame_buf[self.bytes_processed + 20..self.bytes_processed + 28]);
+		
+				debug!("Got payload size {}", self.payload_size_u16);
+		
+				self.frame_size = FRAME_HEADER_SIZE + self.payload_size;
 
-        //debug!("{:?}", self.frame_buf);
+				self.frame_reading_status = FrameReadingStatus::Payload;
 
-        let payload_size_u16 = byteorder::BigEndian::read_u16(&self.frame_buf[self.offset + 1..self.offset + 3]);
-        let payload_size = payload_size_u16 as usize;
+				ReadFrameResult::NextStep
+			}
+			FrameReadingStatus::Payload => {
+				if self.bytes_read < self.bytes_processed + self.frame_size {
+					return ReadFrameResult::NotEnoughBytesForFrame;
+				}
+		
+				let payload_slice = &self.frame_buf[self.bytes_processed + FRAME_HEADER_SIZE..self.bytes_processed + self.frame_size];
+				let mut payload = [0; MAX_FRAME_PAYLOAD_SIZE];
+		
+				let mut i = 0;
+		
+				while i < self.payload_size {
+					payload[i] = payload_slice[i];
+					i = i + 1;
+				}				
+		
+				let res = Frame {
+					frame_type: self.frame_buf[self.bytes_processed],
+					payload_size: self.payload_size_u16,
+					msg_type: self.frame_buf[self.bytes_processed + 3],
+					key_hash: self.key_hash,
+					stream_id: self.stream_id,
+					frame_signature: self.frame_signature,
+					payload
+				};
 
-        debug!("Got payload size {}", payload_size_u16);
+				self.bytes_processed = self.bytes_processed + self.frame_size;
+				self.frame_reading_status = FrameReadingStatus::Header;
 
-        let frame_size = FRAME_HEADER_SIZE + payload_size;
+				match self.bytes_processed < self.bytes_read {
+					true => {
+						match self.bytes_processed + FRAME_HEADER_SIZE <= self.bytes_read {
+							true => {
+								debug!("At least one frame header left for processing");
+							}
+							false => {
+								debug!("No frame headers left for processing, but some bytes left");
 
-        match self.offset + frame_size <= self.bytes_read {
-            true => {
-                let key_hash = byteorder::BigEndian::read_u64(&self.frame_buf[self.offset + 4..self.offset + 12]);
-                let stream_id = byteorder::BigEndian::read_u64(&self.frame_buf[self.offset + 12..self.offset + 20]);
-                let frame_signature = byteorder::BigEndian::read_u64(&self.frame_buf[self.offset + 20..self.offset + 28]);
+								let bytes_left = self.bytes_read - self.bytes_processed;
 
-                let payload_slice = &self.frame_buf[self.offset + FRAME_HEADER_SIZE..self.offset + frame_size];
-                let mut payload = [0; MAX_FRAME_PAYLOAD_SIZE];
+								i = 0;
+				
+								while i < bytes_left {
+									self.frame_buf[i] = self.read_buf[self.bytes_processed + i];
+									i = i + 1;
+								}
 
-                let mut i = 0;
-
-                while i < payload_size {
-                    payload[i] = payload_slice[i];
-                    i = i + 1;
-                }
-
-                let res = Frame {
-                    frame_type: self.frame_buf[self.offset],
-                    payload_size: payload_size_u16,
-                    msg_type: self.frame_buf[self.offset + 3],
-                    key_hash,
-                    stream_id,
-                    frame_signature,
-                    payload
-                };
-
-                self.offset = self.offset + frame_size;
-
-                debug!("Offset set to {}", self.offset);
-
-                ReadFrameResult::Frame(res)
-            },
-            false => {
-                let mut i = 0;
-                let frame_part_len = self.bytes_read - self.offset;
-
-                while i < frame_part_len {
-                    self.frame_buf[i] = self.frame_buf[self.offset + i];
-                    i = i + 1;
-                }
-
-                debug!("Setting bytes read to {}, offset to 0", frame_part_len);
-                self.bytes_read = frame_part_len;
-                self.offset = 0;
-
-                ReadFrameResult::ReadMoreBytes
-            }
-        }
+								self.bytes_read = bytes_left;
+								self.bytes_processed = 0;
+							}
+						}												
+					}
+					false => {
+						debug!("No frame headers left for processing, no bytes left");
+						self.bytes_read = 0;
+						self.bytes_processed = 0;
+					}
+				}				
+				
+				ReadFrameResult::Frame(res)
+			}
+		}
     }
-    /*
-    pub async fn read_frame(&mut self, n: usize) -> Result<Option<Frame>, ProcessError> {
-        let mut i = 0;
-
-        if self.frame_type.is_none() {
-            debug!("Got frame type {}", self.read_buf[0]);
-
-            self.frame_type = Some(self.read_buf[0]);
-        }
-
-        if self.payload_size.is_none() && n >= 3 {
-            let payload_size_u16 = byteorder::BigEndian::read_u16(&self.read_buf[1..3]);
-            let payload_size = payload_size_u16 as usize;
-
-            debug!("Got payload size {}", payload_size);
-
-            if payload_size > MAX_FRAME_PAYLOAD_SIZE {
-                return Err(ProcessError::FramePayloadSizeExceeded);
-            }
-
-            self.payload_size = Some(payload_size);
-            self.payload_size_u16 = Some(payload_size_u16);
-        }
-
-        match self.payload_size {
-            Some(payload_size) => {
-
-                let frame_size = FRAME_HEADER_SIZE + payload_size;
-
-                match self.offset + n >= frame_size {
-                    true => {
-                        debug!("Got frame, frame type {:?}, frame size {}", self.frame_type, frame_size);
-
-                        while i < frame_size - self.offset {
-                            self.frame_buf[self.offset + i] = self.read_buf[i];
-                            i = i + 1;
-                        }
-
-                        let bytes_moved = i;
-
-                        debug!("Bytes moved: {}", bytes_moved);
-                        
-                        let key_hash = byteorder::BigEndian::read_u64(&self.frame_buf[4..12]);
-                        let stream_id = byteorder::BigEndian::read_u64(&self.frame_buf[12..20]);
-                        let frame_signature = byteorder::BigEndian::read_u64(&self.frame_buf[20..28]);
-
-                        i = 0;
-
-                        let payload_slice = &self.frame_buf[FRAME_HEADER_SIZE..frame_size];
-                        let mut payload = [0; MAX_FRAME_PAYLOAD_SIZE];
-
-                        while i < payload_size {
-                            payload[i] = payload_slice[i];
-                            i = i + 1;
-                        }
-
-                        let res = Frame {
-                            frame_type: self.frame_type?,
-                            payload_size: payload_size as u16,
-                            msg_type: self.frame_buf[3],
-                            key_hash,
-                            stream_id,
-                            frame_signature,
-                            payload
-                        };
-
-                        i = 0;
-                        self.clear();
-    
-                        while i < n - bytes_moved {
-                            self.frame_buf[self.offset + i] = self.read_buf[bytes_moved + i];
-                            i = i + 1;
-                        }
-
-                        Ok(Some(res))
-                    }
-                    false => {
-                        while i < n {
-                            self.frame_buf[self.offset + i] = self.read_buf[i];
-                            i = i + 1;
-                        }
-                        
-                        self.offset = self.offset + n;
-
-                        Ok(None)
-                    }
-                }
-            }
-            None => Ok(None)
-        }
-    }
-    */
 }
 
 pub struct Client {

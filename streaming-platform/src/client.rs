@@ -9,6 +9,48 @@ use serde_json::{json, Value, from_slice, to_vec};
 use sp_dto::*;
 use crate::proto::*;
 
+/// Starts a stream based client based on provided config. Creates new runtime and blocks.
+/// Config must have "addr" key, this will be used as address for endpoint, and "host" key - network addr for the server (in host:port format)
+/// Config must have "access_key" key, this will be send for optional authorization, more information about this feature will be provided later.
+/// process_stream is used for stream of incoming data processing.
+/// startup is executed on the start of this function.
+/// restream_rx can be used for restreaming data somewhere else, for example returning data for incoming web request
+/// dependency is w/e clonable dependency needed when processing data.
+/// The protocol message format is in sp-dto crate.
+pub fn start_stream<T: 'static, R: 'static, D: 'static>(config: HashMap<String, String>, process_stream: ProcessStream<T, D>, startup: Startup<R, D>, startup_data: Option<Value>, restream_rx: Option<UnboundedReceiver<RestreamMsg>>, dependency: D) 
+where 
+    T: Future<Output = ()> + Send,
+    R: Future<Output = ()> + Send,
+    D: Clone + Send + Sync
+{        
+    let addr = config.get("addr").expect("Missing addr config value").to_owned();
+    let host = config.get("host").expect("Missing host config value").to_owned();    
+    let access_key = config.get("access_key").expect("Missing access_key config value").to_owned();
+    let rt = Runtime::new().expect("Failed to create runtime");
+    rt.block_on(stream_mode(&host, &addr, &access_key, process_stream, startup, config, startup_data, restream_rx, dependency));
+}
+
+/// Starts a message based client based on provided config. Creates new runtime and blocks.
+/// Config must have "addr" key, this will be used as address for endpoint, and "host" key - network addr for the server (in host:port format)
+/// process_event is used for processing incoming message, which are marked as events via message msg_type.
+/// process_rpc is used for processing incoming message, which are marked as rpc request via message msg_type.
+/// startup is executed on the start of this function.
+/// dependency is w/e clonable dependency needed when processing data.
+/// The protocol message format is in sp-dto crate.
+pub fn start<T: 'static, Q: 'static, R: 'static, D: 'static>(config: HashMap<String, String>, process_event: ProcessEvent<T, Value, D>, process_rpc: ProcessRpc<Q, Value, D>, startup: Startup<R, D>, startup_data: Option<Value>, dependency: D) 
+where 
+    T: Future<Output = Result<(), Box<dyn Error>>> + Send,
+    Q: Future<Output = Result<Response<Value>, Box<dyn Error>>> + Send,
+    R: Future<Output = ()> + Send,
+    D: Clone + Send + Sync
+{    
+    let addr = config.get("addr").expect("Missing addr config value").to_owned();
+    let host = config.get("host").expect("Missing host config value").to_owned();
+    let access_key = config.get("access_key").expect("Missing access_key config value").to_owned();
+    let rt = Runtime::new().expect("Failed to create runtime");
+    rt.block_on(full_message_mode(&host, &addr, &access_key, process_event, process_rpc, startup, config, startup_data, dependency));
+}
+
 /// Future for stream based client based on provided config.
 /// "addr" value will be used as address for endpoint, "host" value - network addr for the server (in host:port format)
 /// "access_key" value will be send for optional authorization, more information about this feature will be provided later.
@@ -293,34 +335,26 @@ async fn process_stream_mode(addr: String, mut write_tcp_stream: TcpStream, mut 
         error!("{:?}", res);
     });
 
-    let mut state = State2::new();
+    let mut state = State::new();
 
-    loop {
-        match state.read_from_tcp_stream(&mut read_tcp_stream).await? {
-            NextAction::ReadFrame => {
-                loop {
-                    match state.read_frame() {
-                        ReadFrameResult::Frame(frame) => {
-                            match read_tx.send(ClientMsg::Frame(frame)) {
-                                Ok(()) => {}
-                                Err(_) => {                        
-                                    panic!("Client message send with read_tx in stream mode failed");
-                                }
-                            }
-                        }
-                        ReadFrameResult::ReadMoreBytes => {
-                            debug!("ReadFrameResult::ReadMoreBytes");
-                            break;
-                        }
-                    }
-                }
+	loop {
+		match state.read_frame() {
+			ReadFrameResult::NotEnoughBytesForFrame => {
+				state.read_from_tcp_stream(&mut read_tcp_stream).await?
+			}
+			ReadFrameResult::NextStep => {}
+			ReadFrameResult::Frame(frame) => {
+				debug!("Stream frame read, frame type {}, msg type {}, stream id {}", frame.frame_type, frame.msg_type, frame.stream_id);
 
-            }
-            NextAction::ReadMoreBytes => {
-                debug!("NextAction::ReadMoreBytes");
-            }
-        }
-    }
+				match read_tx.send(ClientMsg::Frame(frame)) {
+					Ok(()) => {}
+					Err(_) => {                        
+						panic!("Client message send with read_tx in stream mode failed");
+					}
+				}				
+			}
+		}
+	}
 }
 
 async fn process_full_message_mode(addr: String, mut write_tcp_stream: TcpStream, mut read_tcp_stream: TcpStream, read_tx: UnboundedSender<ClientMsg>, write_rx: UnboundedReceiver<Frame>) -> Result<(), ProcessError> {    
@@ -331,7 +365,7 @@ async fn process_full_message_mode(addr: String, mut write_tcp_stream: TcpStream
     //println!("auth {:?}", auth_payload);
             
     let mut stream_layouts: HashMap<u64, StreamLayout> = HashMap::new();
-    let mut state = State2::new();
+    let mut state = State::new();
 
     let addr2 = addr.clone();
 
@@ -339,114 +373,62 @@ async fn process_full_message_mode(addr: String, mut write_tcp_stream: TcpStream
         let res = write_loop(addr2, write_rx, &mut write_tcp_stream).await;
         error!("{:?}", res);
     });
-    
-    loop {
-        match state.read_from_tcp_stream(&mut read_tcp_stream).await? {
-            NextAction::ReadFrame => {
-                loop {
-                    match state.read_frame() {
-                        ReadFrameResult::Frame(frame) => {
 
-                            match frame.get_frame_type() {
-                                Ok(frame_type) => {
-            
-                                    match frame_type {
-                                        FrameType::MsgMeta => {
-                                            match stream_layouts.get_mut(&frame.stream_id) {
-                                                Some(stream_layout) => {
-                                                    stream_layout.msg_meta.extend_from_slice(&frame.payload[..frame.payload_size as usize]);
-                                                }
-                                                None => {
-                                                    stream_layouts.insert(frame.stream_id, StreamLayout {
-                                                        id: frame.stream_id,
-                                                        msg_meta: frame.payload[..frame.payload_size as usize].to_vec(),
-                                                        payload: vec![],
-                                                        attachments_data: vec![]
-                                                    });
-                                                }
-                                            }
-                                        }
-                                        FrameType::Payload => {
-                                            let stream_layout = stream_layouts.get_mut(&frame.stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
-                                            stream_layout.payload.extend_from_slice(&frame.payload[..frame.payload_size as usize]);
-                                        }
-                                        FrameType::Attachment => {
-                                            let stream_layout = stream_layouts.get_mut(&frame.stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
-                                            stream_layout.attachments_data.extend_from_slice(&frame.payload[..frame.payload_size as usize]);
-                                        }
-                                        FrameType::End => {
-                                            let stream_layout = stream_layouts.remove(&frame.stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
-            
-                                            let msg_meta = from_slice(&stream_layout.msg_meta)?;
-                    
-                                            match read_tx.send(ClientMsg::Message(frame.stream_id, msg_meta, stream_layout.payload, stream_layout.attachments_data)) {
-                                                Ok(()) => {}
-                                                Err(_) => {
-                                                    panic!("Client message send with read_tx in full message mode failed")
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                                Err(e) => {
-                                    error!("Get frame type failed in read: {:?}, addr {}", e, addr);
-                                }
-                            }
+	loop {
+		match state.read_frame() {
+			ReadFrameResult::NotEnoughBytesForFrame => {
+				state.read_from_tcp_stream(&mut read_tcp_stream).await?
+			}
+			ReadFrameResult::NextStep => {}
+			ReadFrameResult::Frame(frame) => {
+				debug!("Full message stream frame read, frame type {}, msg type {}, stream id {}", frame.frame_type, frame.msg_type, frame.stream_id);
 
-                        }
-                        ReadFrameResult::ReadMoreBytes => {
-                            debug!("ReadFrameResult::ReadMoreBytes");
-                            break;
-                        }
-                    }
-                }
+				match frame.get_frame_type() {
+					Ok(frame_type) => {
 
-            }
-            NextAction::ReadMoreBytes => {
-                debug!("NextAction::ReadMoreBytes");
-            }
-        }
-    }
-}
+						match frame_type {
+							FrameType::MsgMeta => {
+								match stream_layouts.get_mut(&frame.stream_id) {
+									Some(stream_layout) => {
+										stream_layout.msg_meta.extend_from_slice(&frame.payload[..frame.payload_size as usize]);
+									}
+									None => {
+										stream_layouts.insert(frame.stream_id, StreamLayout {
+											id: frame.stream_id,
+											msg_meta: frame.payload[..frame.payload_size as usize].to_vec(),
+											payload: vec![],
+											attachments_data: vec![]
+										});
+									}
+								}
+							}
+							FrameType::Payload => {
+								let stream_layout = stream_layouts.get_mut(&frame.stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
+								stream_layout.payload.extend_from_slice(&frame.payload[..frame.payload_size as usize]);
+							}
+							FrameType::Attachment => {
+								let stream_layout = stream_layouts.get_mut(&frame.stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
+								stream_layout.attachments_data.extend_from_slice(&frame.payload[..frame.payload_size as usize]);
+							}
+							FrameType::End => {
+								let stream_layout = stream_layouts.remove(&frame.stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
 
-/// Starts a stream based client based on provided config. Creates new runtime and blocks.
-/// Config must have "addr" key, this will be used as address for endpoint, and "host" key - network addr for the server (in host:port format)
-/// Config must have "access_key" key, this will be send for optional authorization, more information about this feature will be provided later.
-/// process_stream is used for stream of incoming data processing.
-/// startup is executed on the start of this function.
-/// restream_rx can be used for restreaming data somewhere else, for example returning data for incoming web request
-/// dependency is w/e clonable dependency needed when processing data.
-/// The protocol message format is in sp-dto crate.
-pub fn start_stream<T: 'static, R: 'static, D: 'static>(config: HashMap<String, String>, process_stream: ProcessStream<T, D>, startup: Startup<R, D>, startup_data: Option<Value>, restream_rx: Option<UnboundedReceiver<RestreamMsg>>, dependency: D) 
-where 
-    T: Future<Output = ()> + Send,
-    R: Future<Output = ()> + Send,
-    D: Clone + Send + Sync
-{        
-    let addr = config.get("addr").expect("Missing addr config value").to_owned();
-    let host = config.get("host").expect("Missing host config value").to_owned();    
-    let access_key = config.get("access_key").expect("Missing access_key config value").to_owned();
-    let rt = Runtime::new().expect("Failed to create runtime");
-    rt.block_on(stream_mode(&host, &addr, &access_key, process_stream, startup, config, startup_data, restream_rx, dependency));
-}
-
-/// Starts a message based client based on provided config. Creates new runtime and blocks.
-/// Config must have "addr" key, this will be used as address for endpoint, and "host" key - network addr for the server (in host:port format)
-/// process_event is used for processing incoming message, which are marked as events via message msg_type.
-/// process_rpc is used for processing incoming message, which are marked as rpc request via message msg_type.
-/// startup is executed on the start of this function.
-/// dependency is w/e clonable dependency needed when processing data.
-/// The protocol message format is in sp-dto crate.
-pub fn start<T: 'static, Q: 'static, R: 'static, D: 'static>(config: HashMap<String, String>, process_event: ProcessEvent<T, Value, D>, process_rpc: ProcessRpc<Q, Value, D>, startup: Startup<R, D>, startup_data: Option<Value>, dependency: D) 
-where 
-    T: Future<Output = Result<(), Box<dyn Error>>> + Send,
-    Q: Future<Output = Result<Response<Value>, Box<dyn Error>>> + Send,
-    R: Future<Output = ()> + Send,
-    D: Clone + Send + Sync
-{    
-    let addr = config.get("addr").expect("Missing addr config value").to_owned();
-    let host = config.get("host").expect("Missing host config value").to_owned();
-    let access_key = config.get("access_key").expect("Missing access_key config value").to_owned();
-    let rt = Runtime::new().expect("Failed to create runtime");
-    rt.block_on(full_message_mode(&host, &addr, &access_key, process_event, process_rpc, startup, config, startup_data, dependency));
+								let msg_meta = from_slice(&stream_layout.msg_meta)?;
+		
+								match read_tx.send(ClientMsg::Message(frame.stream_id, msg_meta, stream_layout.payload, stream_layout.attachments_data)) {
+									Ok(()) => {}
+									Err(_) => {
+										panic!("Client message send with read_tx in full message mode failed")
+									}
+								}
+							}
+						}
+					}
+					Err(e) => {
+						error!("Get frame type failed in read: {:?}, addr {}", e, addr);
+					}
+				}				
+			}
+		}
+	}  
 }

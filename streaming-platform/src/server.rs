@@ -95,7 +95,7 @@ pub async fn start_future(config: ServerConfig, subscribes: Subscribes) -> Resul
 
         let config = config.clone();
         let server_tx = server_tx.clone();
-        let mut state = State2::new();
+        let mut state = State::new();
 
         match auth_tcp_stream(&mut stream, &mut state, client_net_addr, &config).await {
             Ok(addr) => {
@@ -148,7 +148,7 @@ impl ClientState {
     }
 }
 
-async fn auth_tcp_stream(tcp_stream: &mut TcpStream, state: &mut State2, client_net_addr: SocketAddr, _config: &ServerConfig) -> Result<String, ProcessError> {    
+async fn auth_tcp_stream(tcp_stream: &mut TcpStream, state: &mut State, client_net_addr: SocketAddr, _config: &ServerConfig) -> Result<String, ProcessError> {    
     let mut stream_layout = StreamLayout {
         id: 0,
         msg_meta: vec![],
@@ -156,59 +156,41 @@ async fn auth_tcp_stream(tcp_stream: &mut TcpStream, state: &mut State2, client_
         attachments_data: vec![]
     };
 
-    let mut is_completed = false;
+	loop {		
+		match state.read_frame() {
+			ReadFrameResult::NotEnoughBytesForFrame => {
+				state.read_from_tcp_stream(tcp_stream).await?
+			}
+			ReadFrameResult::NextStep => {}
+			ReadFrameResult::Frame(frame) => {
+				debug!("Auth stream frame read, frame type {}, msg type {}, stream id {}", frame.frame_type, frame.msg_type, frame.stream_id);
 
-    loop {
-        if is_completed {
-            break;
-        }
+				match frame.get_frame_type() {
+					Ok(frame_type) => {
 
-        match state.read_from_tcp_stream(tcp_stream).await? {
-            NextAction::ReadFrame => {
+						match frame_type {
+							FrameType::MsgMeta => {
+								stream_layout.msg_meta.extend_from_slice(&frame.payload[..frame.payload_size as usize]);
+							}
+							FrameType::Payload => {
+								stream_layout.payload.extend_from_slice(&frame.payload[..frame.payload_size as usize]);
+							}
+							FrameType::Attachment => {
+								stream_layout.attachments_data.extend_from_slice(&frame.payload[..frame.payload_size as usize]);
+							}
+							FrameType::End => {								
+								break;
+							}
+						}
 
-                loop {
-                    debug!("Read frame call for {:?}", client_net_addr);
-                    match state.read_frame() {
-                        ReadFrameResult::Frame(frame) => {
-                            debug!("Auth stream frame read, frame type {}, stream id {}", frame.frame_type, frame.stream_id);
-    
-                            match frame.get_frame_type() {
-                                Ok(frame_type) => {
-            
-                                    match frame_type {
-                                        FrameType::MsgMeta => {
-                                            stream_layout.msg_meta.extend_from_slice(&frame.payload[..frame.payload_size as usize]);
-                                        }
-                                        FrameType::Payload => {
-                                            stream_layout.payload.extend_from_slice(&frame.payload[..frame.payload_size as usize]);
-                                        }
-                                        FrameType::Attachment => {
-                                            stream_layout.attachments_data.extend_from_slice(&frame.payload[..frame.payload_size as usize]);
-                                        }
-                                        FrameType::End => {
-                                            is_completed = true;
-                                            break;
-                                        }
-                                    }
-                                }
-                                Err(e) => {
-                                    error!("Error on auth stream read for {:?}, get frame type failed, {:?}", client_net_addr, e);
-                                }
-                            }
-                        }
-                        ReadFrameResult::ReadMoreBytes => {
-                            debug!("ReadFrameResult::ReadMoreBytes");
-                            break;
-                        }
-                    }
-                }
-
-            }
-            NextAction::ReadMoreBytes => {
-                debug!("NextAction::ReadMoreBytes");
-            }
-        }
-    }
+					}
+					Err(e) => {
+						error!("Error on auth stream read for {:?}, get frame type failed, {:?}", client_net_addr, e);
+					}
+				}
+			}
+		}
+	}
        
     let msg_meta: MsgMeta = from_slice(&stream_layout.msg_meta)?;
 
@@ -224,65 +206,52 @@ async fn process_read_tcp_stream(addr: String, mut tcp_stream: TcpStream, client
     write_loop(addr, client_rx, &mut tcp_stream).await
 }
 
-async fn process_write_tcp_stream(tcp_stream: &mut TcpStream, state: &mut State2, addr: String, event_subscribes: HashMap<u64, Vec<String>>, rpc_subscribes: HashMap<u64, Vec<String>>, rpc_response_subscribes: HashMap<u64, Vec<String>>, _client_net_addr: SocketAddr, server_tx: UnboundedSender<ServerMsg>) -> Result<(), ProcessError> {
-    loop {
-		debug!("Main stream read from tcp stream step");
-		
-        match state.read_from_tcp_stream(tcp_stream).await? {
-            NextAction::ReadFrame => {
-                loop {
+async fn process_write_tcp_stream(tcp_stream: &mut TcpStream, state: &mut State, addr: String, event_subscribes: HashMap<u64, Vec<String>>, rpc_subscribes: HashMap<u64, Vec<String>>, rpc_response_subscribes: HashMap<u64, Vec<String>>, _client_net_addr: SocketAddr, server_tx: UnboundedSender<ServerMsg>) -> Result<(), ProcessError> {
+	loop {
+		match state.read_frame() {
+			ReadFrameResult::NotEnoughBytesForFrame => {
+				state.read_from_tcp_stream(tcp_stream).await?
+			}
+			ReadFrameResult::NextStep => {}
+			ReadFrameResult::Frame(frame) => {
+				debug!("Main stream frame read, frame type {}, msg type {}, stream id {}", frame.frame_type, frame.msg_type, frame.stream_id);
 
-                    match state.read_frame() {
-                        ReadFrameResult::Frame(frame) => {
-                            debug!("Main stream frame read, frame type {}, msg type {}, stream id {}", frame.frame_type, frame.msg_type, frame.stream_id);
-    
-                            let subscribes = match frame.get_msg_type()? {
-                                MsgType::Event => &event_subscribes,
-                                MsgType::RpcRequest => &rpc_subscribes,
-                                MsgType::RpcResponse(_) => &rpc_response_subscribes
-                            };
-                            
-                            match subscribes.get(&frame.key_hash) {
-                                Some(targets) => {
-                                    match targets.len() {
-                                        0 => {
-                                            warn!("Subscribes empty for key hash {}, msg_type {:?}", frame.key_hash, frame.get_msg_type())
-                                        }
-                                        1 => {
-                                            let target = targets[0].clone();
-            
-                                            debug!("Sending frame to {}", target);
-                                            server_tx.send(ServerMsg::Send(target, frame))?;
-                                        }
-                                        _ => {
-                                            let index = targets.len() - 1;
-            
-                                            for target in targets.iter().take(index) {     
-                                                debug!("Sending frame to {}", target);
-                                                server_tx.send(ServerMsg::Send(target.clone(), frame.clone()))?;
-                                            }
-            
-                                            let target = &targets[index];
-            
-                                            debug!("Sending frame to {}", target);
-                                            server_tx.send(ServerMsg::Send(target.clone(), frame))?;
-                                        }
-                                    }
-                                }
-                                None => warn!("No subscribes found for key hash {}, msg_type {:?}", frame.key_hash, frame.get_msg_type())
-                            }
-                        }
-                        ReadFrameResult::ReadMoreBytes => {
-                            debug!("ReadFrameResult::ReadMoreBytes");
-                            break;
-                        }
-                    }
-                }
+				let subscribes = match frame.get_msg_type()? {
+					MsgType::Event => &event_subscribes,
+					MsgType::RpcRequest => &rpc_subscribes,
+					MsgType::RpcResponse(_) => &rpc_response_subscribes
+				};
+				
+				match subscribes.get(&frame.key_hash) {
+					Some(targets) => {
+						match targets.len() {
+							0 => {
+								warn!("Subscribes empty for key hash {}, msg_type {:?}", frame.key_hash, frame.get_msg_type())
+							}
+							1 => {
+								let target = targets[0].clone();
 
-            }
-            NextAction::ReadMoreBytes => {
-                debug!("NextAction::ReadMoreBytes");
-            }
-        }
-    }
+								debug!("Sending frame to {}", target);
+								server_tx.send(ServerMsg::Send(target, frame))?;
+							}
+							_ => {
+								let index = targets.len() - 1;
+
+								for target in targets.iter().take(index) {     
+									debug!("Sending frame to {}", target);
+									server_tx.send(ServerMsg::Send(target.clone(), frame.clone()))?;
+								}
+
+								let target = &targets[index];
+
+								debug!("Sending frame to {}", target);
+								server_tx.send(ServerMsg::Send(target.clone(), frame))?;
+							}
+						}
+					}
+					None => warn!("No subscribes found for key hash {}, msg_type {:?}", frame.key_hash, frame.get_msg_type())
+				}				
+			}
+		}
+	}
 }

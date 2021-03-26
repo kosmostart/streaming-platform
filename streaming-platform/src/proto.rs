@@ -612,18 +612,17 @@ impl MagicBall {
         
         Ok(())
     }
-	pub fn send_frame(&mut self, payload: &[u8], payload_size: u16) -> Result<(), ProcessError> {
-		let payload_size_usize = payload_size as usize;
+	pub fn send_frame(&mut self, payload: &[u8], payload_size: usize) -> Result<(), ProcessError> {		
 		let mut buf = [0; MAX_FRAME_PAYLOAD_SIZE];
 
 		let mut i = 0;
 
-		while i < payload_size_usize {
+		while i < payload_size {
 			buf[i] = payload[i];
 			i = i + 1;
 		}
 
-		Ok(self.write_tx.send(Frame::new(self.frame_type, payload_size, self.msg_type, self.key_hash, self.stream_id, buf))?)
+		Ok(self.write_tx.send(Frame::new(self.frame_type, payload_size as u16, self.msg_type, self.key_hash, self.stream_id, buf))?)
 	}
 	pub fn complete_stream(&mut self) -> Result<(), ProcessError> {		
 		Ok(self.write_tx.send(Frame::new(FrameType::End as u8, 0, self.msg_type, self.key_hash, self.stream_id, [0; MAX_FRAME_PAYLOAD_SIZE]))?)

@@ -8,9 +8,13 @@ fn main() {
         host: "127.0.0.1:11001".to_owned()
     };
 
-    let event_subscribes = HashMap::new();
+    let mut event_subscribes = HashMap::new();
     let mut rpc_subscribes = HashMap::new();
     let mut rpc_response_subscribes = HashMap::new();
+
+	event_subscribes.insert("Web".to_owned(), vec![
+        Key::new("DeployStream", "Build", "Build")
+    ]);
 
     rpc_subscribes.insert("Auth".to_owned(), vec![
         Key::new("Auth", "Auth", "Auth")

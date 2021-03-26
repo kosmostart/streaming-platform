@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::io::Read;
 use serde_json::{json, Value, from_value};
 use log::*;
-use streaming_platform::{tokio, client, MagicBall, sp_dto::{MsgMeta, Message, Response, resp}};
+use streaming_platform::{tokio, client, MagicBall, sp_dto::{Key, MsgMeta, Message, Response, resp}};
 
 mod flow;
 mod repository {
@@ -37,8 +37,7 @@ pub async fn process_rpc(config: HashMap<String, String>, mut mb: MagicBall, msg
 
     let res = match msg.meta.key.action.as_ref() {
         "Deploy" => {
-            tokio::spawn(async move {
-                let q = mb;
+            tokio::spawn(async move {                
                 let path = "d:/src/streaming-platform/Cargo.toml";
 
                 let cmd = "cargo";
@@ -52,6 +51,8 @@ pub async fn process_rpc(config: HashMap<String, String>, mut mb: MagicBall, msg
 
                 let args = ["--help"];
 
+				mb.stream_event(Key::new("DeployStream", "Build", "Build"), json!({})).await.unwrap();
+
                 let mut handle = std::process::Command::new(cmd)
                     .args(&args)
                     //.stdin(std::process::Stdio::piped())
@@ -62,12 +63,18 @@ pub async fn process_rpc(config: HashMap<String, String>, mut mb: MagicBall, msg
 
                 let mut stdout = handle.stdout.take().unwrap();
             
-                let mut buffer = [0; 100];
-            
-                // read up to 10 bytes
-                while stdout.read(&mut buffer).unwrap() > 0 {
-                    println!("{:?}", buffer);
-                }
+                let mut buf = [0; 100];				
+
+                loop {
+					let n = stdout.read(&mut buf).unwrap();
+
+					match n {
+						0 => break,
+						_ => mb.send_frame(&buf[..n], n).unwrap()
+					}
+				}
+
+				mb.complete_stream().unwrap();
 
                 /*
                 let mut file = File::open(&path).await?;

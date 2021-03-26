@@ -452,6 +452,8 @@ pub struct MagicBall {
     pub auth_data: Option<Value>,    
     hash_buf: BytesMut,
     addr_bytes_len: usize,
+	frame_type: u8,
+	msg_type: u8,
 	key_hash: u64,
 	stream_id: u64,
     write_tx: UnboundedSender<Frame>,
@@ -478,6 +480,8 @@ impl MagicBall {
             auth_data: None,            
             hash_buf,
             addr_bytes_len,
+			frame_type: 0,
+			msg_type: 0,
 			key_hash: 0,
 			stream_id: 0,
             write_tx,
@@ -497,7 +501,7 @@ impl MagicBall {
     /// This function should be called for single message write.
     /// stream_id value MUST BE ACQUIRED with get_stream_id() function. stream_id generation can be implicit, however this will leads to less flexible API (if for example you need stream payload or attachments data).
     /// If you plan to write attachments data later (for example in streaming fashion), leave attachments_sizes parameter empty and only fill attachment sizes in msg_meta
-    pub async fn write_full_message(&mut self, msg_type: u8, key_hash: u64, stream_id: u64, data: Vec<u8>, msg_meta_size: u64, payload_size: u64, attachments_sizes: Vec<u64>) -> Result<(), ProcessError> {
+    pub async fn write_full_message(&mut self, msg_type: u8, key_hash: u64, stream_id: u64, data: Vec<u8>, msg_meta_size: u64, payload_size: u64, attachments_sizes: Vec<u64>, send_end_frame: bool) -> Result<(), ProcessError> {
         let msg_meta_offset = LEN_BUF_SIZE + msg_meta_size as usize;
         let payload_offset = msg_meta_offset + payload_size as usize;
         let mut data_buf = [0; MAX_FRAME_PAYLOAD_SIZE];
@@ -554,7 +558,9 @@ impl MagicBall {
             prev = attachment_offset;
         }
 
-		self.write_tx.send(Frame::new(FrameType::End as u8, 0, msg_type, key_hash, stream_id, [0; MAX_FRAME_PAYLOAD_SIZE]))?;
+		if send_end_frame {
+			self.write_tx.send(Frame::new(FrameType::End as u8, 0, msg_type, key_hash, stream_id, [0; MAX_FRAME_PAYLOAD_SIZE]))?;
+		}		
 
         Ok(())
     }
@@ -570,7 +576,7 @@ impl MagicBall {
         self.key_hash = get_key_hash(key);
         self.stream_id = self.get_stream_id();
 
-        self.write_full_message(MsgType::Event.get_u8(), self.key_hash, self.stream_id, dto, msg_meta_size, payload_size, attachments_sizes).await?;
+        self.write_full_message(MsgType::Event.get_u8(), self.key_hash, self.stream_id, dto, msg_meta_size, payload_size, attachments_sizes, true).await?;
         
         Ok(())
     }
@@ -584,10 +590,44 @@ impl MagicBall {
         self.key_hash = get_key_hash(key);
         self.stream_id = self.get_stream_id();
 
-        self.write_full_message(MsgType::Event.get_u8(), self.key_hash, self.stream_id, dto, msg_meta_size, payload_size, attachments_sizes).await?;
+        self.write_full_message(MsgType::Event.get_u8(), self.key_hash, self.stream_id, dto, msg_meta_size, payload_size, attachments_sizes, true).await?;
         
         Ok(())
-    }    
+    }
+	pub async fn stream_event<T>(&mut self, key: Key, payload: T) -> Result<(), ProcessError> where T: serde::Serialize, for<'de> T: serde::Deserialize<'de>, T: Debug {
+        let route = Route {
+            source: Participator::Service(self.addr.clone()),
+            spec: RouteSpec::Simple,
+            points: vec![Participator::Service(self.addr.to_owned())]
+        };
+
+        let (dto, msg_meta_size, payload_size, attachments_sizes) = event_dto_with_sizes(self.addr.clone(), key.clone(), payload, route, self.auth_token.clone(), self.auth_data.clone())?;
+
+		self.frame_type = FrameType::Attachment as u8;
+		self.msg_type = MsgType::Event.get_u8();
+        self.key_hash = get_key_hash(key);
+        self.stream_id = self.get_stream_id();
+
+        self.write_full_message(MsgType::Event.get_u8(), self.key_hash, self.stream_id, dto, msg_meta_size, payload_size, attachments_sizes, false).await?;
+        
+        Ok(())
+    }
+	pub fn send_frame(&mut self, payload: &[u8], payload_size: u16) -> Result<(), ProcessError> {
+		let payload_size_usize = payload_size as usize;
+		let mut buf = [0; MAX_FRAME_PAYLOAD_SIZE];
+
+		let mut i = 0;
+
+		while i < payload_size_usize {
+			buf[i] = payload[i];
+			i = i + 1;
+		}
+
+		Ok(self.write_tx.send(Frame::new(self.frame_type, payload_size, self.msg_type, self.key_hash, self.stream_id, buf))?)
+	}
+	pub fn complete_stream(&mut self) -> Result<(), ProcessError> {		
+		Ok(self.write_tx.send(Frame::new(FrameType::End as u8, 0, self.msg_type, self.key_hash, self.stream_id, [0; MAX_FRAME_PAYLOAD_SIZE]))?)
+	}
     pub async fn rpc<T, R>(&mut self, key: Key, payload: T) -> Result<Message<R>, ProcessError> where T: serde::Serialize, T: Debug, for<'de> R: serde::Deserialize<'de>, R: Debug {
         let route = Route {
             source: Participator::Service(self.addr.clone()),
@@ -605,7 +645,7 @@ impl MagicBall {
         self.key_hash = get_key_hash(key);
         self.stream_id = self.get_stream_id();
 
-        self.write_full_message(MsgType::RpcRequest.get_u8(), self.key_hash, self.stream_id, dto, msg_meta_size, payload_size, attachments_sizes).await?;       
+        self.write_full_message(MsgType::RpcRequest.get_u8(), self.key_hash, self.stream_id, dto, msg_meta_size, payload_size, attachments_sizes, true).await?;       
 
         let (msg_meta, payload, attachments_data) = timeout(Duration::from_millis(RPC_TIMEOUT_MS_AMOUNT), rpc_rx).await??;
         let payload: R = from_slice(&payload)?;        
@@ -629,7 +669,7 @@ impl MagicBall {
         self.key_hash = get_key_hash(key);
         self.stream_id = self.get_stream_id();
 
-        self.write_full_message(MsgType::RpcRequest.get_u8(), self.key_hash, self.stream_id, dto, msg_meta_size, payload_size, attachments_sizes).await?;
+        self.write_full_message(MsgType::RpcRequest.get_u8(), self.key_hash, self.stream_id, dto, msg_meta_size, payload_size, attachments_sizes, true).await?;
 
         let (msg_meta, payload, attachments_data) = timeout(Duration::from_millis(RPC_TIMEOUT_MS_AMOUNT), rpc_rx).await??;
         let payload: R = from_slice(&payload)?;        
@@ -656,7 +696,7 @@ impl MagicBall {
 
         let mut msg_meta = res?;
 
-        msg_meta.tx = tx;        
+        msg_meta.tx = tx;
         msg_meta.route.points.push(Participator::Service(self.addr.to_owned()));
 
         let payload_size = msg_meta.payload_size;
@@ -676,7 +716,7 @@ impl MagicBall {
         self.key_hash = get_key_hash(msg_meta.key);
         self.stream_id = self.get_stream_id();
 
-        self.write_full_message(msg_meta.msg_type.get_u8(), self.key_hash, self.stream_id, buf, msg_meta_size, payload_size, attachments_sizes).await?;
+        self.write_full_message(msg_meta.msg_type.get_u8(), self.key_hash, self.stream_id, buf, msg_meta_size, payload_size, attachments_sizes, true).await?;
         
         Ok(())
     }
@@ -721,7 +761,7 @@ impl MagicBall {
         self.key_hash = get_key_hash(msg_meta.key);
         self.stream_id = self.get_stream_id();
 
-        self.write_full_message(msg_meta.msg_type.get_u8(), self.key_hash, self.stream_id, buf, msg_meta_size, payload_size, attachments_sizes).await?;
+        self.write_full_message(msg_meta.msg_type.get_u8(), self.key_hash, self.stream_id, buf, msg_meta_size, payload_size, attachments_sizes, true).await?;
         
         Ok(())
     }
@@ -769,7 +809,7 @@ impl MagicBall {
         self.key_hash = get_key_hash(msg_meta.key);
         self.stream_id = self.get_stream_id();
 
-        self.write_full_message(msg_meta.msg_type.get_u8(), self.key_hash, self.stream_id, buf, msg_meta_size, payload_size, attachments_sizes).await?;
+        self.write_full_message(msg_meta.msg_type.get_u8(), self.key_hash, self.stream_id, buf, msg_meta_size, payload_size, attachments_sizes, true).await?;
 
         debug!("proxy_rpc write attempt succeeded");
 
@@ -834,7 +874,7 @@ impl MagicBall {
         self.key_hash = get_key_hash(msg_meta.key);
         self.stream_id = self.get_stream_id();
 
-        self.write_full_message(msg_meta.msg_type.get_u8(), self.key_hash, self.stream_id, buf, msg_meta_size, payload_size, attachments_sizes).await?;
+        self.write_full_message(msg_meta.msg_type.get_u8(), self.key_hash, self.stream_id, buf, msg_meta_size, payload_size, attachments_sizes, true).await?;
 
         debug!("proxy_rpc_with_auth_data write attempt succeeded");
 
@@ -894,7 +934,7 @@ impl MagicBall {
         self.key_hash = get_key_hash(msg_meta.key);
         self.stream_id = self.get_stream_id();
 
-        self.write_full_message(msg_meta.msg_type.get_u8(), self.key_hash, self.stream_id, buf, msg_meta_size, payload_size, attachments_sizes).await?;
+        self.write_full_message(msg_meta.msg_type.get_u8(), self.key_hash, self.stream_id, buf, msg_meta_size, payload_size, attachments_sizes, true).await?;
 
         debug!("proxy_rpc_with_payload write attempt succeeded");
 

@@ -235,7 +235,7 @@ where
 
                                 let stream_id = mb.get_stream_id();
 
-                                mb.write_full_message(MsgType::RpcResponse(RpcResult::Ok).get_u8(), key_hash, stream_id, res, msg_meta_size, payload_size, attachments_sizes).await.expect("Failed to write rpc response");
+                                mb.write_full_message(MsgType::RpcResponse(RpcResult::Ok).get_u8(), key_hash, stream_id, res, msg_meta_size, payload_size, attachments_sizes, true).await.expect("Failed to write rpc response");
                              
                                 debug!("Client {} write rpc response succeded", mb.addr);
                             });                            

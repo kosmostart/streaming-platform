@@ -165,6 +165,7 @@ async fn auth_tcp_stream(tcp_stream: &mut TcpStream, state: &mut State2, client_
 
         match state.read_from_tcp_stream(tcp_stream).await? {
             NextAction::ReadFrame => {
+
                 loop {
                     debug!("Read frame call for {:?}", client_net_addr);
                     match state.read_frame() {
@@ -225,14 +226,15 @@ async fn process_read_tcp_stream(addr: String, mut tcp_stream: TcpStream, client
 
 async fn process_write_tcp_stream(tcp_stream: &mut TcpStream, state: &mut State2, addr: String, event_subscribes: HashMap<u64, Vec<String>>, rpc_subscribes: HashMap<u64, Vec<String>>, rpc_response_subscribes: HashMap<u64, Vec<String>>, _client_net_addr: SocketAddr, server_tx: UnboundedSender<ServerMsg>) -> Result<(), ProcessError> {
     loop {
-
+		debug!("Main stream read from tcp stream step");
+		
         match state.read_from_tcp_stream(tcp_stream).await? {
             NextAction::ReadFrame => {
                 loop {
 
                     match state.read_frame() {
                         ReadFrameResult::Frame(frame) => {
-                            debug!("Main stream frame read, frame type {}, stream id {}", frame.frame_type, frame.stream_id);
+                            debug!("Main stream frame read, frame type {}, msg type {}, stream id {}", frame.frame_type, frame.msg_type, frame.stream_id);
     
                             let subscribes = match frame.get_msg_type()? {
                                 MsgType::Event => &event_subscribes,

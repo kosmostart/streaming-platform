@@ -15,11 +15,15 @@ pub async fn startup(config: HashMap<String, String>, mut mb: MagicBall, startup
         "data": "hello event"
     })).await;
 
-    let msg = mb.rpc::<_, Value>(Key::simple("HiRpc"), json!({
-        "data": "hello rpc"
+	mb.send_event(Key::simple("HiEvent"), json!({
+        "data": "hello event"
     })).await;
 
-    println!("{:#?}", msg);
+    //let msg = mb.rpc::<_, Value>(Key::simple("HiRpc"), json!({
+    //    "data": "hello rpc"
+    //})).await;
+
+    //println!("{:#?}", msg);
 }
 
 pub fn main() {

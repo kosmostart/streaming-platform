@@ -48,23 +48,23 @@ pub async fn start_future(config: ServerConfig, subscribes: Subscribes) -> Resul
                     };
                     clients.insert(addr, client);
                 }
-                ServerMsg::Send(addr, stream_unit) => {
+                ServerMsg::Send(addr, frame) => {
                     //info!("sending stream unit to client {}", addr);
                     match clients.get_mut(&addr) {
                         Some(client) => {
                             //match client.tx.send(stream_unit).await {
-                            match client.tx.send(stream_unit) {
+                            match client.tx.send(frame) {
                                 Ok(()) => {}
                                 /*
                                 Err(_) => {
                                     error!("error processing ServerMsg::Send, send failed");
                                 }
                                 */                                
-                                Err(_) => panic!("ServerMsg::SendArray processing failed - send error")
+                                Err(frame) => panic!("ServerMsg::SendArray processing failed - send error, client {}", addr)
                             }
                             //info!("sent unit to client {}", addr);
                         }
-                        None => error!("no client for send stream unit {}", addr)
+                        None => error!("No client {} for send frame, stream id {}, key hash {}", addr, frame.stream_id, frame.key_hash)
                     }
                 }                
                 ServerMsg::RemoveClient(addr) => {

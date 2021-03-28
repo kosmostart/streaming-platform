@@ -8,7 +8,7 @@ use serde_json::{Value, from_slice, json, to_vec};
 use warp::{Filter, http::{Response, header::SET_COOKIE}};
 use streaming_platform::{MagicBall, tokio::{io::AsyncReadExt}};
 use streaming_platform::sp_dto::MsgMeta;
-use streaming_platform::{client::stream_mode, ClientMsg, FrameType, StreamCompletion, tokio::{self, sync::{mpsc::{self, UnboundedReceiver, UnboundedSender}, oneshot}}, sp_dto::{Message, resp, rpc_dto_with_correlation_id_sizes, Route, RouteSpec}, RestreamMsg, StreamLayout, ProcessError};
+use streaming_platform::{client::stream_mode, ClientMsg, FrameType, StreamCompletion, tokio::{self, sync::{mpsc::{self, UnboundedReceiver, UnboundedSender}, oneshot}}, sp_dto::{Key, Message, Participator, resp, rpc_dto_with_correlation_id_sizes, Route, RouteSpec}, RestreamMsg, StreamLayout, ProcessError};
 use sp_auth::verify_auth_token;
 pub use streaming_platform;
 
@@ -62,17 +62,17 @@ pub async fn process_rpc(_config: HashMap<String, String>, mut _mb: MagicBall, _
     resp(json!({}))    
 }
 
-pub async fn startup(config: HashMap<String, String>, mb: MagicBall, startup_data: Option<Value>, _: ()) {
-	/*
+pub async fn startup(config: HashMap<String, String>, mb: MagicBall, startup_data: Option<Value>, _: ()) {	
 	let (mut restream_tx, mut restream_rx) = mpsc::unbounded_channel();    
     let config2 = config.clone();
+
     tokio::spawn(async move {
         let stream_addr = config2.get("stream_addr").expect("missing stream_addr config value").to_owned();
         let host = config2.get("host").expect("missing host config value").to_owned();
         let access_key = "";
-        stream_mode(&host, &stream_addr, access_key, process_stream, async move |_, _| {}, config2, Some(restream_rx)).await;
+        stream_mode(&host, &stream_addr, access_key, process_stream, async move |_, _, _, _| {}, config2, None, Some(restream_rx), ()).await;
     });
-	*/
+	
     let listen_addr = config.get("listen_addr").expect("Missing listen_addr config value");
     let cert_path = config.get("cert_path");
     let key_path = config.get("key_path");
@@ -525,37 +525,39 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
     Ok(())
 }
 
-/*
-pub async fn process_stream(config: HashMap<String, String>, mut mb: MagicBall, mut rx: UnboundedReceiver<ClientMsg>, mut restream_rx: Option<UnboundedReceiver<RestreamMsg>>) {    
-    let mut restream_rx = restream_rx.expect("restream rx is empty");
+pub async fn process_stream(config: HashMap<String, String>, mut mb: MagicBall, mut rx: UnboundedReceiver<ClientMsg>, mut restream_rx: Option<UnboundedReceiver<RestreamMsg>>, _: ()) {    
+    let mut restream_rx = restream_rx.expect("Restream rx is empty");
     let (mut inner_tx, mut inner_rx) = mpsc::unbounded_channel();
     let mut inner_tx2 = inner_tx.clone();
     let mut mb2 = mb.clone();
+
     tokio::spawn(async move {
         let mut restreams = HashMap::new();
+
         loop {
-            match inner_rx.recv().await.expect("restream channel dropped") {
+            match inner_rx.recv().await.expect("Restream channel dropped") {
                 InnerMsg::AddRestream(correlation_id, body_tx, completion_tx) => {
                     restreams.insert(correlation_id, (body_tx, completion_tx));
                 }                
                 InnerMsg::GetRestream(correlation_id, reply) => {
-                    let restream = restreams.remove(&correlation_id).expect("restream not found for get");
+                    let restream = restreams.remove(&correlation_id).expect("Restream not found for get");
+
                     match reply.send(restream) {
                         Ok(()) => {}
-                        Err(_) => panic!("send restream failed")
+                        Err(_) => panic!("Send restream failed")
                     }
                 }
             }
         }
-    });    
+    });
+
     tokio::spawn(async move {
         loop {
             match restream_rx.recv().await.expect("restream channel dropped") {
                 RestreamMsg::StartHttp(payload, body_tx, completion_tx) => {
                     let (correlation_id, dto, msg_meta_size, payload_size, attachments_sizes) = rpc_dto_with_correlation_id_sizes(
-                        mb.addr.clone(),
-                        "File".to_owned(), 
-                        "Download".to_owned(), 
+                        mb.addr.clone(),                        
+                        Key::simple("Download"),
                         payload, 
                         Route {
                             source: Participator::Service(mb.addr.clone()),
@@ -565,30 +567,40 @@ pub async fn process_stream(config: HashMap<String, String>, mut mb: MagicBall, 
                         None,
                         None
                     ).expect("failed to create download rpc dto");
+
                     match inner_tx2.send(InnerMsg::AddRestream(correlation_id.to_string(), body_tx, completion_tx)) {
                         Ok(()) => {}
                         Err(_) => panic!("InnerMsg::Addrestream send error")
                     }
+
+					/*
+
                     let stream_id = mb.get_stream_id();
-                    mb.write_vec(
+
+                    mb.write_full_message(
                         stream_id,
                         dto, 
                         msg_meta_size, 
                         payload_size, 
                         attachments_sizes
                     ).await.expect("failed to write download rpc dto");
+					*/
                 }
                 _ => error!("incorrect restream msg")
             }
         }
     });
+
     let mut stream_layouts = HashMap::new();
+
     loop {        
         let client_msg = rx.recv().await.expect("connection issues acquired");
         let stream_id = client_msg.get_stream_id();
+
         match process_client_msg(&mut mb2, &mut stream_layouts, client_msg, &mut inner_tx).await {
             Ok(()) => {}
             Err(e) => {
+				/*
                 match stream_id {
                     Some(stream_id) => {
                         match stream_layouts.remove(&stream_id) {
@@ -620,13 +632,13 @@ pub async fn process_stream(config: HashMap<String, String>, mut mb: MagicBall, 
                     None => {
 
                     }
-                }                
+                } 
+				*/               
                 error!("{:?}", e);
             }
         }
     }
 }
-*/
 
 /*
 struct DownloadStreamLayout {

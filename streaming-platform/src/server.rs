@@ -169,13 +169,13 @@ async fn auth_tcp_stream(tcp_stream: &mut TcpStream, state: &mut State, client_n
 					Ok(frame_type) => {
 
 						match frame_type {
-							FrameType::MsgMeta => {
+							FrameType::MsgMeta | FrameType::MsgMetaEnd => {
 								stream_layout.msg_meta.extend_from_slice(&frame.payload[..frame.payload_size as usize]);
 							}
-							FrameType::Payload => {
+							FrameType::Payload | FrameType::PayloadEnd => {
 								stream_layout.payload.extend_from_slice(&frame.payload[..frame.payload_size as usize]);
 							}
-							FrameType::Attachment => {
+							FrameType::Attachment | FrameType::AttachmentEnd => {
 								stream_layout.attachments_data.extend_from_slice(&frame.payload[..frame.payload_size as usize]);
 							}
 							FrameType::End => {								

@@ -12,5 +12,4 @@ serde_json = "*"
 futures = "*"
 tokio = { version = "1", features = ["rt-multi-thread"] }
 reqwest = { version = "*", features = ["stream"] }
-sse-client = "*"
 sp-dto = { path = "../../sp-dto" }

@@ -289,7 +289,7 @@ async fn auth(addr: String, access_key: String, tcp_stream: &mut TcpStream) -> R
         "access_key": access_key
     }), route, None, None).expect("Failed to create auth dto");
 
-    write_to_tcp_stream(tcp_stream, 0, 0, get_stream_id_onetime(&addr), dto, msg_meta_size, payload_size, attachments_size).await
+    write_to_tcp_stream(tcp_stream, 0, 0, get_stream_id_onetime(&addr), dto, msg_meta_size, payload_size, attachments_size, true).await
 }
 
 
@@ -387,7 +387,7 @@ async fn process_full_message_mode(addr: String, mut write_tcp_stream: TcpStream
 					Ok(frame_type) => {
 
 						match frame_type {
-							FrameType::MsgMeta => {
+							FrameType::MsgMeta | FrameType::MsgMetaEnd => {
 								match stream_layouts.get_mut(&frame.stream_id) {
 									Some(stream_layout) => {
 										stream_layout.msg_meta.extend_from_slice(&frame.payload[..frame.payload_size as usize]);
@@ -402,11 +402,11 @@ async fn process_full_message_mode(addr: String, mut write_tcp_stream: TcpStream
 									}
 								}
 							}
-							FrameType::Payload => {
+							FrameType::Payload | FrameType::PayloadEnd => {
 								let stream_layout = stream_layouts.get_mut(&frame.stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
 								stream_layout.payload.extend_from_slice(&frame.payload[..frame.payload_size as usize]);
 							}
-							FrameType::Attachment => {
+							FrameType::Attachment | FrameType::AttachmentEnd => {
 								let stream_layout = stream_layouts.get_mut(&frame.stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
 								stream_layout.attachments_data.extend_from_slice(&frame.payload[..frame.payload_size as usize]);
 							}

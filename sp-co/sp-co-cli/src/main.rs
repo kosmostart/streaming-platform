@@ -50,11 +50,13 @@ fn main() {
 
     
 
+   /*
     let event_source = sse_client::EventSource::new("http://localhost:12345/events").unwrap();
 
     for event in event_source.receiver().iter() {
         println!("New Message: {}", event.data);
     }
+	*/
 }
 
 /*

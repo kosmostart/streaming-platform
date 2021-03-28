@@ -79,9 +79,12 @@ pub struct Frame {
 
 pub enum FrameType {
     MsgMeta = 0,
-    Payload = 1,
-    Attachment = 2,
-    End = 3
+	MsgMetaEnd = 1,
+	Payload = 2,
+    PayloadEnd = 3,
+    Attachment = 4,
+	AttachmentEnd = 5,
+    End = 6
 }
 
 impl Frame {
@@ -101,9 +104,12 @@ impl Frame {
     pub fn get_frame_type(&self) -> Result<FrameType, ProcessError> {
         Ok(match self.frame_type {
             0 => FrameType::MsgMeta,
-            1 => FrameType::Payload,
-            2 => FrameType::Attachment,
-            3 => FrameType::End,
+			1 => FrameType::MsgMetaEnd,
+            2 => FrameType::Payload,
+			3 => FrameType::PayloadEnd,
+            4 => FrameType::Attachment,
+            5 => FrameType::AttachmentEnd,
+			6 => FrameType::End,
             _ => return Err(ProcessError::IncorrectFrameType)
         })
     }
@@ -376,20 +382,33 @@ pub async fn write_loop(addr: String, mut client_rx: UnboundedReceiver<Frame>, t
 }
 
 // Use this only for single message or parts of it
-pub async fn write_to_tcp_stream(tcp_stream: &mut TcpStream, msg_type: u8, key_hash: u64, stream_id: u64, data: Vec<u8>, msg_meta_size: u64, payload_size: u64, attachments_sizes: Vec<u64>) -> Result<(), ProcessError> {
+pub async fn write_to_tcp_stream(tcp_stream: &mut TcpStream, msg_type: u8, key_hash: u64, stream_id: u64, data: Vec<u8>, msg_meta_size: u64, payload_size: u64, attachments_sizes: Vec<u64>, send_end_frame: bool) -> Result<(), ProcessError> {
     let msg_meta_offset = LEN_BUF_SIZE + msg_meta_size as usize;
     let payload_offset = msg_meta_offset + payload_size as usize;
     let mut data_buf = [0; MAX_FRAME_PAYLOAD_SIZE];
 
     let mut source = &data[LEN_BUF_SIZE..msg_meta_offset];
 
+	let mut bytes_send = 0;
+
     loop {        
         let n = source.read(&mut data_buf).await?;
         match n {
             0 => break,
-            _ => write_frame(tcp_stream, Frame::new(FrameType::MsgMeta as u8, n as u16, msg_type, key_hash, stream_id, data_buf)).await?
+            _ => {
+				bytes_send = bytes_send + n as u64;
+
+				let frame_type = match bytes_send == msg_meta_size {
+					true => FrameType::MsgMetaEnd,
+					false => FrameType::MsgMeta
+				};
+
+				write_frame(tcp_stream, Frame::new(FrameType::MsgMeta as u8, n as u16, msg_type, key_hash, stream_id, data_buf)).await?;
+			}
         }
     }
+
+	bytes_send = 0;
 
     match payload_size {
         0 => {
@@ -402,7 +421,16 @@ pub async fn write_to_tcp_stream(tcp_stream: &mut TcpStream, msg_type: u8, key_h
                 let n = source.read(&mut data_buf).await?;        
                 match n {
                     0 => break,
-                    _ => write_frame(tcp_stream, Frame::new(FrameType::Payload as u8, n as u16, msg_type, key_hash, stream_id, data_buf)).await?
+                    _ => {
+						bytes_send = bytes_send + n as u64;
+
+						let frame_type = match bytes_send == payload_size {
+							true => FrameType::PayloadEnd,
+							false => FrameType::Payload
+						};
+
+						write_frame(tcp_stream, Frame::new(FrameType::Payload as u8, n as u16, msg_type, key_hash, stream_id, data_buf)).await?;
+					}
                 }
             }
         }
@@ -411,7 +439,9 @@ pub async fn write_to_tcp_stream(tcp_stream: &mut TcpStream, msg_type: u8, key_h
     let mut prev = payload_offset as usize;
 
     for attachment_size in attachments_sizes {
-        let attachment_offset = prev + attachment_size as usize;            
+        let attachment_offset = prev + attachment_size as usize;
+
+		bytes_send = 0;
 
         match attachment_size {
             0 => {
@@ -424,7 +454,16 @@ pub async fn write_to_tcp_stream(tcp_stream: &mut TcpStream, msg_type: u8, key_h
                     let n = source.read(&mut data_buf).await?;        
                     match n {
                         0 => break,
-                        _ => write_frame(tcp_stream, Frame::new(FrameType::Attachment as u8, n as u16, msg_type, key_hash, stream_id, data_buf)).await?
+                        _ => {
+							bytes_send = bytes_send + n as u64;
+
+							let frame_type = match bytes_send == attachment_size {
+								true => FrameType::AttachmentEnd,
+								false => FrameType::Attachment
+							};
+
+							write_frame(tcp_stream, Frame::new(FrameType::Attachment as u8, n as u16, msg_type, key_hash, stream_id, data_buf)).await?;
+						}
                     }
                 }                    
             }
@@ -433,7 +472,9 @@ pub async fn write_to_tcp_stream(tcp_stream: &mut TcpStream, msg_type: u8, key_h
         prev = attachment_offset;
     }
 
-    write_frame(tcp_stream, Frame::new(FrameType::End as u8, 0, msg_type, key_hash, stream_id, [0; MAX_FRAME_PAYLOAD_SIZE])).await?;
+    if send_end_frame {
+		write_frame(tcp_stream, Frame::new(FrameType::End as u8, 0, msg_type, key_hash, stream_id, [0; MAX_FRAME_PAYLOAD_SIZE])).await?;
+	}
 
     Ok(())
 }
@@ -506,15 +547,28 @@ impl MagicBall {
         let payload_offset = msg_meta_offset + payload_size as usize;
         let mut data_buf = [0; MAX_FRAME_PAYLOAD_SIZE];
 
-        let mut source = &data[LEN_BUF_SIZE..msg_meta_offset];    
+        let mut source = &data[LEN_BUF_SIZE..msg_meta_offset];
+
+		let mut bytes_send = 0;
 
         loop {        
             let n = source.read(&mut data_buf).await?;
             match n {
                 0 => break,
-                _ => self.write_tx.send(Frame::new(FrameType::MsgMeta as u8, n as u16, msg_type, key_hash, stream_id, data_buf))?
+                _ => {
+					bytes_send = bytes_send + n as u64;
+
+					let frame_type = match bytes_send == msg_meta_size {
+						true => FrameType::MsgMetaEnd,
+						false => FrameType::MsgMeta
+					};
+
+					self.write_tx.send(Frame::new(frame_type as u8, n as u16, msg_type, key_hash, stream_id, data_buf))?;					
+				}
             }
         }
+
+		bytes_send = 0;
 
         match payload_size {
             0 => {
@@ -527,7 +581,16 @@ impl MagicBall {
                     let n = source.read(&mut data_buf).await?;        
                     match n {
                         0 => break,
-                        _ => self.write_tx.send(Frame::new(FrameType::Payload as u8, n as u16, msg_type, key_hash, stream_id, data_buf))?
+                        _ => {
+							bytes_send = bytes_send + n as u64;
+
+							let frame_type = match bytes_send == payload_size {
+								true => FrameType::PayloadEnd,
+								false => FrameType::Payload
+							};
+
+							self.write_tx.send(Frame::new(frame_type as u8, n as u16, msg_type, key_hash, stream_id, data_buf))?;
+						}
                     }
                 }
             }
@@ -536,7 +599,9 @@ impl MagicBall {
         let mut prev = payload_offset as usize;
 
         for attachment_size in attachments_sizes {
-            let attachment_offset = prev + attachment_size as usize;            
+            let attachment_offset = prev + attachment_size as usize;
+
+			bytes_send = 0;
 
             match attachment_size {
                 0 => {
@@ -549,7 +614,16 @@ impl MagicBall {
                         let n = source.read(&mut data_buf).await?;        
                         match n {
                             0 => break,
-                            _ => self.write_tx.send(Frame::new(FrameType::Attachment as u8, n as u16, msg_type, key_hash, stream_id, data_buf))?
+                            _ => {
+								bytes_send = bytes_send + n as u64;
+
+								let frame_type = match bytes_send == attachment_size {
+									true => FrameType::AttachmentEnd,
+									false => FrameType::Attachment
+								};
+								
+								self.write_tx.send(Frame::new(frame_type as u8, n as u16, msg_type, key_hash, stream_id, data_buf))?
+							}
                         }
                     }                    
                 }
@@ -560,7 +634,7 @@ impl MagicBall {
 
 		if send_end_frame {
 			self.write_tx.send(Frame::new(FrameType::End as u8, 0, msg_type, key_hash, stream_id, [0; MAX_FRAME_PAYLOAD_SIZE]))?;
-		}		
+		}
 
         Ok(())
     }

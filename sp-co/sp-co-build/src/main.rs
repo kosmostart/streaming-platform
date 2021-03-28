@@ -75,33 +75,6 @@ pub async fn process_rpc(config: HashMap<String, String>, mut mb: MagicBall, msg
 				}
 
 				mb.complete_stream().unwrap();
-
-                /*
-                let mut file = File::open(&path).await?;
-                let size = file.metadata().await?.len();
-                let payload = to_vec(&json!({
-                    "file_name": file_name
-                }))?;
-                let (dto, msg_meta_size, payload_size, _) = reply_to_rpc_dto2_sizes(mb.addr.clone(), msg_meta.key.clone(), msg_meta.correlation_id, payload, vec![(file_name, size)], vec![], RpcResult::Ok, msg_meta.route.clone(), mb.auth_token.clone(), mb.auth_data.clone())?;
-                let stream_id = mb.get_stream_id();
-                mb.write_vec(stream_id, dto, msg_meta_size, payload_size, vec![]).await?;
-                match size {
-                    0 => {
-                        mb.write_tx.send(Frame::Empty(stream_id))?;
-                    }
-                    _ => {
-                        let mut file_buf = [0; DATA_BUF_SIZE];
-                        loop {
-                            match file.read(&mut file_buf).await? {
-                                0 => break,
-                                n => {                
-                                    mb.write_tx.send(Frame::Array(stream_id, n, file_buf))?;
-                                }
-                            }
-                        }
-                    }
-                }
-                */
             
                 let ecode = handle.wait().expect("failed to wait on child");
             

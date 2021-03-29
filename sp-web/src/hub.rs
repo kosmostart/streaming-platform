@@ -7,8 +7,7 @@ use crate::{check_auth_token, response};
 
 pub async fn go(aca_origin: Option<String>, auth_token_key: String, cookie_header: Option<String>, body: warp::hyper::body::Bytes, mut mb: MagicBall) -> Result<Response<Vec<u8>>, warp::Rejection> {
     let res = match check_auth_token(auth_token_key.as_bytes(), cookie_header) {
-        Some(auth_data) =>
-
+        Some(auth_data) => {
             match get_msg_meta(&body) {                
                 Ok(msg_meta) =>
                 
@@ -39,7 +38,12 @@ pub async fn go(aca_origin: Option<String>, auth_token_key: String, cookie_heade
                     None
                 }
             }
-        None => None
+		}
+        None => {
+			warn!("Unauthorized hub access attempt");
+
+			None
+		}
     };
 
     let res = res.unwrap_or(to_vec("Here comes the error").expect("Failed to serialize proxy rpc error response error"));

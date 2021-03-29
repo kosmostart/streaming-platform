@@ -77,9 +77,11 @@ pub async fn startup(config: HashMap<String, String>, mb: MagicBall, startup_dat
     let listen_addr = config.get("listen_addr").expect("Missing listen_addr config value");
     let cert_path = config.get("cert_path");
     let key_path = config.get("key_path");
+
     let aca_origin = config.get("aca_origin").map(|x| x.to_owned());
     let aca_origin2 = aca_origin.clone();
     let aca_origin3 = aca_origin.clone();
+	let aca_origin4 = aca_origin.clone();
     let mb2 = mb.clone();
     let mb3 = mb.clone();
 
@@ -89,6 +91,7 @@ pub async fn startup(config: HashMap<String, String>, mb: MagicBall, startup_dat
     let auth_token_key1 = auth_token_key.clone();
     let auth_token_key2 = auth_token_key.clone();
     let auth_token_key3 = auth_token_key.clone();
+	let auth_token_key4 = auth_token_key.clone();
 
     let mut app_indexes = HashMap::new();
     let mut app_paths = HashMap::new();
@@ -233,7 +236,7 @@ pub async fn startup(config: HashMap<String, String>, mb: MagicBall, startup_dat
                     crate::hub::go(aca_origin, auth_token_key, cookie_header, body, mb)
                 }
             )
-        )
+        )		
         .or(
             warp::path("events")
                 .and(warp::get())
@@ -260,6 +263,20 @@ pub async fn startup(config: HashMap<String, String>, mb: MagicBall, startup_dat
                             warp::sse::reply(stream)
                         }
                     }
+                }
+            )
+        )
+		.or(
+            warp::path("downstream")
+                .and(warp::get())
+                .and(warp::header::optional("cookie"))                
+                .and_then(move |cookie_header: Option<String>| {
+                    let auth_token_key = auth_token_key4.clone();
+                    let aca_origin = aca_origin4.clone();
+					
+					let mut restream_tx = restream_tx.clone();
+
+                    crate::downstream::go(aca_origin, auth_token_key, cookie_header, restream_tx)
                 }
             )
         )
@@ -338,16 +355,16 @@ fn process_static_file_request(deploy_path: String, app_path: String, tail: Stri
 pub fn response(aca_origin: String, data: Vec<u8>) -> Result<Response<Vec<u8>>, warp::http::Error> {
     Response::builder()
         .header("Access-Control-Allow-Credentials", "true")
-        .header("Access-Control-Allow-Origin", aca_origin)        
+        .header("Access-Control-Allow-Origin", aca_origin)
         .body(data) 
 }
 
 pub fn response_with_cookie(aca_origin: String, cookie_header: &str, data: Vec<u8>) -> Result<Response<Vec<u8>>, warp::http::Error> {
     Response::builder()
         .header("Access-Control-Allow-Credentials", "true")
-        .header("Access-Control-Allow-Origin", aca_origin)        
+        .header("Access-Control-Allow-Origin", aca_origin)
         .header(SET_COOKIE, cookie_header)
-        .body(data) 
+        .body(data)
 }
 
 struct DownloadStreamLayout {
@@ -387,6 +404,8 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
 							}
 						}
 						FrameType::MsgMetaEnd => {
+							info!("MsgMetaEnd frame");
+							
 							match stream_layouts.get_mut(&frame.stream_id) {
 								Some(stream_layout) => {									
 									stream_layout.layout.msg_meta.extend_from_slice(&frame.payload[..frame.payload_size as usize]);
@@ -395,7 +414,7 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
 
                                     let (get_restream_tx, get_restream_rx) = oneshot::channel();
 
-                                    match inner_tx.send(InnerMsg::GetRestream(msg_meta.correlation_id.to_string(), get_restream_tx)) {
+                                    match inner_tx.send(InnerMsg::GetRestream(/*msg_meta.correlation_id.to_string()*/"Abc".to_owned(), get_restream_tx)) {
                                         Ok(()) => {}
                                         Err(_) => panic!("InnerMsg::GetRestream send error")
                                     }
@@ -423,7 +442,7 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
 
                                     let (get_restream_tx, get_restream_rx) = oneshot::channel();
 
-                                    match inner_tx.send(InnerMsg::GetRestream(msg_meta.correlation_id.to_string(), get_restream_tx)) {
+                                    match inner_tx.send(InnerMsg::GetRestream(/*msg_meta.correlation_id.to_string()*/"Abc".to_owned(), get_restream_tx)) {
                                         Ok(()) => {}
                                         Err(_) => panic!("InnerMsg::GetRestream send error")
                                     }
@@ -451,9 +470,11 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
                             //let data = Bytes::copy_from_slice(&buf[..n]);
 
                             match body_tx.send_data(Bytes::copy_from_slice(&frame.payload[..frame.payload_size as usize])).await {                
-                                Ok(()) => {}
+                                Ok(()) => {
+									info!("Attachment frame send");
+								}
                                 Err(_) => {
-                                    error!("Failed to send data with body_tx")
+                                    error!("Failed to send data with body_tx");
                                 }
                             }
 						}
@@ -575,9 +596,11 @@ pub async fn process_stream(config: HashMap<String, String>, mut mb: MagicBall, 
         loop {
             match inner_rx.recv().await.expect("Restream channel dropped") {
                 InnerMsg::AddRestream(correlation_id, body_tx, completion_tx) => {
+					info!("InnerMsg::AddRestream, correlation id {}", correlation_id);
                     restreams.insert(correlation_id, (body_tx, completion_tx));
                 }                
                 InnerMsg::GetRestream(correlation_id, reply) => {
+					info!("InnerMsg::GetRestream, correlation id {}", correlation_id);
                     let restream = restreams.remove(&correlation_id).expect("Restream not found for get");
 
                     match reply.send(restream) {
@@ -593,38 +616,15 @@ pub async fn process_stream(config: HashMap<String, String>, mut mb: MagicBall, 
         loop {
             match restream_rx.recv().await.expect("restream channel dropped") {
                 RestreamMsg::StartHttp(payload, body_tx, completion_tx) => {
-                    let (correlation_id, dto, msg_meta_size, payload_size, attachments_sizes) = rpc_dto_with_correlation_id_sizes(
-                        mb.addr.clone(),                        
-                        Key::simple("Download"),
-                        payload, 
-                        Route {
-                            source: Participator::Service(mb.addr.clone()),
-                            spec: RouteSpec::Simple,
-                            points: vec![Participator::Service(mb.addr.clone())]
-                        },
-                        None,
-                        None
-                    ).expect("failed to create download rpc dto");
+					info!("StartHttp received");
 
-                    match inner_tx2.send(InnerMsg::AddRestream(correlation_id.to_string(), body_tx, completion_tx)) {
+                    match inner_tx2.send(InnerMsg::AddRestream("Abc".to_owned(), body_tx, completion_tx)) {
                         Ok(()) => {}
                         Err(_) => panic!("InnerMsg::Addrestream send error")
                     }
-
-					/*
-
-                    let stream_id = mb.get_stream_id();
-
-                    mb.write_full_message(
-                        stream_id,
-                        dto, 
-                        msg_meta_size, 
-                        payload_size, 
-                        attachments_sizes
-                    ).await.expect("failed to write download rpc dto");
-					*/
+				
                 }
-                _ => error!("incorrect restream msg")
+                _ => error!("Incorrect restream msg")
             }
         }
     });

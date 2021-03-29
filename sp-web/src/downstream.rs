@@ -12,8 +12,11 @@ pub async fn go(aca_origin: Option<String>, auth_token_key: String, cookie_heade
         Some(auth_data) => {
             let (body_tx, body) = hyper::Body::channel();
             
+			info!("StartHttp send attempt");
             match restream_tx.send(RestreamMsg::StartHttp(json!({ }), body_tx, None)) {
 				Ok(()) => {
+					info!("Sending StartHttp");
+
 					let res = response_for_content(aca_origin, body, ContentAccessType::Raw).expect("failed to build aca origin response");
 					Ok::<Response<hyper::Body>, warp::Rejection>(res)                                    
 				}

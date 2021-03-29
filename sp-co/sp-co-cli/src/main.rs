@@ -6,7 +6,7 @@ fn main() {
     let rt = Runtime::new().expect("failed to create runtime");
 
     let auth_url = "http://127.0.0.1:12345/authorize";
-    let hub_url = "http://127.0.0.1:12345/hub";
+    let hub_url = "http://127.0.0.1:12345/hub";	
 
     let payload = json!({
     });
@@ -25,6 +25,8 @@ fn main() {
 
     println!("{}", split[0]);
 
+	let qq = split[0].to_owned();
+
     let payload = json!({
     });
 
@@ -41,13 +43,12 @@ fn main() {
 
     let msg: (_, Value, _) = get_msg(&data).unwrap();
 
-    println!("{:#?}", msg);
+    println!("{:#?}", msg);	
 
-    //let res = rt.block_on(events());
-
-   // println!("{:?}", res);
-
-
+	rt.block_on(async {
+		let res = q(qq).await;
+		println!("{:?}", res);
+	});
     
 
    /*
@@ -57,6 +58,24 @@ fn main() {
         println!("New Message: {}", event.data);
     }
 	*/
+}
+
+async fn q(cookie: String) -> Result<(), Box<dyn std::error::Error>> {
+	let client = reqwest::Client::new();
+
+    let mut res = client
+		.get("http://127.0.0.1:12345/downstream")
+		.header("cookie", cookie)
+		.send()
+		.await?;
+
+	while let Some(chunk) = res.chunk().await? {
+		println!("{:?}", chunk);
+	}	
+
+	println!("Downstream end");
+
+    Ok(())
 }
 
 /*

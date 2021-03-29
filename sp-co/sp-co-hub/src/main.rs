@@ -12,7 +12,7 @@ fn main() {
     let mut rpc_subscribes = HashMap::new();
     let mut rpc_response_subscribes = HashMap::new();
 
-	event_subscribes.insert("Web".to_owned(), vec![
+	event_subscribes.insert("WebStream".to_owned(), vec![
         Key::new("DeployStream", "Build", "Build")
     ]);
 

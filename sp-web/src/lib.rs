@@ -5,7 +5,7 @@ use std::net::SocketAddr;
 use std::env::current_dir;
 use log::*;
 use serde_json::{Value, from_slice, json, to_vec};
-use warp::{Filter, http::{Response, header::SET_COOKIE}};
+use warp::{Filter, http::{Response, header::SET_COOKIE}, hyper::body::Bytes};
 use streaming_platform::{MagicBall, tokio::{io::AsyncReadExt}};
 use streaming_platform::sp_dto::MsgMeta;
 use streaming_platform::{client::stream_mode, ClientMsg, FrameType, StreamCompletion, tokio::{self, sync::{mpsc::{self, UnboundedReceiver, UnboundedSender}, oneshot}}, sp_dto::{Key, Message, Participator, resp, rpc_dto_with_correlation_id_sizes, Route, RouteSpec}, RestreamMsg, StreamLayout, ProcessError};
@@ -14,6 +14,7 @@ pub use streaming_platform;
 
 mod authorize;
 mod hub;
+mod downstream;
 
 mod sse_stream {    
     use streaming_platform::tokio::sync::mpsc::{self, UnboundedSender};
@@ -386,11 +387,23 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
 							}
 						}
 						FrameType::MsgMetaEnd => {
-							let msg_meta: MsgMeta = match stream_layouts.get_mut(&frame.stream_id) {
+							match stream_layouts.get_mut(&frame.stream_id) {
 								Some(stream_layout) => {									
 									stream_layout.layout.msg_meta.extend_from_slice(&frame.payload[..frame.payload_size as usize]);
 
-									from_slice(&stream_layout.layout.msg_meta)?
+									let msg_meta: MsgMeta = from_slice(&stream_layout.layout.msg_meta)?;
+
+                                    let (get_restream_tx, get_restream_rx) = oneshot::channel();
+
+                                    match inner_tx.send(InnerMsg::GetRestream(msg_meta.correlation_id.to_string(), get_restream_tx)) {
+                                        Ok(()) => {}
+                                        Err(_) => panic!("InnerMsg::GetRestream send error")
+                                    }
+
+                                    let (body_tx, completion_tx) = get_restream_rx.await.expect("Failed to get restream");
+
+                                    stream_layout.body_tx = Some(body_tx);
+                                    stream_layout.completion_tx = completion_tx;
 								}
 								None => {									
 									let mut stream_layout = DownloadStreamLayout {
@@ -406,34 +419,59 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
 
 									stream_layout.layout.msg_meta.extend_from_slice(&frame.payload[..frame.payload_size as usize]);									
 
-									let res = from_slice(&stream_layout.layout.msg_meta)?;
+									let msg_meta: MsgMeta = from_slice(&stream_layout.layout.msg_meta)?;
 
-									stream_layouts.insert(frame.stream_id, stream_layout);									
+                                    let (get_restream_tx, get_restream_rx) = oneshot::channel();
 
-									res
+                                    match inner_tx.send(InnerMsg::GetRestream(msg_meta.correlation_id.to_string(), get_restream_tx)) {
+                                        Ok(()) => {}
+                                        Err(_) => panic!("InnerMsg::GetRestream send error")
+                                    }
+
+                                    let (body_tx, completion_tx) = get_restream_rx.await.expect("failed to get restream");
+
+                                    stream_layout.body_tx = Some(body_tx);
+                                    stream_layout.completion_tx = completion_tx;
+
+									stream_layouts.insert(frame.stream_id, stream_layout);
 								}
 							};
-							
-							let (get_restream_tx, get_restream_rx) = oneshot::channel();
-
-							match inner_tx.send(InnerMsg::GetRestream(msg_meta.correlation_id.to_string(), get_restream_tx)) {
-								Ok(()) => {}
-								Err(_) => panic!("InnerMsg::GetRestream send error")
-							}
-
-							let (body_tx, completion_tx) = get_restream_rx.await.expect("failed to get restream");
 						}
 						FrameType::Payload | FrameType::PayloadEnd => {
 							let stream_layout = stream_layouts.get_mut(&frame.stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
 							stream_layout.layout.attachments_data.extend_from_slice(&frame.payload[..frame.payload_size as usize]);
 						}
 						FrameType::Attachment | FrameType::AttachmentEnd => {
-							let stream_layout = stream_layouts.get_mut(&frame.stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
-							stream_layout.layout.attachments_data.extend_from_slice(&frame.payload[..frame.payload_size as usize]);
+							let mut stream_layout = stream_layouts.get_mut(&frame.stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
+
+							//stream_layout.layout.attachments_data.extend_from_slice(&frame.payload[..frame.payload_size as usize]);
+
+                            let body_tx = stream_layout.body_tx.as_mut().ok_or(ProcessError::Custom("Body tx is empty for attachment restream".to_owned()))?;
+
+                            //let data = Bytes::copy_from_slice(&buf[..n]);
+
+                            match body_tx.send_data(Bytes::copy_from_slice(&frame.payload[..frame.payload_size as usize])).await {                
+                                Ok(()) => {}
+                                Err(_) => {
+                                    error!("Failed to send data with body_tx")
+                                }
+                            }
 						}
 						FrameType::End => {
 							match stream_layouts.remove(&frame.stream_id) {
-								Some(_) => {}
+								Some(mut stream_layout) => {
+                                    match stream_layout.completion_tx.take() {
+                                        Some(completion_tx) => {
+                                            match completion_tx.send(StreamCompletion::Ok) {
+                                                Ok(()) => {}
+                                                Err(_) => {
+                                                    error!("Failed to send stream completion")
+                                                }
+                                            }
+                                        }
+                                        None => {}
+                                    }
+                                }
 								None => {
 									error!("Not found stream layout for stream end");
 								}

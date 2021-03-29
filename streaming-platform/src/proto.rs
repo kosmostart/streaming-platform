@@ -1034,7 +1034,8 @@ pub enum ProcessError {
     SendServerMsgError,
     SendRpcMsgError,
     OneshotRecvError(oneshot::error::RecvError),
-    Timeout
+    Timeout,
+    Custom(String)
 }
 
 impl Display for ProcessError {

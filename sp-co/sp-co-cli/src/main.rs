@@ -51,10 +51,7 @@ fn main() {
 
     println!("{:#?}", msg);	
 
-	rt.block_on(async {
-		loop {
-        }
-	});
+	std::thread::park();
 
    /*
     let event_source = sse_client::EventSource::new("http://localhost:12345/events").unwrap();

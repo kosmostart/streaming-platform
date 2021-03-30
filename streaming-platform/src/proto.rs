@@ -171,7 +171,7 @@ impl State {
     pub async fn read_from_tcp_stream(&mut self, tcp_stream: &mut TcpStream) -> Result<(), ProcessError> {
         let bytes_read = tcp_stream.read(&mut self.read_buf[self.bytes_read..]).await?;
 
-		debug!("Read {} bytes", bytes_read);
+		debug!("Read {} bytes, self.bytes_read was {}", bytes_read, self.bytes_read);
 
         match bytes_read {
             0 => {
@@ -182,12 +182,14 @@ impl State {
                 let mut i = 0;
 
 				while i < bytes_read {
-                    self.frame_buf[self.bytes_read + i] = self.read_buf[i];
+                    self.frame_buf[self.bytes_read + i] = self.read_buf[self.bytes_read + i];
 
                     i = i + 1;
                 }
 
                 self.bytes_read = self.bytes_read + bytes_read;
+
+                debug!("Bytes read set to {}", self.bytes_read);
 
 				Ok(())
             }
@@ -196,7 +198,9 @@ impl State {
     pub fn read_frame(&mut self) -> ReadFrameResult {
 		match self.frame_reading_status {
 			FrameReadingStatus::Header => {
+                debug!("FrameReadingStatus::Header");
 				if self.bytes_read < self.bytes_processed + FRAME_HEADER_SIZE {
+                    debug!("ReadFrameResult::NotEnoughBytesForFrame");
 					return ReadFrameResult::NotEnoughBytesForFrame;
 				}            
 		
@@ -215,7 +219,32 @@ impl State {
 				ReadFrameResult::NextStep
 			}
 			FrameReadingStatus::Payload => {
+                debug!("FrameReadingStatus::Payload");
+                debug!("Bytes read {}, bytes processed {}, frame size {}", self.bytes_read, self.bytes_processed, self.frame_size);
 				if self.bytes_read < self.bytes_processed + self.frame_size {
+                    debug!("ReadFrameResult::NotEnoughBytesForFrame");
+
+                    // MAX_FRAME_SIZE const is used as buffer length here, so we compare against buffer size, not frame size actually
+                    match self.bytes_processed + self.payload_size > MAX_FRAME_SIZE {
+                        true => {
+                            debug!("No full frame left for processing, but some bytes left");
+
+                            let bytes_left = self.bytes_read - self.bytes_processed;
+
+                            let mut i = 0;
+            
+                            while i < bytes_left {
+                                self.frame_buf[i] = self.read_buf[self.bytes_processed + i];
+                                i = i + 1;
+                            }
+
+                            self.bytes_read = bytes_left;
+                            self.bytes_processed = 0;
+
+                            debug!("Buffer process complete, bytes left: {}, bytes read set to {}", bytes_left, bytes_left);
+                        }
+                        false => {}
+                    }
 					return ReadFrameResult::NotEnoughBytesForFrame;
 				}
 		
@@ -246,7 +275,7 @@ impl State {
 					true => {
 						match self.bytes_processed + FRAME_HEADER_SIZE <= self.bytes_read {
 							true => {
-								debug!("At least one frame header left for processing");
+								debug!("At least one frame header left for processing, bytes processed {}", self.bytes_processed);
 							}
 							false => {
 								debug!("No frame headers left for processing, but some bytes left");
@@ -262,6 +291,8 @@ impl State {
 
 								self.bytes_read = bytes_left;
 								self.bytes_processed = 0;
+
+                                debug!("Buffer process complete, bytes left: {}, bytes read set to {}", bytes_left, bytes_left);
 							}
 						}												
 					}

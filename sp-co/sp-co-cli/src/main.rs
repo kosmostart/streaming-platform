@@ -27,6 +27,7 @@ fn main() {
 
 	let qq = split[0].to_owned();
 
+    
     rt.spawn(async {
 		let res = q(qq).await;
 		println!("{:?}", res);
@@ -52,10 +53,8 @@ fn main() {
 
 	rt.block_on(async {
 		loop {
-            
         }
 	});
-    
 
    /*
     let event_source = sse_client::EventSource::new("http://localhost:12345/events").unwrap();

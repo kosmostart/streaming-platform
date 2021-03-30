@@ -17,7 +17,7 @@ use crate::proto::*;
 /// restream_rx can be used for restreaming data somewhere else, for example returning data for incoming web request
 /// dependency is w/e clonable dependency needed when processing data.
 /// The protocol message format is in sp-dto crate.
-pub fn start_stream<T: 'static, R: 'static, D: 'static>(config: HashMap<String, String>, process_stream: ProcessStream<T, D>, startup: Startup<R, D>, startup_data: Option<Value>, restream_rx: Option<UnboundedReceiver<RestreamMsg>>, dependency: D) 
+pub fn start_stream<T: 'static, R: 'static, D: 'static>(config: HashMap<String, String>, process_stream: ProcessStream<T, D>, startup: Startup<R, D>, startup_data: Option<Value>, restream_tx: Option<UnboundedSender<RestreamMsg>>, restream_rx: Option<UnboundedReceiver<RestreamMsg>>, dependency: D) 
 where 
     T: Future<Output = ()> + Send,
     R: Future<Output = ()> + Send,
@@ -27,7 +27,7 @@ where
     let host = config.get("host").expect("Missing host config value").to_owned();    
     let access_key = config.get("access_key").expect("Missing access_key config value").to_owned();
     let rt = Runtime::new().expect("Failed to create runtime");
-    rt.block_on(stream_mode(&host, &addr, &access_key, process_stream, startup, config, startup_data, restream_rx, dependency));
+    rt.block_on(stream_mode(&host, &addr, &access_key, process_stream, startup, config, startup_data, restream_tx, restream_rx, dependency));
 }
 
 /// Starts a message based client based on provided config. Creates new runtime and blocks.
@@ -60,7 +60,7 @@ where
 /// restream_rx can be used for restreaming data somewhere else, for example returning data for incoming web request
 /// dependency is w/e clonable dependency needed when processing data.
 /// The protocol message format is in sp-dto crate.
-pub async fn stream_mode<T: 'static, R: 'static, D: 'static>(host: &str, addr: &str, access_key: &str, process_stream: ProcessStream<T, D>, startup: Startup<R, D>, config: HashMap<String, String>, startup_data: Option<Value>, restream_rx: Option<UnboundedReceiver<RestreamMsg>>, dependency: D)
+pub async fn stream_mode<T: 'static, R: 'static, D: 'static>(host: &str, addr: &str, access_key: &str, process_stream: ProcessStream<T, D>, startup: Startup<R, D>, config: HashMap<String, String>, startup_data: Option<Value>, restream_tx: Option<UnboundedSender<RestreamMsg>>, restream_rx: Option<UnboundedReceiver<RestreamMsg>>, dependency: D)
 where 
     T: Future<Output = ()> + Send,
     R: Future<Output = ()> + Send,
@@ -103,7 +103,7 @@ where
         }
     });    
     let mb = MagicBall::new(addr2, write_tx2, rpc_inbound_tx);
-    tokio::spawn(process_stream(config.clone(), mb.clone(), read_rx, restream_rx, dependency.clone()));
+    tokio::spawn(process_stream(config.clone(), mb.clone(), read_rx, restream_tx, restream_rx, dependency.clone()));
     tokio::spawn(startup(config, mb, startup_data, dependency));
     connect_stream_future(host, addr3, access_key, read_tx, write_rx).await;
 }

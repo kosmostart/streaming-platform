@@ -27,6 +27,11 @@ fn main() {
 
 	let qq = split[0].to_owned();
 
+    rt.spawn(async {
+		let res = q(qq).await;
+		println!("{:?}", res);
+	});
+
     let payload = json!({
     });
 
@@ -46,8 +51,9 @@ fn main() {
     println!("{:#?}", msg);	
 
 	rt.block_on(async {
-		let res = q(qq).await;
-		println!("{:?}", res);
+		loop {
+            
+        }
 	});
     
 

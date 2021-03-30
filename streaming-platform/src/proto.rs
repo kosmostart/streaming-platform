@@ -169,7 +169,7 @@ impl State {
         self.bytes_processed = 0;
     }
     pub async fn read_from_tcp_stream(&mut self, tcp_stream: &mut TcpStream) -> Result<(), ProcessError> {
-        let bytes_read = tcp_stream.read(&mut self.read_buf[..]).await?;
+        let bytes_read = tcp_stream.read(&mut self.read_buf[self.bytes_read..]).await?;
 
 		debug!("Read {} bytes", bytes_read);
 
@@ -296,7 +296,7 @@ pub trait DI<T> {
 */
 
 /// Type for function called on data stream processing
-pub type ProcessStream<T, D> = fn(HashMap<String, String>, MagicBall, UnboundedReceiver<ClientMsg>, Option<UnboundedReceiver<RestreamMsg>>, D) -> T;
+pub type ProcessStream<T, D> = fn(HashMap<String, String>, MagicBall, UnboundedReceiver<ClientMsg>, Option<UnboundedSender<RestreamMsg>>, Option<UnboundedReceiver<RestreamMsg>>, D) -> T;
 /// Type for function called on event processing with json payload
 pub type ProcessEvent<T, R, D> = fn(HashMap<String, String>, MagicBall, Message<R>, D) -> T;
 /// Type for function called on rpc processing with json payload

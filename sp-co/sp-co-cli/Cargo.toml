@@ -11,5 +11,5 @@ edition = "2018"
 serde_json = "*"
 futures = "*"
 tokio = { version = "1", features = ["rt-multi-thread"] }
-reqwest = { version = "*", features = ["stream"] }
+reqwest = { version = "*" }
 sp-dto = { path = "../../sp-dto" }

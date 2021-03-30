@@ -1,9 +1,8 @@
 use log::*;
-use serde_json::{Value, json, to_vec};
 use warp::http::Response;
 use warp::hyper;
 use streaming_platform::MagicBall;
-use streaming_platform::{sp_dto::{get_msg_meta, MsgType}, RestreamMsg};
+use streaming_platform::{sp_dto::{get_msg_meta, MsgType, uuid::Uuid}, RestreamMsg};
 use streaming_platform::tokio::sync::mpsc::UnboundedSender;
 use crate::{check_auth_token, response};
 
@@ -12,10 +11,9 @@ pub async fn go(aca_origin: Option<String>, auth_token_key: String, cookie_heade
         Some(auth_data) => {
             let (body_tx, body) = hyper::Body::channel();
             
-			info!("StartHttp send attempt");
-            match restream_tx.send(RestreamMsg::StartHttp(json!({ }), body_tx, None)) {
+            match restream_tx.send(RestreamMsg::AddRestream(Uuid::new_v4(), body_tx, None)) {
 				Ok(()) => {
-					info!("Sending StartHttp");
+					info!("Sending AddRestream");
 
 					let res = response_for_content(aca_origin, body, ContentAccessType::Raw).expect("failed to build aca origin response");
 					Ok::<Response<hyper::Body>, warp::Rejection>(res)                                    

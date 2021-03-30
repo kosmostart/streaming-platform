@@ -7,7 +7,7 @@ use log::*;
 use serde_json::{Value, from_slice, json, to_vec};
 use warp::{Filter, http::{Response, header::SET_COOKIE}, hyper::body::Bytes};
 use streaming_platform::{MagicBall, tokio::{io::AsyncReadExt}};
-use streaming_platform::sp_dto::MsgMeta;
+use streaming_platform::sp_dto::{uuid::Uuid, MsgMeta};
 use streaming_platform::{client::stream_mode, ClientMsg, FrameType, StreamCompletion, tokio::{self, sync::{mpsc::{self, UnboundedReceiver, UnboundedSender}, oneshot}}, sp_dto::{Key, Message, Participator, resp, rpc_dto_with_correlation_id_sizes, Route, RouteSpec}, RestreamMsg, StreamLayout, ProcessError};
 use sp_auth::verify_auth_token;
 pub use streaming_platform;
@@ -367,18 +367,12 @@ pub fn response_with_cookie(aca_origin: String, cookie_header: &str, data: Vec<u
         .body(data)
 }
 
-struct DownloadStreamLayout {
+struct DownstreamStreamLayout {
     layout: StreamLayout,
-    body_tx: Option<warp::hyper::body::Sender>,
-    completion_tx: Option<oneshot::Sender<StreamCompletion>>
+    txs: HashMap<Uuid, (warp::hyper::body::Sender, Option<oneshot::Sender<StreamCompletion>>)>
 }
 
-pub enum InnerMsg {
-    AddRestream(String, warp::hyper::body::Sender, Option<oneshot::Sender<StreamCompletion>>),
-    GetRestream(String, oneshot::Sender<(warp::hyper::body::Sender, Option<oneshot::Sender<StreamCompletion>>)>)
-}
-
-async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64, DownloadStreamLayout>, client_msg: ClientMsg, inner_tx: &mut UnboundedSender<InnerMsg>) -> Result<(), ProcessError> {
+async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64, DownstreamStreamLayout>, client_msg: ClientMsg) -> Result<(), ProcessError> {
 	match client_msg {
 		ClientMsg::Frame(frame) => {
 			match frame.get_frame_type() {
@@ -390,15 +384,14 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
 									stream_layout.layout.msg_meta.extend_from_slice(&frame.payload[..frame.payload_size as usize]);
 								}
 								None => {									
-									stream_layouts.insert(frame.stream_id, DownloadStreamLayout {
+									stream_layouts.insert(frame.stream_id, DownstreamStreamLayout {
 										layout: StreamLayout {
 											id: frame.stream_id,
 											msg_meta: frame.payload[..frame.payload_size as usize].to_vec(),
 											payload: vec![],
 											attachments_data: vec![]
 										},
-										body_tx: None,
-                						completion_tx: None
+										txs: HashMap::new()
 									});
 								}
 							}
@@ -412,45 +405,24 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
 
 									let msg_meta: MsgMeta = from_slice(&stream_layout.layout.msg_meta)?;
 
-                                    let (get_restream_tx, get_restream_rx) = oneshot::channel();
-
-                                    match inner_tx.send(InnerMsg::GetRestream(/*msg_meta.correlation_id.to_string()*/"Abc".to_owned(), get_restream_tx)) {
-                                        Ok(()) => {}
-                                        Err(_) => panic!("InnerMsg::GetRestream send error")
-                                    }
-
-                                    let (body_tx, completion_tx) = get_restream_rx.await.expect("Failed to get restream");
-
-                                    stream_layout.body_tx = Some(body_tx);
-                                    stream_layout.completion_tx = completion_tx;
+                                    info!("Started stream {:?}", msg_meta.key);
 								}
 								None => {									
-									let mut stream_layout = DownloadStreamLayout {
+									let mut stream_layout = DownstreamStreamLayout {
 										layout: StreamLayout {
 											id: frame.stream_id,
 											msg_meta: vec![],
 											payload: vec![],
 											attachments_data: vec![]
 										},
-										body_tx: None,
-                						completion_tx: None
+										txs: HashMap::new()
 									};
 
 									stream_layout.layout.msg_meta.extend_from_slice(&frame.payload[..frame.payload_size as usize]);									
 
 									let msg_meta: MsgMeta = from_slice(&stream_layout.layout.msg_meta)?;
 
-                                    let (get_restream_tx, get_restream_rx) = oneshot::channel();
-
-                                    match inner_tx.send(InnerMsg::GetRestream(/*msg_meta.correlation_id.to_string()*/"Abc".to_owned(), get_restream_tx)) {
-                                        Ok(()) => {}
-                                        Err(_) => panic!("InnerMsg::GetRestream send error")
-                                    }
-
-                                    let (body_tx, completion_tx) = get_restream_rx.await.expect("failed to get restream");
-
-                                    stream_layout.body_tx = Some(body_tx);
-                                    stream_layout.completion_tx = completion_tx;
+                                  
 
 									stream_layouts.insert(frame.stream_id, stream_layout);
 								}
@@ -465,32 +437,42 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
 
 							//stream_layout.layout.attachments_data.extend_from_slice(&frame.payload[..frame.payload_size as usize]);
 
-                            let body_tx = stream_layout.body_tx.as_mut().ok_or(ProcessError::Custom("Body tx is empty for attachment restream".to_owned()))?;
+                            let mut requests_to_remove = vec![];
 
-                            //let data = Bytes::copy_from_slice(&buf[..n]);
+                            for (&request_id, (body_tx, _)) in stream_layout.txs.iter_mut() {
+                                let data = Bytes::copy_from_slice(&frame.payload[..frame.payload_size as usize]);
 
-                            match body_tx.send_data(Bytes::copy_from_slice(&frame.payload[..frame.payload_size as usize])).await {                
-                                Ok(()) => {
-									info!("Attachment frame send");
-								}
-                                Err(_) => {
-                                    error!("Failed to send data with body_tx");
+                                match body_tx.send_data(data).await {                
+                                    Ok(()) => {
+                                        info!("Attachment frame send");
+                                    }
+                                    Err(_) => {
+                                        warn!("Failed to send data with body_tx");
+                                        requests_to_remove.push(request_id);
+                                    }
                                 }
+
+                            }
+
+                            for request_id in requests_to_remove {
+                                let _ = stream_layout.txs.remove(&request_id);
                             }
 						}
 						FrameType::End => {
 							match stream_layouts.remove(&frame.stream_id) {
 								Some(mut stream_layout) => {
-                                    match stream_layout.completion_tx.take() {
-                                        Some(completion_tx) => {
-                                            match completion_tx.send(StreamCompletion::Ok) {
-                                                Ok(()) => {}
-                                                Err(_) => {
-                                                    error!("Failed to send stream completion")
+                                    for (_, (_, completion_tx)) in stream_layout.txs {
+                                        match completion_tx {
+                                            Some(completion_tx) => {
+                                                match completion_tx.send(StreamCompletion::Ok) {
+                                                    Ok(()) => {}
+                                                    Err(_) => {
+                                                        error!("Failed to send stream completion")
+                                                    }
                                                 }
                                             }
+                                            None => {}
                                         }
-                                        None => {}
                                     }
                                 }
 								None => {
@@ -586,45 +568,24 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
 
 pub async fn process_stream(config: HashMap<String, String>, mut mb: MagicBall, mut rx: UnboundedReceiver<ClientMsg>, mut restream_rx: Option<UnboundedReceiver<RestreamMsg>>, _: ()) {    
     let mut restream_rx = restream_rx.expect("Restream rx is empty");
-    let (mut inner_tx, mut inner_rx) = mpsc::unbounded_channel();
-    let mut inner_tx2 = inner_tx.clone();
     let mut mb2 = mb.clone();
 
     tokio::spawn(async move {
-        let mut restreams = HashMap::new();
+        let mut restreams = vec![];
 
         loop {
-            match inner_rx.recv().await.expect("Restream channel dropped") {
-                InnerMsg::AddRestream(correlation_id, body_tx, completion_tx) => {
-					info!("InnerMsg::AddRestream, correlation id {}", correlation_id);
-                    restreams.insert(correlation_id, (body_tx, completion_tx));
-                }                
-                InnerMsg::GetRestream(correlation_id, reply) => {
-					info!("InnerMsg::GetRestream, correlation id {}", correlation_id);
-                    let restream = restreams.remove(&correlation_id).expect("Restream not found for get");
-
-                    match reply.send(restream) {
+            match restream_rx.recv().await.expect("restream channel dropped") {
+                RestreamMsg::AddRestream(request_id, body_tx, completion_tx) => {
+                    info!("RestreamMsg::AddRestream, request id {}", request_id);
+                    restreams.push((request_id, body_tx, completion_tx));
+                }
+                RestreamMsg::GetRestreams(reply) => {
+					info!("RestreamMsg::GetRestream");
+                    match reply.send(restreams.drain(..).collect()) {
                         Ok(()) => {}
                         Err(_) => panic!("Send restream failed")
                     }
                 }
-            }
-        }
-    });
-
-    tokio::spawn(async move {
-        loop {
-            match restream_rx.recv().await.expect("restream channel dropped") {
-                RestreamMsg::StartHttp(payload, body_tx, completion_tx) => {
-					info!("StartHttp received");
-
-                    match inner_tx2.send(InnerMsg::AddRestream("Abc".to_owned(), body_tx, completion_tx)) {
-                        Ok(()) => {}
-                        Err(_) => panic!("InnerMsg::Addrestream send error")
-                    }
-				
-                }
-                _ => error!("Incorrect restream msg")
             }
         }
     });
@@ -635,7 +596,7 @@ pub async fn process_stream(config: HashMap<String, String>, mut mb: MagicBall, 
         let client_msg = rx.recv().await.expect("connection issues acquired");
         let stream_id = client_msg.get_stream_id();
 
-        match process_client_msg(&mut mb2, &mut stream_layouts, client_msg, &mut inner_tx).await {
+        match process_client_msg(&mut mb2, &mut stream_layouts, client_msg).await {
             Ok(()) => {}
             Err(e) => {
 				/*

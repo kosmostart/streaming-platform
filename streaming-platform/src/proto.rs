@@ -324,9 +324,10 @@ impl ClientMsg {
 }
 
 pub enum RestreamMsg {
-    StartSimple,
     #[cfg(feature = "http")]
-    StartHttp(Value, hyper::body::Sender, Option<oneshot::Sender<StreamCompletion>>)
+    AddRestream(Uuid, hyper::body::Sender, Option<oneshot::Sender<StreamCompletion>>),
+    #[cfg(feature = "http")]
+    GetRestreams(oneshot::Sender<Vec<(Uuid, hyper::body::Sender, Option<oneshot::Sender<StreamCompletion>>)>>)
 }
 
 pub enum StreamCompletion {

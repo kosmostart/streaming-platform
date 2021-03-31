@@ -38,7 +38,7 @@ pub async fn process_rpc(config: HashMap<String, String>, mut mb: MagicBall, msg
     let res = match msg.meta.key.action.as_ref() {
         "Deploy" => {
             tokio::spawn(async move {                
-                let build_path = "d:/src/streaming-platform/Cargo.toml";
+                let build_path = "d:/src/cfg-if/Cargo.toml";
 
                 let cmd = "cargo";
                 
@@ -49,7 +49,7 @@ pub async fn process_rpc(config: HashMap<String, String>, mut mb: MagicBall, msg
                     build_path
                 ];
 
-                let args = ["--help"];
+                //let args = ["--help"];
 
 				mb.stream_event(Key::new("DeployStream", "Build", "Build"), json!({})).await.unwrap();
                 
@@ -87,12 +87,20 @@ pub async fn process_rpc(config: HashMap<String, String>, mut mb: MagicBall, msg
 						_ => mb.send_frame(&buf[..n], n).unwrap()
 					}
 				}
-
-				mb.complete_stream().unwrap();
             
                 let ecode = handle.wait().expect("failed to wait on child");
             
-                println!("{:?}", ecode);
+                info!("{:?}", ecode);
+
+                let mut payload = format!("Exit code is {:?}", ecode).as_bytes().to_vec();
+                payload.push(0x0D);
+                payload.push(0x0A);
+                payload.push(0x0D);
+                payload.push(0x0A);
+
+                mb.send_frame(&payload, payload.len()).unwrap();
+
+                mb.complete_stream().unwrap();
 
                 //pack();
             });

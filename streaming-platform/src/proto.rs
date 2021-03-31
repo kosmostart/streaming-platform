@@ -225,7 +225,7 @@ impl State {
                     debug!("ReadFrameResult::NotEnoughBytesForFrame");
 
                     // MAX_FRAME_SIZE const is used as buffer length here, so we compare against buffer size, not frame size actually
-                    match self.bytes_processed + self.payload_size > MAX_FRAME_SIZE {
+                    match self.bytes_processed + self.frame_size > MAX_FRAME_SIZE {
                         true => {
                             debug!("No full frame left for processing, but some bytes left");
 

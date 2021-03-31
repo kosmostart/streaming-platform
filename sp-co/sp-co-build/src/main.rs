@@ -38,7 +38,7 @@ pub async fn process_rpc(config: HashMap<String, String>, mut mb: MagicBall, msg
     let res = match msg.meta.key.action.as_ref() {
         "Deploy" => {
             tokio::spawn(async move {                
-                let path = "d:/src/streaming-platform/Cargo.toml";
+                let build_path = "d:/src/streaming-platform/Cargo.toml";
 
                 let cmd = "cargo";
                 
@@ -46,12 +46,26 @@ pub async fn process_rpc(config: HashMap<String, String>, mut mb: MagicBall, msg
                     "build",
                     "--release",
                     "--manifest-path",
-                    path
+                    build_path
                 ];
 
                 let args = ["--help"];
 
 				mb.stream_event(Key::new("DeployStream", "Build", "Build"), json!({})).await.unwrap();
+                
+                let path = "d:/src/cfg-if";
+                let remote_name = "origin";
+                let remote_branch = "master";
+
+                let res = repository::pull::go(path, remote_name, remote_branch);
+
+                let mut payload = format!("Pull result is {:?}", res).as_bytes().to_vec();
+                payload.push(0x0D);
+                payload.push(0x0A);
+                payload.push(0x0D);
+                payload.push(0x0A);
+
+                mb.send_frame(&payload, payload.len()).unwrap();
 
                 let mut handle = std::process::Command::new(cmd)
                     .args(&args)
@@ -61,9 +75,9 @@ pub async fn process_rpc(config: HashMap<String, String>, mut mb: MagicBall, msg
                     .spawn()
                     .expect("");
 
-                let mut stdout = handle.stdout.take().unwrap();
-            
-                let mut buf = [0; 100];				
+                let mut stdout = handle.stdout.take().unwrap();		
+                
+                let mut buf = [0; 100];
 
                 loop {
 					let n = stdout.read(&mut buf).unwrap();

@@ -72,7 +72,7 @@ async fn q(cookie: String) -> Result<(), Box<dyn std::error::Error>> {
 		.await?;
 
 	while let Some(chunk) = res.chunk().await? {
-		println!("{:?}", chunk);
+		print!("{}", String::from_utf8(chunk.to_vec()).unwrap());
 	}	
 
 	println!("Downstream end");

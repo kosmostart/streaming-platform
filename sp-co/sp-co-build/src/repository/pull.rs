@@ -169,18 +169,9 @@ fn do_merge<'a>(
     Ok(())
 }
 
-fn run() -> Result<(), git2::Error> {
-    let remote_name = "origin";
-    let remote_branch = "master";
-    let repo = Repository::open("d:/src/test")?;
+pub fn go(path: &str, remote_name: &str, remote_branch: &str) -> Result<(), git2::Error> {
+    let repo = Repository::open(path)?;
     let mut remote = repo.find_remote(remote_name)?;
     let fetch_commit = do_fetch(&repo, &[remote_branch], &mut remote)?;
     do_merge(&repo, &remote_branch, fetch_commit)
-}
-
-pub fn start() {
-    match run() {
-        Ok(()) => {}
-        Err(e) => println!("error: {}", e),
-    }
 }

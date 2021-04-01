@@ -1,8 +1,8 @@
 use std::{collections::HashMap, process::ExitStatus};
 use std::io::Read;
-use serde_json::{json, Value, from_value};
+use serde_json::{json, Value, from_value, to_vec};
 use log::*;
-use streaming_platform::{tokio, client, MagicBall, sp_dto::{Key, MsgMeta, Message, Response, resp}};
+use streaming_platform::{MAX_FRAME_PAYLOAD_SIZE, tokio::{self, fs::File, io::AsyncReadExt}, client, MagicBall, sp_dto::{Key, MsgMeta, Message, Response, resp}};
 use sp_pack_core::pack;
 
 mod flow;
@@ -14,18 +14,45 @@ mod repository {
 }
 
 #[derive(Debug)]
-enum SideKick {
+enum Error {
+    Io(std::io::Error),
+    SerdeJson(serde_json::Error),
+    StreamingPlatform(streaming_platform::ProcessError),
     IncorrectKeyInRequest,
-    //SerdeJson(serde_json::Error)
+    SendFrame
 }
 
-impl std::fmt::Display for SideKick {
+impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "SuperErrorSideKick is here!")
+        write!(f, "SuperErrorError is here!")
     }
 }
 
-impl std::error::Error for SideKick {}
+impl std::error::Error for Error {}
+
+impl From<std::io::Error> for Error {
+	fn from(e: std::io::Error) -> Error {
+		Error::Io(e)
+	}
+}
+
+impl From<serde_json::Error> for Error {
+	fn from(e: serde_json::Error) -> Error {
+		Error::SerdeJson(e)
+	}
+}
+
+impl From<streaming_platform::ProcessError> for Error {
+    fn from(e: streaming_platform::ProcessError) -> Error {
+        Error::StreamingPlatform(e)
+    }
+}
+
+impl From<tokio::sync::mpsc::error::SendError<streaming_platform::Frame>> for Error {
+    fn from(_: tokio::sync::mpsc::error::SendError<streaming_platform::Frame>) -> Error {
+        Error::SendFrame
+    }
+}
 
 pub async fn process_event(config: HashMap<String, String>, mut mb: MagicBall, msg: Message<Value>, _: ()) -> Result<(), Box<dyn std::error::Error>>  {
     //info!("{:#?}", msg);
@@ -170,13 +197,45 @@ pub async fn process_rpc(config: HashMap<String, String>, mut mb: MagicBall, msg
             json!({
             })
         }
-        _ => return Err(Box::new(SideKick::IncorrectKeyInRequest))
+        _ => return Err(Box::new(Error::IncorrectKeyInRequest))
     };
 
     resp(res)
 }
 
 pub async fn startup(config: HashMap<String, String>, mut mb: MagicBall, startup_data: Option<Value>, _: ()) {
+}
+
+async fn send_file(mut mb: MagicBall, msg_meta: MsgMeta, path: std::path::PathBuf, file_name: String) -> Result<(), Error> {
+    let mut file = File::open(&path).await?;
+    let size = file.metadata().await?.len();
+
+    let payload = to_vec(&json!({
+        "file_name": file_name
+    }))?;
+
+    mb.stream_rpc_response(msg_meta, json!({})).await?;
+
+    match size {
+        0 => {
+        }
+        _ => {
+            let mut buf = [0; MAX_FRAME_PAYLOAD_SIZE];
+
+            loop {
+                match file.read(&mut buf).await? {
+                    0 => break,
+                    n => {                
+                        mb.send_frame(&buf, n)?;
+                    }
+                }
+            }
+        }
+    }
+
+    mb.complete_stream()?;
+
+    Ok(())
 }
 
 pub fn main() {

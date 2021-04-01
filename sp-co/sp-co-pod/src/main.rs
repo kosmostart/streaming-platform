@@ -203,9 +203,10 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
     Ok(())
 }
 
-async fn download_file(mut mb: MagicBall, msg_meta: MsgMeta, path: std::path::PathBuf, file_name: String) -> Result<(), Error> {
+async fn send_file(mut mb: MagicBall, msg_meta: MsgMeta, path: std::path::PathBuf, file_name: String) -> Result<(), Error> {
     let mut file = File::open(&path).await?;
     let size = file.metadata().await?.len();
+
     let payload = to_vec(&json!({
         "file_name": file_name
     }))?;

@@ -5,18 +5,18 @@ use sp_auth::create_auth_token;
 use streaming_platform::{client, MagicBall, sp_dto::{MsgMeta, Message, Response, resp}};
 
 #[derive(Debug)]
-enum SideKick {
+enum Error {
     IncorrectKeyInRequest,
     //SerdeJson(serde_json::Error)
 }
 
-impl std::fmt::Display for SideKick {
+impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "SuperErrorSideKick is here!")
+        write!(f, "SuperErrorError is here!")
     }
 }
 
-impl std::error::Error for SideKick {}
+impl std::error::Error for Error {}
 
 pub async fn process_event(config: HashMap<String, String>, mut mb: MagicBall, msg: Message<Value>, _: ()) -> Result<(), Box<dyn std::error::Error>>  {
     //info!("{:#?}", msg);
@@ -44,7 +44,7 @@ pub async fn process_rpc(config: HashMap<String, String>, mut mb: MagicBall, msg
                 "auth_token": part1 + "." + &part2
             })
         }
-        _ => return Err(Box::new(SideKick::IncorrectKeyInRequest))
+        _ => return Err(Box::new(Error::IncorrectKeyInRequest))
     };
 
     resp(res)

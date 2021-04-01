@@ -23,24 +23,24 @@ mod sse_stream {
     use warp::sse::Event;
 
     #[derive(Debug)]
-    pub enum SideKick {
+    pub enum Error {
         Kick
     }
 
-    impl std::fmt::Display for SideKick {
+    impl std::fmt::Display for Error {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            write!(f, "SuperErrorSideKick is here!")
+            write!(f, "SuperErrorError is here!")
         }
     }
 
-    impl std::error::Error for SideKick {}
+    impl std::error::Error for Error {}
 
-    pub fn new(is_error: bool) -> (Option<UnboundedSender<Event>>, impl Stream<Item = Result<Event, SideKick>>) {
+    pub fn new(is_error: bool) -> (Option<UnboundedSender<Event>>, impl Stream<Item = Result<Event, Error>>) {
         let (tx, mut rx) = mpsc::unbounded_channel();
 
         let stream = stream! {
             match is_error {
-                true => yield Err(SideKick::Kick),
+                true => yield Err(Error::Kick),
                 false => 
                     while let Some(event) = rx.recv().await {
                         yield Ok(event);

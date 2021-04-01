@@ -167,9 +167,9 @@ pub async fn process_rpc(config: HashMap<String, String>, mut mb: MagicBall, msg
 
                         match pack(build_config) {
                             Ok(pack_result_path) => {
-                                pack_result_msg = "Pack result is Ok, path to file is {}".to_owned() + &pack_result_path;
+                                pack_result_msg = "Pack result is Ok, path to pack is {}".to_owned() + &pack_result_path;
 
-                                let q = mb.clone();
+                                send_file(mb.clone(), path).await.unwrap();
                             }
                             Err(e) => {
                                 pack_result_msg = format!("Pack result is Err, {:?}", e);
@@ -206,15 +206,11 @@ pub async fn process_rpc(config: HashMap<String, String>, mut mb: MagicBall, msg
 pub async fn startup(config: HashMap<String, String>, mut mb: MagicBall, startup_data: Option<Value>, _: ()) {
 }
 
-async fn send_file(mut mb: MagicBall, msg_meta: MsgMeta, path: std::path::PathBuf, file_name: String) -> Result<(), Error> {
+async fn send_file(mut mb: MagicBall, path: &str) -> Result<(), Error> {
     let mut file = File::open(&path).await?;
     let size = file.metadata().await?.len();
 
-    let payload = to_vec(&json!({
-        "file_name": file_name
-    }))?;
-
-    mb.stream_rpc_response(msg_meta, json!({})).await?;
+    mb.stream_rpc(Key::new("DeployPack", "Deploy", "Deploy"), json!({})).await?;
 
     match size {
         0 => {

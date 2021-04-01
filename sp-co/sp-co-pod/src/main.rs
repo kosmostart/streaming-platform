@@ -3,10 +3,10 @@ use std::fs;
 use serde_json::{json, Value, from_slice, to_vec, to_string, from_str};
 use log::*;
 use tokio::{io::AsyncWriteExt, fs::File, sync::mpsc::{UnboundedSender, UnboundedReceiver}};
-use streaming_platform::{ClientMsg, Frame, MAX_FRAME_PAYLOAD_SIZE, MagicBall, RestreamMsg, StreamLayout, client::start_stream, sp_cfg, sp_dto::{MsgMeta, MsgType, rpc_response_dto2_sizes, Participator, RpcResult}, tokio::{self, io::AsyncReadExt}};
+use streaming_platform::{ClientMsg, Frame, FrameType, MAX_FRAME_PAYLOAD_SIZE, MagicBall, ProcessError, RestreamMsg, StreamLayout, client::start_stream, sp_cfg, sp_dto::{MsgMeta, MsgType, rpc_response_dto2_sizes, Participator, RpcResult}, tokio::{self, io::AsyncReadExt}};
 
 struct FileStreamLayout {
-    stream: StreamLayout,
+    layout: StreamLayout,
     payload: Option<Value>,
     download_payload: Option<Value>,    
     file: Option<File>,
@@ -76,6 +76,89 @@ pub async fn process_stream(config: HashMap<String, String>, mut mb: MagicBall, 
 }
 
 async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64, FileStreamLayout>, dirs: &Vec<sp_cfg::Dir>, client_msg: ClientMsg) -> Result<(), Error> {
+    match client_msg {
+		ClientMsg::Frame(frame) => {
+			match frame.get_frame_type() {
+				Ok(frame_type) => {
+					match frame_type {
+						FrameType::MsgMeta => {						
+							match stream_layouts.get_mut(&frame.stream_id) {
+								Some(stream_layout) => {
+									stream_layout.layout.msg_meta.extend_from_slice(&frame.payload[..frame.payload_size as usize]);
+								}
+								None => {									
+									stream_layouts.insert(frame.stream_id, FileStreamLayout {
+										layout: StreamLayout {
+											id: frame.stream_id,
+											msg_meta: frame.payload[..frame.payload_size as usize].to_vec(),
+											payload: vec![],
+											attachments_data: vec![]
+										},
+										txs: HashMap::new()
+									});
+								}
+							}
+						}
+						FrameType::MsgMetaEnd => {
+							info!("MsgMetaEnd frame");
+							
+							match stream_layouts.get_mut(&frame.stream_id) {
+								Some(stream_layout) => {									
+									stream_layout.layout.msg_meta.extend_from_slice(&frame.payload[..frame.payload_size as usize]);
+
+									let msg_meta: MsgMeta = from_slice(&stream_layout.layout.msg_meta)?;
+
+                                    info!("Started stream {:?}", msg_meta.key);
+								}
+								None => {									
+									let mut stream_layout = FileStreamLayout {
+										layout: StreamLayout {
+											id: frame.stream_id,
+											msg_meta: vec![],
+											payload: vec![],
+											attachments_data: vec![]
+										},
+										txs: HashMap::new()
+									};
+
+									stream_layout.layout.msg_meta.extend_from_slice(&frame.payload[..frame.payload_size as usize]);									
+
+									let msg_meta: MsgMeta = from_slice(&stream_layout.layout.msg_meta)?;
+
+									stream_layouts.insert(frame.stream_id, stream_layout);
+								}
+							};
+						}
+						FrameType::Payload | FrameType::PayloadEnd => {
+							let stream_layout = stream_layouts.get_mut(&frame.stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
+							stream_layout.layout.attachments_data.extend_from_slice(&frame.payload[..frame.payload_size as usize]);
+						}
+						FrameType::Attachment | FrameType::AttachmentEnd => {
+                            info!("Attachment frame");
+
+						}
+						FrameType::End => {
+							match stream_layouts.remove(&frame.stream_id) {
+								Some(mut stream_layout) => {
+                                }
+								None => {
+									error!("Not found stream layout for stream end");
+								}
+							}
+						}
+					}
+
+				}
+				Err(e) => {
+					error!("Get frame type failed, frame type {}, {:?}", frame.frame_type, e);
+				}
+			}
+		}
+		_ => {
+			error!("Incorrect client message received")
+		}
+	}
+
     /*
     match client_msg {
         ClientMsg::MsgMeta(stream_id, msg_meta) => {            
@@ -207,11 +290,7 @@ async fn send_file(mut mb: MagicBall, msg_meta: MsgMeta, path: std::path::PathBu
     let mut file = File::open(&path).await?;
     let size = file.metadata().await?.len();
 
-    let payload = to_vec(&json!({
-        "file_name": file_name
-    }))?;
-
-    mb.stream_rpc_response(msg_meta, json!({})).await?;
+    mb.stream_rpc_response(msg_meta, json!({ "file_name": file_name })).await?;
 
     match size {
         0 => {

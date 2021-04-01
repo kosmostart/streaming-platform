@@ -423,8 +423,6 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
 
 									let msg_meta: MsgMeta = from_slice(&stream_layout.layout.msg_meta)?;
 
-                                  
-
 									stream_layouts.insert(frame.stream_id, stream_layout);
 								}
 							};

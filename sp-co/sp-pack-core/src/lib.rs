@@ -1,5 +1,5 @@
 use std::fs::{File, remove_file};
-use std::io::{self, Result};
+use std::io::{self, Error};
 use std::path::Path;
 use std::io::BufReader;
 use std::io::prelude::*;
@@ -9,40 +9,24 @@ use serde_derive::Deserialize;
 use lz4::{Decoder, EncoderBuilder};
 
 #[derive(Debug, Deserialize)]
-struct Config {
-    result_file_tag: String,
-    dirs: Option<Vec<TargetDir>>,
-    files: Vec<TargetFile>
+pub struct Config {
+    pub result_file_tag: String,
+    pub dirs: Option<Vec<TargetDir>>,
+    pub files: Vec<TargetFile>
 }
 
 #[derive(Debug, Deserialize)]
-struct TargetDir {
-    arch_name: String,
-    path: String
+pub struct TargetDir {
+    pub arch_name: String,
+    pub path: String
 }
 
 #[derive(Debug, Deserialize)]
-struct TargetFile {
-    path: String
+pub struct TargetFile {
+    pub path: String
 }
 
-pub fn pack() {    
-    let config_path = std::env::args().nth(1)
-        .expect("path to config file not passed as argument");
-
-    let file = File::open(config_path)
-        .expect("failed to open config");
-
-    let mut buf_reader = BufReader::new(file);
-
-    let mut config = String::new();
-
-    buf_reader.read_to_string(&mut config)
-        .expect("failed to read config");
-
-    let config: Config = toml::from_str(&config)
-        .expect("failed to deserialize config");
-
+pub fn pack(config: Config) -> Result<String, Error> {
     println!("{:#?}", config);
 
     let from = config.result_file_tag.clone() + ".tmp";
@@ -91,9 +75,11 @@ pub fn pack() {
 
     remove_file(&from)
         .expect("failed to remove temporary file");
+
+    Ok(to)
 }
 
-pub fn unpack(save_path: String, file_name: String) {
+pub fn unpack(save_path: String, file_name: String) -> Result<(), Error> {
     let from = save_path.clone() + "/" + &file_name;
     let to = save_path.clone() + "/" + &file_name + ".tmp";
     let dt = Utc::now().format("%Y-%m-%d-%H-%M-%S").to_string();
@@ -111,9 +97,11 @@ pub fn unpack(save_path: String, file_name: String) {
         .expect("failed to remove temporary file");
 
     println!("unpack {} ok, path is {}", file_name, save_path);
+
+    Ok(())
 }
 
-fn compress(from: &str, to: &str) -> Result<()> {    
+fn compress(from: &str, to: &str) -> Result<(), Error> {    
     let mut input_file = File::open(from)?;
     let output_file = File::create(to)?;
     let mut encoder = EncoderBuilder::new()
@@ -122,12 +110,12 @@ fn compress(from: &str, to: &str) -> Result<()> {
 
     io::copy(&mut input_file, &mut encoder)?;
 
-    let (_output, result) = encoder.finish();
+    let (_output, res) = encoder.finish();
 
-    result
+    Ok(res?)
 }
 
-fn decompress(from: &str, to: &str) -> Result<()> {    
+fn decompress(from: &str, to: &str) -> Result<(), Error> {    
     let input_file = File::open(from)?;
     let mut decoder = Decoder::new(input_file)?;
     let mut output_file = File::create(to)?;

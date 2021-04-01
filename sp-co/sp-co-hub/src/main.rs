@@ -13,7 +13,7 @@ fn main() {
     let mut rpc_response_subscribes = HashMap::new();
 
 	event_subscribes.insert("WebStream".to_owned(), vec![
-        Key::new("DeployStream", "Build", "Build")
+        Key::new("DeployStream", "Deploy", "Deploy")
     ]);
 
     rpc_subscribes.insert("Auth".to_owned(), vec![
@@ -21,7 +21,7 @@ fn main() {
     ]);
 
     rpc_subscribes.insert("Build".to_owned(), vec![
-        Key::new("Deploy", "Build", "Build")
+        Key::new("Deploy", "Deploy", "Deploy")
     ]);
 
     rpc_subscribes.insert("Pod".to_owned(), vec![
@@ -34,7 +34,7 @@ fn main() {
 
     rpc_response_subscribes.insert("Web".to_owned(), vec![
         Key::new("Auth", "Auth", "Auth"),
-        Key::new("Deploy", "Build", "Build")
+        Key::new("Deploy", "Deploy", "Deploy")
     ]);
 
     server::start(config, Subscribes::ByAddr(event_subscribes, rpc_subscribes, rpc_response_subscribes));

@@ -1,8 +1,9 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, process::ExitStatus};
 use std::io::Read;
 use serde_json::{json, Value, from_value};
 use log::*;
 use streaming_platform::{tokio, client, MagicBall, sp_dto::{Key, MsgMeta, Message, Response, resp}};
+use sp_pack_core::pack;
 
 mod flow;
 mod repository {
@@ -51,7 +52,7 @@ pub async fn process_rpc(config: HashMap<String, String>, mut mb: MagicBall, msg
 
                 //let args = ["--help"];
 
-				mb.stream_event(Key::new("DeployStream", "Build", "Build"), json!({})).await.unwrap();
+				mb.stream_event(Key::new("DeployStream", "Deploy", "Deploy"), json!({})).await.unwrap();
                 
                 let path = "d:/src/cfg-if";
                 let remote_name = "origin";
@@ -100,9 +101,70 @@ pub async fn process_rpc(config: HashMap<String, String>, mut mb: MagicBall, msg
 
                 mb.send_frame(&payload, payload.len()).unwrap();
 
-                mb.complete_stream().unwrap();
+                let mut build_result_msg;
 
-                //pack();
+                match ecode.success() {
+                    true => {
+                        build_result_msg = "Build result is Ok";
+                    }
+                    false => {
+                        build_result_msg = "Build result is Err";
+                    }
+                }
+
+                info!("{}", build_result_msg);
+
+                let mut payload = build_result_msg.as_bytes().to_vec();
+                payload.push(0x0D);
+                payload.push(0x0A);
+                payload.push(0x0D);
+                payload.push(0x0A);
+
+                mb.send_frame(&payload, payload.len()).unwrap();
+
+                match ecode.success() {
+                    true => {
+                        use sp_pack_core::TargetFile;
+
+                        let build_config = sp_pack_core::Config {
+                            result_file_tag: "hello".to_owned(),
+                            dirs: None,
+                            files: vec![
+                                TargetFile {
+                                    path: "d:/src/cfg-if/target/release/libcfg_if.rlib".to_owned()
+                                }
+                            ]
+                        };
+
+                        let mut pack_result_msg;
+
+                        match pack(build_config) {
+                            Ok(pack_result_path) => {
+                                pack_result_msg = "Pack result is Ok, path to file is {}".to_owned() + &pack_result_path;
+
+                                let q = mb.clone();
+                            }
+                            Err(e) => {
+                                pack_result_msg = format!("Pack result is Err, {:?}", e);
+                            }
+                        }
+
+                        info!("{}", pack_result_msg);
+
+                        let mut payload = pack_result_msg.as_bytes().to_vec();
+                        payload.push(0x0D);
+                        payload.push(0x0A);
+                        payload.push(0x0D);
+                        payload.push(0x0A);
+
+                        mb.send_frame(&payload, payload.len()).unwrap();
+                    }
+                    false => {
+                        
+                    }
+                }
+
+                mb.complete_stream().unwrap();
             });
 
             json!({

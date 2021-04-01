@@ -36,7 +36,7 @@ fn main() {
     let payload = json!({
     });
 
-    let dto = rpc_dto("Cli".to_owned(), Key::new("Deploy", "Build", "Build"), payload, Route::new_cli("Cli"), None, None).unwrap();
+    let dto = rpc_dto("Cli".to_owned(), Key::new("Deploy", "Deploy", "Deploy"), payload, Route::new_cli("Cli"), None, None).unwrap();
 
     let client = reqwest::Client::new();
     

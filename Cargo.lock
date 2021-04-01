@@ -1715,7 +1715,6 @@ dependencies = [
  "serde",
  "serde_derive",
  "tar",
- "toml",
 ]
 
 [[package]]

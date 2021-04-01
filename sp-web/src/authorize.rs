@@ -2,7 +2,7 @@ use log::*;
 use serde_json::{json, Value, to_vec};
 use warp::http::{Response, header::SET_COOKIE};
 use streaming_platform::MagicBall;
-use streaming_platform::sp_dto::{Key, MsgType, get_msg_meta_and_payload, reply_to_rpc_dto, RpcResult};
+use streaming_platform::sp_dto::{Key, MsgType, get_msg_meta_and_payload, rpc_response_dto, RpcResult};
 use crate::{response, response_with_cookie};
 
 enum AuthResult {
@@ -28,7 +28,7 @@ pub async fn go(aca_origin: Option<String>, body: warp::hyper::body::Bytes, mut 
                                         Some(auth_token) =>
                                             AuthResult::Ok(
                                                 "skytfs-token=".to_owned() + auth_token + "; HttpOnly; path=/",
-                                                reply_to_rpc_dto(
+                                                rpc_response_dto(
                                                     mb.addr,
                                                     msg_meta.key,
                                                     msg_meta.correlation_id,
@@ -42,7 +42,7 @@ pub async fn go(aca_origin: Option<String>, body: warp::hyper::body::Bytes, mut 
                                                 ).expect("Failed to create positive auth response dto")
                                             ),
                                         None =>
-                                            AuthResult::Fail(reply_to_rpc_dto(
+                                            AuthResult::Fail(rpc_response_dto(
                                                 mb.addr,
                                                 msg_meta.key,
                                                 msg_meta.correlation_id,

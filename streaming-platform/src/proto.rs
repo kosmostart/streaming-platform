@@ -714,7 +714,55 @@ impl MagicBall {
         self.key_hash = get_key_hash(key);
         self.stream_id = self.get_stream_id();
 
-        self.write_full_message(MsgType::Event.get_u8(), self.key_hash, self.stream_id, dto, msg_meta_size, payload_size, attachments_sizes, false).await?;
+        self.write_full_message(self.msg_type, self.key_hash, self.stream_id, dto, msg_meta_size, payload_size, attachments_sizes, false).await?;
+        
+        Ok(())
+    }
+    pub async fn stream_rpc<T>(&mut self, key: Key, payload: T) -> Result<(), ProcessError> where T: serde::Serialize, for<'de> T: serde::Deserialize<'de>, T: Debug {
+        let route = Route {
+            source: Participator::Service(self.addr.clone()),
+            spec: RouteSpec::Simple,
+            points: vec![Participator::Service(self.addr.clone())]
+        };
+
+        let (dto, msg_meta_size, payload_size, attachments_sizes) = rpc_dto_with_sizes(self.addr.clone(), key.clone(), payload, route, self.auth_token.clone(), self.auth_data.clone())?;
+
+		self.frame_type = FrameType::Attachment as u8;
+		self.msg_type = MsgType::RpcRequest.get_u8();
+        self.key_hash = get_key_hash(key);
+        self.stream_id = self.get_stream_id();
+
+        self.write_full_message(self.msg_type, self.key_hash, self.stream_id, dto, msg_meta_size, payload_size, attachments_sizes, false).await?;
+        
+        Ok(())
+    }
+    pub async fn stream_rpc_response<T>(&mut self, mut msg_meta: MsgMeta, payload: T) -> Result<(), ProcessError> where T: serde::Serialize, for<'de> T: serde::Deserialize<'de>, T: Debug {
+        msg_meta.route.points.push(Participator::Service(self.addr.clone()));
+
+        let rpc_result = RpcResult::Ok;
+
+        let (dto, msg_meta_size, payload_size, attachments_sizes) = rpc_response_dto_sizes(self.addr.clone(), msg_meta.key.clone(), msg_meta.correlation_id, payload, vec![], vec![], rpc_result.clone(), msg_meta.route, self.auth_token.clone(), self.auth_data.clone())?;
+
+		self.frame_type = FrameType::Attachment as u8;
+		self.msg_type = MsgType::RpcResponse(rpc_result).get_u8();
+        self.key_hash = get_key_hash(msg_meta.key);
+        self.stream_id = self.get_stream_id();
+
+        self.write_full_message(self.msg_type, self.key_hash, self.stream_id, dto, msg_meta_size, payload_size, attachments_sizes, false).await?;
+        
+        Ok(())
+    }
+    pub async fn stream_rpc_response_custom_res<T>(&mut self, mut msg_meta: MsgMeta, payload: T, rpc_result: RpcResult) -> Result<(), ProcessError> where T: serde::Serialize, for<'de> T: serde::Deserialize<'de>, T: Debug {
+        msg_meta.route.points.push(Participator::Service(self.addr.clone()));
+
+        let (dto, msg_meta_size, payload_size, attachments_sizes) = rpc_response_dto_sizes(self.addr.clone(), msg_meta.key.clone(), msg_meta.correlation_id, payload, vec![], vec![], rpc_result.clone(), msg_meta.route, self.auth_token.clone(), self.auth_data.clone())?;
+
+		self.frame_type = FrameType::Attachment as u8;
+		self.msg_type = MsgType::RpcResponse(rpc_result).get_u8();
+        self.key_hash = get_key_hash(msg_meta.key);
+        self.stream_id = self.get_stream_id();
+
+        self.write_full_message(self.msg_type, self.key_hash, self.stream_id, dto, msg_meta_size, payload_size, attachments_sizes, false).await?;
         
         Ok(())
     }

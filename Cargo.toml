@@ -12,7 +12,7 @@ members = [
 	"sp-co/sp-pack-core",
 	"sp-co/sp-co-hub",
 	"sp-co/sp-co-build",
-	#"sp-co/sp-co-pod",
+	"sp-co/sp-co-pod",
 	"sp-co/sp-co-auth",
 	"sp-co/sp-co-web",
 	"sp-co/sp-co-cli",

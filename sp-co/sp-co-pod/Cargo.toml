@@ -13,5 +13,4 @@ env_logger = "*"
 serde = "*"
 serde_derive = "*"
 serde_json = "*"
-toml = "*"
 streaming-platform = { path = "../../streaming-platform" }

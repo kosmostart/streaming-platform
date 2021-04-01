@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use std::fs;
 use serde_json::{json, Value, from_slice, to_vec, to_string, from_str};
 use log::*;
-use tokio::{io::AsyncWriteExt, fs::File, sync::mpsc::UnboundedReceiver};
-use streaming_platform::{sp_cfg, client::start_stream, tokio::{self, io::AsyncReadExt}, DATA_BUF_SIZE, MagicBall, ClientMsg, RestreamMsg, StreamLayout, Frame, sp_dto::{MsgMeta, MsgType, reply_to_rpc_dto2_sizes, Participator, RpcResult}};
+use tokio::{io::AsyncWriteExt, fs::File, sync::mpsc::{UnboundedSender, UnboundedReceiver}};
+use streaming_platform::{ClientMsg, Frame, MAX_FRAME_PAYLOAD_SIZE, MagicBall, RestreamMsg, StreamLayout, client::start_stream, sp_cfg, sp_dto::{MsgMeta, MsgType, rpc_response_dto2_sizes, Participator, RpcResult}, tokio::{self, io::AsyncReadExt}};
 
 struct FileStreamLayout {
     stream: StreamLayout,
@@ -22,13 +22,13 @@ fn main() {
     config.insert("host".to_owned(), "127.0.0.1:11001".to_owned());
     config.insert("access_key".to_owned(), "".to_owned());
 
-    start_stream(config, process_stream, startup, None, None, ());
+    start_stream(config, process_stream, startup, None, None, None, ());
 }
 
 pub async fn startup(_config: HashMap<String, String>, mut _mb: MagicBall, _startup_data: Option<Value>, _: ()) {
 }
 
-pub async fn process_stream(config: HashMap<String, String>, mut mb: MagicBall, mut rx: UnboundedReceiver<ClientMsg>, _: Option<UnboundedReceiver<RestreamMsg>>, _: ()) {
+pub async fn process_stream(config: HashMap<String, String>, mut mb: MagicBall, mut rx: UnboundedReceiver<ClientMsg>, _: Option<UnboundedSender<RestreamMsg>>, _: Option<UnboundedReceiver<RestreamMsg>>, _: ()) {
     let dirs: Vec<sp_cfg::Dir> = vec![];
     let mut stream_layouts = HashMap::new();
 
@@ -38,6 +38,7 @@ pub async fn process_stream(config: HashMap<String, String>, mut mb: MagicBall, 
         match process_client_msg(&mut mb, &mut stream_layouts, &dirs, client_msg).await {
             Ok(()) => {}
             Err(e) => {
+                /*
                 match stream_id {
                     Some(stream_id) => {
                         match stream_layouts.remove(&stream_id) {
@@ -46,7 +47,7 @@ pub async fn process_stream(config: HashMap<String, String>, mut mb: MagicBall, 
                                     MsgType::RpcRequest => {
                                         let mut route = stream_layout.stream.msg_meta.route.clone();
                                         route.points.push(Participator::Service(mb.addr.clone()));
-                                        let (res, msg_meta_size, payload_size, attachments_size) = reply_to_rpc_dto2_sizes(
+                                        let (res, msg_meta_size, payload_size, attachments_size) = rpc_response_dto2_sizes(
                                             mb.addr.clone(),                                            
                                             stream_layout.stream.msg_meta.key.clone(),
                                             stream_layout.stream.msg_meta.correlation_id, 
@@ -68,12 +69,14 @@ pub async fn process_stream(config: HashMap<String, String>, mut mb: MagicBall, 
                     }
                     None => {}
                 }
+                */
             }
         }
     }
 }
 
 async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64, FileStreamLayout>, dirs: &Vec<sp_cfg::Dir>, client_msg: ClientMsg) -> Result<(), Error> {
+    /*
     match client_msg {
         ClientMsg::MsgMeta(stream_id, msg_meta) => {            
             stream_layouts.insert(stream_id, FileStreamLayout {
@@ -142,7 +145,7 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
                     }))?;
                     let mut route = stream_layout.stream.msg_meta.route.clone();
                     route.points.push(Participator::Service(mb.addr.clone()));
-                    let (res, msg_meta_size, payload_size, attachments_size) = reply_to_rpc_dto2_sizes(
+                    let (res, msg_meta_size, payload_size, attachments_size) = rpc_response_dto2_sizes(
                         mb.addr.clone(),                        
                         stream_layout.stream.msg_meta.key.clone(), 
                         stream_layout.stream.msg_meta.correlation_id, 
@@ -196,6 +199,7 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
         }
         _ => {}
     }
+    */
     Ok(())
 }
 
@@ -205,28 +209,27 @@ async fn download_file(mut mb: MagicBall, msg_meta: MsgMeta, path: std::path::Pa
     let payload = to_vec(&json!({
         "file_name": file_name
     }))?;
-    let (dto, msg_meta_size, payload_size, _) = reply_to_rpc_dto2_sizes(mb.addr.clone(), msg_meta.key.clone(), msg_meta.correlation_id, payload, vec![(file_name, size)], vec![], RpcResult::Ok, msg_meta.route.clone(), mb.auth_token.clone(), mb.auth_data.clone())?;
-    let stream_id = mb.get_stream_id();
 
-    mb.write_vec(stream_id, dto, msg_meta_size, payload_size, vec![]).await?;
+    mb.stream_rpc_response(msg_meta, json!({})).await?;
 
     match size {
         0 => {
-            mb.write_tx.send(Frame::Empty(stream_id))?;
         }
         _ => {
-            let mut file_buf = [0; DATA_BUF_SIZE];
+            let mut buf = [0; MAX_FRAME_PAYLOAD_SIZE];
 
             loop {
-                match file.read(&mut file_buf).await? {
+                match file.read(&mut buf).await? {
                     0 => break,
                     n => {                
-                        mb.write_tx.send(Frame::Array(stream_id, n, file_buf))?;
+                        mb.send_frame(&buf, n)?;
                     }
                 }
             }
         }
     }
+
+    mb.complete_stream()?;
 
     Ok(())
 }

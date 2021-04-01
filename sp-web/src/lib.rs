@@ -623,7 +623,7 @@ pub async fn process_stream(config: HashMap<String, String>, mut mb: MagicBall, 
                                     MsgKind::RpcRequest => {
                                         let mut route = stream_layout.stream.msg_meta.route.clone();
                                         route.points.push(Participator::Service(mb2.addr.clone()));
-                                        let (res, msg_meta_size, payload_size, attachments_size) = reply_to_rpc_dto2_sizes(
+                                        let (res, msg_meta_size, payload_size, attachments_size) = rpc_response_dto2_sizes(
                                             mb2.addr.clone(), 
                                             stream_layout.stream.msg_meta.tx.clone(), 
                                             stream_layout.stream.msg_meta.key.clone(), 
@@ -737,7 +737,7 @@ pub async fn process_stream(config: HashMap<String, String>, mut mb: MagicBall, 
                                     MsgKind::RpcRequest => {
                                         let mut route = stream_layout.stream.msg_meta.route.clone();
                                         route.points.push(Participator::Service(mb2.addr.clone()));
-                                        let (res, msg_meta_size, payload_size, attachments_size) = reply_to_rpc_dto2_sizes(
+                                        let (res, msg_meta_size, payload_size, attachments_size) = rpc_response_dto2_sizes(
                                             mb2.addr.clone(), 
                                             stream_layout.stream.msg_meta.tx.clone(), 
                                             stream_layout.stream.msg_meta.key.clone(), 

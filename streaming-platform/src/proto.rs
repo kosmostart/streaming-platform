@@ -1100,7 +1100,7 @@ impl MagicBall {
 }
 
 #[derive(Debug)]
-pub enum ProcessError {
+pub enum ProcessError {	
 	Io(std::io::Error),
     SerdeJson(serde_json::Error),
     FramePayloadSizeExceeded,

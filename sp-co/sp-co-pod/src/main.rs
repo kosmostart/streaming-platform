@@ -1,3 +1,4 @@
+#![feature(try_trait)]
 use std::collections::HashMap;
 use std::fs;
 use serde_json::{json, Value, from_slice, to_vec, to_string, from_str};
@@ -7,6 +8,7 @@ use streaming_platform::{ClientMsg, Frame, FrameType, MAX_FRAME_PAYLOAD_SIZE, Ma
 
 struct FileStreamLayout {
     layout: StreamLayout,
+	msg_meta: Option<MsgMeta>,
     payload: Option<Value>,
     download_payload: Option<Value>,    
     file: Option<File>,
@@ -94,7 +96,11 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
 											payload: vec![],
 											attachments_data: vec![]
 										},
-										txs: HashMap::new()
+										msg_meta:None,
+										payload: None,
+										download_payload: None,
+										file: None,
+										rpc_result: RpcResult::Ok
 									});
 								}
 							}
@@ -109,6 +115,8 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
 									let msg_meta: MsgMeta = from_slice(&stream_layout.layout.msg_meta)?;
 
                                     info!("Started stream {:?}", msg_meta.key);
+
+									stream_layout.msg_meta = Some(msg_meta);
 								}
 								None => {									
 									let mut stream_layout = FileStreamLayout {
@@ -118,7 +126,11 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
 											payload: vec![],
 											attachments_data: vec![]
 										},
-										txs: HashMap::new()
+										msg_meta: None,
+										payload: None,
+										download_payload: None,
+										file: None,
+										rpc_result: RpcResult::Ok
 									};
 
 									stream_layout.layout.msg_meta.extend_from_slice(&frame.payload[..frame.payload_size as usize]);									
@@ -128,14 +140,46 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
 									stream_layouts.insert(frame.stream_id, stream_layout);
 								}
 							};
-						}
-						FrameType::Payload | FrameType::PayloadEnd => {
+						}						
+						FrameType::Payload  => {
 							let stream_layout = stream_layouts.get_mut(&frame.stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
-							stream_layout.layout.attachments_data.extend_from_slice(&frame.payload[..frame.payload_size as usize]);
+							stream_layout.layout.payload.extend_from_slice(&frame.payload[..frame.payload_size as usize]);							
 						}
-						FrameType::Attachment | FrameType::AttachmentEnd => {
-                            info!("Attachment frame");
+						FrameType::PayloadEnd => {
+							let stream_layout = stream_layouts.get_mut(&frame.stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
+							stream_layout.layout.payload.extend_from_slice(&frame.payload[..frame.payload_size as usize]);
 
+							match &stream_layout.msg_meta {
+								Some(msg_meta) => {
+									match msg_meta.key.action.as_ref() {
+										"Upload" => {											
+											let payload: Value = from_slice(&stream_layout.layout.payload)?;
+											let path = String::new() + payload["file_name"].as_str()?;
+											stream_layout.file = Some(File::create(path).await?);
+											stream_layout.payload = Some(payload);
+										}
+										_ => {}
+									}
+								}
+								None => {
+									error!("Msg meta empty, stream id {}", frame.stream_id);
+								}
+							}
+						}
+						FrameType::Attachment => {
+                            info!("Attachment frame");							
+							let stream_layout = stream_layouts.get_mut(&frame.stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
+
+							let file = stream_layout.file.as_mut()?;
+							file.write_all(&frame.payload[..frame.payload_size as usize]).await?;							
+						}						
+						FrameType::AttachmentEnd => {
+                            info!("Attachment end frame");							
+							let stream_layout = stream_layouts.get_mut(&frame.stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
+
+							let file = stream_layout.file.as_mut()?;
+							file.write_all(&frame.payload[..frame.payload_size as usize]).await?;
+							stream_layout.file = None;
 						}
 						FrameType::End => {
 							match stream_layouts.remove(&frame.stream_id) {
@@ -315,8 +359,9 @@ async fn send_file(mut mb: MagicBall, msg_meta: MsgMeta, path: std::path::PathBu
 }
 
 #[derive(Debug)]
-pub enum Error {    
-	Io(std::io::Error),	
+pub enum Error {
+	None,
+	Io(std::io::Error),
     SerdeJson(serde_json::Error),
     StreamingPlatform(streaming_platform::ProcessError),
     SendFrame,
@@ -325,6 +370,12 @@ pub enum Error {
     NoFilesInTargetDir,
     OptionIsNone(String),
     CustomError(String)
+}
+
+impl From<std::option::NoneError> for Error {
+	fn from(_e: std::option::NoneError) -> Error {		
+		Error::None
+	}
 }
 
 impl From<std::io::Error> for Error {

@@ -60,6 +60,33 @@ pub async fn process_event(config: HashMap<String, String>, mut mb: MagicBall, m
     Ok(())
 }
 
+pub struct DeployConfig {
+    pub build_configs: Vec<BuildConfig>,
+    pub deploy_unit_config: sp_pack_core::Config,
+    pub run_config: Option<RunConfig>
+}
+
+pub struct BuildConfig {
+    pub build_cmd: String,
+    pub args: Option<Vec<String>>,
+    pub pull_config: Option<PullConfig>
+}
+
+pub struct PullConfig {
+    pub repository_path: String,
+    pub remote_name: String,
+    pub remote_branch: String
+}
+
+pub struct RunConfig {
+    pub run_units: Vec<RunUnit>
+}
+
+pub struct RunUnit {
+    pub path: String,
+    pub config: Option<HashMap<String, String>>
+}
+
 pub async fn process_rpc(config: HashMap<String, String>, mut mb: MagicBall, msg: Message<Value>, _: ()) -> Result<Response<Value>, Box<dyn std::error::Error>> {   
     info!("{:#?}", msg);
 
@@ -156,11 +183,11 @@ pub async fn process_rpc(config: HashMap<String, String>, mut mb: MagicBall, msg
                         let build_config = sp_pack_core::Config {
                             result_file_tag: "hello".to_owned(),
                             dirs: None,
-                            files: vec![
+                            files: Some(vec![
                                 TargetFile {
                                     path: "d:/src/cfg-if/target/release/libcfg_if.rlib".to_owned()
                                 }
-                            ]
+                            ])
                         };
 
                         let mut pack_result_msg;
@@ -170,7 +197,18 @@ pub async fn process_rpc(config: HashMap<String, String>, mut mb: MagicBall, msg
                                 pack_result_msg = "Pack result is Ok, path to pack is ".to_owned() + &pack_result_path;
                                 info!("{}", pack_result_msg);
 
-                                send_file(mb.clone(), &pack_result_path, &pack_result_path).await.unwrap();
+                                let msg = send_file(mb.clone(), &pack_result_path, &pack_result_path).await.unwrap();
+
+                                let deploy_pack_result_msg = format!("{:#?}", msg.payload);
+                                info!("{}", deploy_pack_result_msg);
+
+                                let mut payload = deploy_pack_result_msg.as_bytes().to_vec();
+                                payload.push(0x0D);
+                                payload.push(0x0A);
+                                payload.push(0x0D);
+                                payload.push(0x0A);
+
+                                mb.send_frame(&payload, payload.len()).unwrap();
                             }
                             Err(e) => {
                                 pack_result_msg = format!("Pack result is Err, {:?}", e);

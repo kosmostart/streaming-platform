@@ -246,6 +246,9 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
                                                         Ok(()) => {
                                                             unpack_result_msg = "Unpack result is Ok".to_owned();
                                                             info!("{}", unpack_result_msg);
+
+                                                            //stop();
+                                                            //start();
                                                         }
                                                         Err(e) => {
                                                             unpack_result_msg = format!("Unpack result is Err, {:?}", e);

@@ -12,7 +12,7 @@ use lz4::{Decoder, EncoderBuilder};
 pub struct Config {
     pub result_file_tag: String,
     pub dirs: Option<Vec<TargetDir>>,
-    pub files: Vec<TargetFile>
+    pub files: Option<Vec<TargetFile>>
 }
 
 #[derive(Debug, Deserialize)]
@@ -60,13 +60,18 @@ pub fn pack(config: Config) -> Result<String, Error> {
             None => {}
         }
 
-        for target_file in config.files {
-            let path = Path::new(&target_file.path);
-            let mut f = File::open(path)
-                .expect("failed to open target file");
-
-            a.append_file(path.file_name().expect("failed to get file_name"), &mut f)
-                .expect("failed to append target file to archive");
+        match config.files {
+            Some(files) => {
+                for target_file in files {
+                    let path = Path::new(&target_file.path);
+                    let mut f = File::open(path)
+                        .expect("failed to open target file");
+        
+                    a.append_file(path.file_name().expect("failed to get file_name"), &mut f)
+                        .expect("failed to append target file to archive");
+                }
+            }
+            None => {}
         }
     }    
 

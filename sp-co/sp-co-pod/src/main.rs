@@ -163,7 +163,7 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
 								}
 							};
 						}						
-						FrameType::Payload  => {
+						FrameType::Payload => {
                             match frame.payload {
                                 Some(payload) => {
                                     let stream_layout = stream_layouts.get_mut(&frame.stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
@@ -231,23 +231,31 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
                             info!("Stream end frame");	
 							match stream_layouts.remove(&frame.stream_id) {
 								Some(mut stream_layout) => {
-                                    match &stream_layout.msg_meta {
+                                    match stream_layout.msg_meta {
                                         Some(msg_meta) => {
                                             match msg_meta.key.action.as_ref() {
                                                 "DeployPack" => {
                                                     let payload = stream_layout.payload?;
                                                     let file_name = payload["file_name"].as_str()?;
 
-                                                    info!("File name: {}", file_name); 
+                                                    info!("File name: {}", file_name);
+
+                                                    let mut unpack_result_msg;
 
                                                     match unpack(".".to_owned(), file_name.to_owned()) {
                                                         Ok(()) => {
-                                                            info!("Unpack result is Ok");
+                                                            unpack_result_msg = "Unpack result is Ok".to_owned();
+                                                            info!("{}", unpack_result_msg);
                                                         }
                                                         Err(e) => {
-                                                            error!("Unpack result is Err, {:?}", e);
+                                                            unpack_result_msg = format!("Unpack result is Err, {:?}", e);
+                                                            error!("{}", unpack_result_msg);
                                                         }
-                                                    }                                                   
+                                                    }
+                                                    
+                                                    mb.send_rpc_response(msg_meta, json!({
+                                                        "unpack_result": unpack_result_msg
+                                                    })).await?;
                                                 }
                                                 _ => {}
                                             }

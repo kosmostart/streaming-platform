@@ -735,14 +735,14 @@ impl MagicBall {
         
         Ok(())
     }
-    pub async fn stream_rpc<T>(&mut self, key: Key, payload: T) -> Result<(), ProcessError> where T: serde::Serialize, for<'de> T: serde::Deserialize<'de>, T: Debug {
+    pub async fn stream_rpc<T>(&mut self, key: Key, payload: T) -> Result<Uuid, ProcessError> where T: serde::Serialize, for<'de> T: serde::Deserialize<'de>, T: Debug {
         let route = Route {
             source: Participator::Service(self.addr.clone()),
             spec: RouteSpec::Simple,
             points: vec![Participator::Service(self.addr.clone())]
         };
 
-        let (dto, msg_meta_size, payload_size, attachments_sizes) = rpc_dto_with_sizes(self.addr.clone(), key.clone(), payload, route, self.auth_token.clone(), self.auth_data.clone())?;
+        let (correlation_id, dto, msg_meta_size, payload_size, attachments_sizes) = rpc_dto_with_correlation_id_sizes(self.addr.clone(), key.clone(), payload, route, self.auth_token.clone(), self.auth_data.clone())?;
 
 		self.frame_type = FrameType::Attachment as u8;
 		self.msg_type = MsgType::RpcRequest.get_u8();
@@ -751,7 +751,7 @@ impl MagicBall {
 
         self.write_full_message(self.msg_type, self.key_hash, self.stream_id, dto, msg_meta_size, payload_size, attachments_sizes, false).await?;
         
-        Ok(())
+        Ok(correlation_id)
     }
     pub async fn stream_rpc_response<T>(&mut self, mut msg_meta: MsgMeta, payload: T) -> Result<(), ProcessError> where T: serde::Serialize, for<'de> T: serde::Deserialize<'de>, T: Debug {
         msg_meta.route.points.push(Participator::Service(self.addr.clone()));
@@ -783,6 +783,38 @@ impl MagicBall {
         
         Ok(())
     }
+    pub async fn send_rpc_response<T>(&mut self, mut msg_meta: MsgMeta, payload: T) -> Result<(), ProcessError> where T: serde::Serialize, for<'de> T: serde::Deserialize<'de>, T: Debug {
+        msg_meta.route.points.push(Participator::Service(self.addr.clone()));
+
+        let rpc_result = RpcResult::Ok;
+
+        let (dto, msg_meta_size, payload_size, attachments_sizes) = rpc_response_dto_sizes(self.addr.clone(), msg_meta.key.clone(), msg_meta.correlation_id, payload, vec![], vec![], rpc_result.clone(), msg_meta.route, self.auth_token.clone(), self.auth_data.clone())?;
+
+		self.frame_type = FrameType::Attachment as u8;
+		self.msg_type = MsgType::RpcResponse(rpc_result).get_u8();
+        self.key_hash = get_key_hash(msg_meta.key);
+        self.stream_id = self.get_stream_id();
+
+        self.write_full_message(self.msg_type, self.key_hash, self.stream_id, dto, msg_meta_size, payload_size, attachments_sizes, true).await?;
+        
+        Ok(())
+    }
+    pub async fn send_rpc_response_with_attachments<T>(&mut self, mut msg_meta: MsgMeta, payload: T, attachments: Vec<(String, u64)>, attachments_data: Vec<u8>) -> Result<(), ProcessError> where T: serde::Serialize, for<'de> T: serde::Deserialize<'de>, T: Debug {
+        msg_meta.route.points.push(Participator::Service(self.addr.clone()));
+
+        let rpc_result = RpcResult::Ok;
+
+        let (dto, msg_meta_size, payload_size, attachments_sizes) = rpc_response_dto_sizes(self.addr.clone(), msg_meta.key.clone(), msg_meta.correlation_id, payload, attachments, attachments_data, rpc_result.clone(), msg_meta.route, self.auth_token.clone(), self.auth_data.clone())?;
+
+		self.frame_type = FrameType::Attachment as u8;
+		self.msg_type = MsgType::RpcResponse(rpc_result).get_u8();
+        self.key_hash = get_key_hash(msg_meta.key);
+        self.stream_id = self.get_stream_id();
+
+        self.write_full_message(self.msg_type, self.key_hash, self.stream_id, dto, msg_meta_size, payload_size, attachments_sizes, true).await?;
+        
+        Ok(())
+    }
 	pub fn send_frame(&mut self, payload: &[u8], payload_size: usize) -> Result<(), ProcessError> {
         if payload_size == 0 {
             return Err(ProcessError::ZeroSizedPayloadNotAllowed);
@@ -797,19 +829,42 @@ impl MagicBall {
 			i = i + 1;
 		}
 
-		Ok(self.write_tx.send(Frame::new(self.frame_type, payload_size as u16, self.msg_type, self.key_hash, self.stream_id, Some(buf)))?)
+        self.write_tx.send(Frame::new(self.frame_type, payload_size as u16, self.msg_type, self.key_hash, self.stream_id, Some(buf)))?;
+
+		Ok(())
 	}
-    pub fn complete_msg_meta(&mut self) -> Result<(), ProcessError> {		
-		Ok(self.write_tx.send(Frame::new(FrameType::MsgMetaEnd as u8, 0, self.msg_type, self.key_hash, self.stream_id, None))?)
+    pub fn complete_msg_meta(&mut self) -> Result<(), ProcessError> {
+        self.write_tx.send(Frame::new(FrameType::MsgMetaEnd as u8, 0, self.msg_type, self.key_hash, self.stream_id, None))?;
+		Ok(())
 	}
-    pub fn complete_payload(&mut self) -> Result<(), ProcessError> {		
-		Ok(self.write_tx.send(Frame::new(FrameType::PayloadEnd as u8, 0, self.msg_type, self.key_hash, self.stream_id, None))?)
+    pub fn complete_payload(&mut self) -> Result<(), ProcessError> {
+        self.write_tx.send(Frame::new(FrameType::PayloadEnd as u8, 0, self.msg_type, self.key_hash, self.stream_id, None))?;
+		Ok(())
 	}
-    pub fn complete_attachment(&mut self) -> Result<(), ProcessError> {		
-		Ok(self.write_tx.send(Frame::new(FrameType::AttachmentEnd as u8, 0, self.msg_type, self.key_hash, self.stream_id, None))?)
+    pub fn complete_attachment(&mut self) -> Result<(), ProcessError> {
+        self.write_tx.send(Frame::new(FrameType::AttachmentEnd as u8, 0, self.msg_type, self.key_hash, self.stream_id, None))?;
+		Ok(())
 	}
-	pub fn complete_stream(&mut self) -> Result<(), ProcessError> {		
-		Ok(self.write_tx.send(Frame::new(FrameType::End as u8, 0, self.msg_type, self.key_hash, self.stream_id, None))?)
+    /// This function will be waiting for rpc response, please note (in async function).
+    pub async fn complete_rpc_stream<T>(&mut self, correlation_id: Uuid) -> Result<Message<T>, ProcessError> where for<'de> T: serde::Deserialize<'de>, T: Debug {
+        let (rpc_tx, rpc_rx) = oneshot::channel();
+        
+        self.rpc_inbound_tx.send(RpcMsg::AddRpc(correlation_id, rpc_tx))?;
+
+        self.write_tx.send(Frame::new(FrameType::End as u8, 0, self.msg_type, self.key_hash, self.stream_id, None))?;
+
+        let (msg_meta, payload, attachments_data) = timeout(Duration::from_millis(RPC_TIMEOUT_MS_AMOUNT), rpc_rx).await??;
+        let payload: T = from_slice(&payload)?;
+
+        Ok(Message {
+            meta: msg_meta, 
+            payload, 
+            attachments_data
+        })
+	}
+	pub fn complete_stream(&mut self) -> Result<(), ProcessError> {
+        self.write_tx.send(Frame::new(FrameType::End as u8, 0, self.msg_type, self.key_hash, self.stream_id, None))?;
+		Ok(())
 	}
     pub async fn rpc<T, R>(&mut self, key: Key, payload: T) -> Result<Message<R>, ProcessError> where T: serde::Serialize, T: Debug, for<'de> R: serde::Deserialize<'de>, R: Debug {
         let route = Route {
@@ -831,7 +886,7 @@ impl MagicBall {
         self.write_full_message(MsgType::RpcRequest.get_u8(), self.key_hash, self.stream_id, dto, msg_meta_size, payload_size, attachments_sizes, true).await?;       
 
         let (msg_meta, payload, attachments_data) = timeout(Duration::from_millis(RPC_TIMEOUT_MS_AMOUNT), rpc_rx).await??;
-        let payload: R = from_slice(&payload)?;        
+        let payload: R = from_slice(&payload)?;
 
         Ok(Message {
             meta: msg_meta, 

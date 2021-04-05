@@ -206,13 +206,13 @@ pub async fn process_rpc(config: HashMap<String, String>, mut mb: MagicBall, msg
 pub async fn startup(config: HashMap<String, String>, mut mb: MagicBall, startup_data: Option<Value>, _: ()) {
 }
 
-async fn send_file(mut mb: MagicBall, path: &str, file_name: &str) -> Result<(), Error> {
+async fn send_file(mut mb: MagicBall, path: &str, file_name: &str) -> Result<Message<Value>, Error> {
     info!("Opening file {}", path);
 
     let mut file = File::open(&path).await?;
     let size = file.metadata().await?.len();
 
-    mb.stream_rpc(Key::new("DeployPack", "Deploy", "Deploy"), json!({
+    let correlation_id = mb.stream_rpc(Key::new("DeployPack", "Deploy", "Deploy"), json!({
         "file_name": file_name
     })).await?;
 
@@ -236,9 +236,7 @@ async fn send_file(mut mb: MagicBall, path: &str, file_name: &str) -> Result<(),
         }
     }
 
-    mb.complete_stream()?;
-
-    Ok(())
+    Ok(mb.complete_rpc_stream(correlation_id).await?)
 }
 
 pub fn main() {

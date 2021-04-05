@@ -40,6 +40,7 @@ pub async fn process_stream(config: HashMap<String, String>, mut mb: MagicBall, 
         match process_client_msg(&mut mb, &mut stream_layouts, &dirs, client_msg).await {
             Ok(()) => {}
             Err(e) => {
+                error!("Process client msg error, {:?}", e);
                 /*
                 match stream_id {
                     Some(stream_id) => {
@@ -136,6 +137,8 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
 									stream_layout.layout.msg_meta.extend_from_slice(&frame.payload[..frame.payload_size as usize]);									
 
 									let msg_meta: MsgMeta = from_slice(&stream_layout.layout.msg_meta)?;
+                                    info!("Started stream {:?}", msg_meta.key);
+                                    stream_layout.msg_meta = Some(msg_meta);
 
 									stream_layouts.insert(frame.stream_id, stream_layout);
 								}
@@ -152,9 +155,11 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
 							match &stream_layout.msg_meta {
 								Some(msg_meta) => {
 									match msg_meta.key.action.as_ref() {
-										"Upload" => {											
+										"DeployPack" => {							
 											let payload: Value = from_slice(&stream_layout.layout.payload)?;
+                                            info!("{:#?}", payload);
 											let path = String::new() + payload["file_name"].as_str()?;
+                                            info!("Creating file {}", path);
 											stream_layout.file = Some(File::create(path).await?);
 											stream_layout.payload = Some(payload);
 										}
@@ -182,8 +187,25 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
 							stream_layout.file = None;
 						}
 						FrameType::End => {
+                            info!("Stream end frame");	
 							match stream_layouts.remove(&frame.stream_id) {
 								Some(mut stream_layout) => {
+                                    match &stream_layout.msg_meta {
+                                        Some(msg_meta) => {
+                                            match msg_meta.key.action.as_ref() {
+                                                "DeployPack" => {
+                                                    let payload = stream_layout.payload?;
+                                                    let file_name = payload["file_name"].as_str()?;
+
+                                                    info!("File name: {}", file_name);                                                    
+                                                }
+                                                _ => {}
+                                            }
+                                        }
+                                        None => {
+                                            error!("Msg meta empty, stream id {}", frame.stream_id);
+                                        }
+                                    }
                                 }
 								None => {
 									error!("Not found stream layout for stream end");
@@ -334,7 +356,9 @@ async fn send_file(mut mb: MagicBall, msg_meta: MsgMeta, path: std::path::PathBu
     let mut file = File::open(&path).await?;
     let size = file.metadata().await?.len();
 
-    mb.stream_rpc_response(msg_meta, json!({ "file_name": file_name })).await?;
+    mb.stream_rpc_response(msg_meta, json!({
+        "file_name": file_name
+    })).await?;
 
     match size {
         0 => {
@@ -344,7 +368,10 @@ async fn send_file(mut mb: MagicBall, msg_meta: MsgMeta, path: std::path::PathBu
 
             loop {
                 match file.read(&mut buf).await? {
-                    0 => break,
+                    0 => {
+                        mb.complete_attachment()?;
+                        break;
+                    }
                     n => {                
                         mb.send_frame(&buf, n)?;
                     }

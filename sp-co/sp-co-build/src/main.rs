@@ -167,16 +167,16 @@ pub async fn process_rpc(config: HashMap<String, String>, mut mb: MagicBall, msg
 
                         match pack(build_config) {
                             Ok(pack_result_path) => {
-                                pack_result_msg = "Pack result is Ok, path to pack is {}".to_owned() + &pack_result_path;
+                                pack_result_msg = "Pack result is Ok, path to pack is ".to_owned() + &pack_result_path;
+                                info!("{}", pack_result_msg);
 
-                                send_file(mb.clone(), path).await.unwrap();
+                                send_file(mb.clone(), &pack_result_path, &pack_result_path).await.unwrap();
                             }
                             Err(e) => {
                                 pack_result_msg = format!("Pack result is Err, {:?}", e);
+                                error!("{}", pack_result_msg);
                             }
                         }
-
-                        info!("{}", pack_result_msg);
 
                         let mut payload = pack_result_msg.as_bytes().to_vec();
                         payload.push(0x0D);
@@ -206,11 +206,15 @@ pub async fn process_rpc(config: HashMap<String, String>, mut mb: MagicBall, msg
 pub async fn startup(config: HashMap<String, String>, mut mb: MagicBall, startup_data: Option<Value>, _: ()) {
 }
 
-async fn send_file(mut mb: MagicBall, path: &str) -> Result<(), Error> {
+async fn send_file(mut mb: MagicBall, path: &str, file_name: &str) -> Result<(), Error> {
+    info!("Opening file {}", path);
+
     let mut file = File::open(&path).await?;
     let size = file.metadata().await?.len();
 
-    mb.stream_rpc(Key::new("DeployPack", "Deploy", "Deploy"), json!({})).await?;
+    mb.stream_rpc(Key::new("DeployPack", "Deploy", "Deploy"), json!({
+        "file_name": file_name
+    })).await?;
 
     match size {
         0 => {
@@ -220,7 +224,10 @@ async fn send_file(mut mb: MagicBall, path: &str) -> Result<(), Error> {
 
             loop {
                 match file.read(&mut buf).await? {
-                    0 => break,
+                    0 => {
+                        mb.complete_attachment()?;
+                        break;
+                    }
                     n => {                
                         mb.send_frame(&buf, n)?;
                     }

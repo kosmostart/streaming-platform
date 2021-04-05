@@ -778,6 +778,15 @@ impl MagicBall {
 
 		Ok(self.write_tx.send(Frame::new(self.frame_type, payload_size as u16, self.msg_type, self.key_hash, self.stream_id, buf))?)
 	}
+    pub fn complete_msg_meta(&mut self) -> Result<(), ProcessError> {		
+		Ok(self.write_tx.send(Frame::new(FrameType::MsgMetaEnd as u8, 0, self.msg_type, self.key_hash, self.stream_id, [0; MAX_FRAME_PAYLOAD_SIZE]))?)
+	}
+    pub fn complete_payload(&mut self) -> Result<(), ProcessError> {		
+		Ok(self.write_tx.send(Frame::new(FrameType::PayloadEnd as u8, 0, self.msg_type, self.key_hash, self.stream_id, [0; MAX_FRAME_PAYLOAD_SIZE]))?)
+	}
+    pub fn complete_attachment(&mut self) -> Result<(), ProcessError> {		
+		Ok(self.write_tx.send(Frame::new(FrameType::AttachmentEnd as u8, 0, self.msg_type, self.key_hash, self.stream_id, [0; MAX_FRAME_PAYLOAD_SIZE]))?)
+	}
 	pub fn complete_stream(&mut self) -> Result<(), ProcessError> {		
 		Ok(self.write_tx.send(Frame::new(FrameType::End as u8, 0, self.msg_type, self.key_hash, self.stream_id, [0; MAX_FRAME_PAYLOAD_SIZE]))?)
 	}

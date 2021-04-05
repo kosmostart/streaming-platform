@@ -74,7 +74,7 @@ pub struct Frame {
     pub key_hash: u64,
     pub stream_id: u64,
     pub frame_signature: u64,
-    pub payload: [u8; MAX_FRAME_PAYLOAD_SIZE]
+    pub payload: Option<[u8; MAX_FRAME_PAYLOAD_SIZE]>
 }
 
 pub enum FrameType {
@@ -88,7 +88,7 @@ pub enum FrameType {
 }
 
 impl Frame {
-    pub fn new(frame_type: u8, payload_size: u16, msg_type: u8, key_hash: u64, stream_id: u64, payload: [u8; MAX_FRAME_PAYLOAD_SIZE]) -> Frame {
+    pub fn new(frame_type: u8, payload_size: u16, msg_type: u8, key_hash: u64, stream_id: u64, payload: Option<[u8; MAX_FRAME_PAYLOAD_SIZE]>) -> Frame {
         let frame_signature = 0;
 
         Frame {
@@ -247,26 +247,40 @@ impl State {
                     }
 					return ReadFrameResult::NotEnoughBytesForFrame;
 				}
-		
-				let payload_slice = &self.frame_buf[self.bytes_processed + FRAME_HEADER_SIZE..self.bytes_processed + self.frame_size];
-				let mut payload = [0; MAX_FRAME_PAYLOAD_SIZE];
-		
-				let mut i = 0;
-		
-				while i < self.payload_size {
-					payload[i] = payload_slice[i];
-					i = i + 1;
-				}				
-		
-				let res = Frame {
-					frame_type: self.frame_buf[self.bytes_processed],
-					payload_size: self.payload_size_u16,
-					msg_type: self.frame_buf[self.bytes_processed + 3],
-					key_hash: self.key_hash,
-					stream_id: self.stream_id,
-					frame_signature: self.frame_signature,
-					payload
-				};
+
+                let mut i = 0;
+
+                let res = match self.payload_size_u16 {
+                    0 => Frame {
+                        frame_type: self.frame_buf[self.bytes_processed],
+                        payload_size: self.payload_size_u16,
+                        msg_type: self.frame_buf[self.bytes_processed + 3],
+                        key_hash: self.key_hash,
+                        stream_id: self.stream_id,
+                        frame_signature: self.frame_signature,
+                        payload: None
+                    },
+                    _ => {
+                        let payload_slice = &self.frame_buf[self.bytes_processed + FRAME_HEADER_SIZE..self.bytes_processed + self.frame_size];
+                        let mut payload = [0; MAX_FRAME_PAYLOAD_SIZE];        
+                
+                        while i < self.payload_size {
+                            payload[i] = payload_slice[i];
+                            i = i + 1;
+                        }				
+                
+                        Frame {
+                            frame_type: self.frame_buf[self.bytes_processed],
+                            payload_size: self.payload_size_u16,
+                            msg_type: self.frame_buf[self.bytes_processed + 3],
+                            key_hash: self.key_hash,
+                            stream_id: self.stream_id,
+                            frame_signature: self.frame_signature,
+                            payload: Some(payload)
+                        }
+                    }
+                };
+	
 
 				self.bytes_processed = self.bytes_processed + self.frame_size;
 				self.frame_reading_status = FrameReadingStatus::Header;
@@ -392,8 +406,11 @@ pub async fn write_frame(tcp_stream: &mut TcpStream, frame: Frame) -> Result<(),
 
     tcp_stream.write_all(&header[..]).await?;
 
-    if frame.payload_size > 0 {
-        tcp_stream.write_all(&frame.payload[..frame.payload_size as usize]).await?;
+    match frame.payload {
+        Some(payload) => {
+            tcp_stream.write_all(&payload[..frame.payload_size as usize]).await?;
+        }
+        None => {}
     }
 
     Ok(())
@@ -435,7 +452,7 @@ pub async fn write_to_tcp_stream(tcp_stream: &mut TcpStream, msg_type: u8, key_h
 					false => FrameType::MsgMeta
 				};
 
-				write_frame(tcp_stream, Frame::new(FrameType::MsgMeta as u8, n as u16, msg_type, key_hash, stream_id, data_buf)).await?;
+				write_frame(tcp_stream, Frame::new(FrameType::MsgMeta as u8, n as u16, msg_type, key_hash, stream_id, Some(data_buf))).await?;
 			}
         }
     }
@@ -461,7 +478,7 @@ pub async fn write_to_tcp_stream(tcp_stream: &mut TcpStream, msg_type: u8, key_h
 							false => FrameType::Payload
 						};
 
-						write_frame(tcp_stream, Frame::new(FrameType::Payload as u8, n as u16, msg_type, key_hash, stream_id, data_buf)).await?;
+						write_frame(tcp_stream, Frame::new(FrameType::Payload as u8, n as u16, msg_type, key_hash, stream_id, Some(data_buf))).await?;
 					}
                 }
             }
@@ -494,7 +511,7 @@ pub async fn write_to_tcp_stream(tcp_stream: &mut TcpStream, msg_type: u8, key_h
 								false => FrameType::Attachment
 							};
 
-							write_frame(tcp_stream, Frame::new(FrameType::Attachment as u8, n as u16, msg_type, key_hash, stream_id, data_buf)).await?;
+							write_frame(tcp_stream, Frame::new(FrameType::Attachment as u8, n as u16, msg_type, key_hash, stream_id, Some(data_buf))).await?;
 						}
                     }
                 }                    
@@ -505,7 +522,7 @@ pub async fn write_to_tcp_stream(tcp_stream: &mut TcpStream, msg_type: u8, key_h
     }
 
     if send_end_frame {
-		write_frame(tcp_stream, Frame::new(FrameType::End as u8, 0, msg_type, key_hash, stream_id, [0; MAX_FRAME_PAYLOAD_SIZE])).await?;
+		write_frame(tcp_stream, Frame::new(FrameType::End as u8, 0, msg_type, key_hash, stream_id, None)).await?;
 	}
 
     Ok(())
@@ -595,7 +612,7 @@ impl MagicBall {
 						false => FrameType::MsgMeta
 					};
 
-					self.write_tx.send(Frame::new(frame_type as u8, n as u16, msg_type, key_hash, stream_id, data_buf))?;					
+					self.write_tx.send(Frame::new(frame_type as u8, n as u16, msg_type, key_hash, stream_id, Some(data_buf)))?;					
 				}
             }
         }
@@ -621,7 +638,7 @@ impl MagicBall {
 								false => FrameType::Payload
 							};
 
-							self.write_tx.send(Frame::new(frame_type as u8, n as u16, msg_type, key_hash, stream_id, data_buf))?;
+							self.write_tx.send(Frame::new(frame_type as u8, n as u16, msg_type, key_hash, stream_id, Some(data_buf)))?;
 						}
                     }
                 }
@@ -654,7 +671,7 @@ impl MagicBall {
 									false => FrameType::Attachment
 								};
 								
-								self.write_tx.send(Frame::new(frame_type as u8, n as u16, msg_type, key_hash, stream_id, data_buf))?
+								self.write_tx.send(Frame::new(frame_type as u8, n as u16, msg_type, key_hash, stream_id, Some(data_buf)))?
 							}
                         }
                     }                    
@@ -665,7 +682,7 @@ impl MagicBall {
         }
 
 		if send_end_frame {
-			self.write_tx.send(Frame::new(FrameType::End as u8, 0, msg_type, key_hash, stream_id, [0; MAX_FRAME_PAYLOAD_SIZE]))?;
+			self.write_tx.send(Frame::new(FrameType::End as u8, 0, msg_type, key_hash, stream_id, None))?;
 		}
 
         Ok(())
@@ -766,7 +783,11 @@ impl MagicBall {
         
         Ok(())
     }
-	pub fn send_frame(&mut self, payload: &[u8], payload_size: usize) -> Result<(), ProcessError> {		
+	pub fn send_frame(&mut self, payload: &[u8], payload_size: usize) -> Result<(), ProcessError> {
+        if payload_size == 0 {
+            return Err(ProcessError::ZeroSizedPayloadNotAllowed);
+        }	
+
 		let mut buf = [0; MAX_FRAME_PAYLOAD_SIZE];
 
 		let mut i = 0;
@@ -776,19 +797,19 @@ impl MagicBall {
 			i = i + 1;
 		}
 
-		Ok(self.write_tx.send(Frame::new(self.frame_type, payload_size as u16, self.msg_type, self.key_hash, self.stream_id, buf))?)
+		Ok(self.write_tx.send(Frame::new(self.frame_type, payload_size as u16, self.msg_type, self.key_hash, self.stream_id, Some(buf)))?)
 	}
     pub fn complete_msg_meta(&mut self) -> Result<(), ProcessError> {		
-		Ok(self.write_tx.send(Frame::new(FrameType::MsgMetaEnd as u8, 0, self.msg_type, self.key_hash, self.stream_id, [0; MAX_FRAME_PAYLOAD_SIZE]))?)
+		Ok(self.write_tx.send(Frame::new(FrameType::MsgMetaEnd as u8, 0, self.msg_type, self.key_hash, self.stream_id, None))?)
 	}
     pub fn complete_payload(&mut self) -> Result<(), ProcessError> {		
-		Ok(self.write_tx.send(Frame::new(FrameType::PayloadEnd as u8, 0, self.msg_type, self.key_hash, self.stream_id, [0; MAX_FRAME_PAYLOAD_SIZE]))?)
+		Ok(self.write_tx.send(Frame::new(FrameType::PayloadEnd as u8, 0, self.msg_type, self.key_hash, self.stream_id, None))?)
 	}
     pub fn complete_attachment(&mut self) -> Result<(), ProcessError> {		
-		Ok(self.write_tx.send(Frame::new(FrameType::AttachmentEnd as u8, 0, self.msg_type, self.key_hash, self.stream_id, [0; MAX_FRAME_PAYLOAD_SIZE]))?)
+		Ok(self.write_tx.send(Frame::new(FrameType::AttachmentEnd as u8, 0, self.msg_type, self.key_hash, self.stream_id, None))?)
 	}
 	pub fn complete_stream(&mut self) -> Result<(), ProcessError> {		
-		Ok(self.write_tx.send(Frame::new(FrameType::End as u8, 0, self.msg_type, self.key_hash, self.stream_id, [0; MAX_FRAME_PAYLOAD_SIZE]))?)
+		Ok(self.write_tx.send(Frame::new(FrameType::End as u8, 0, self.msg_type, self.key_hash, self.stream_id, None))?)
 	}
     pub async fn rpc<T, R>(&mut self, key: Key, payload: T) -> Result<Message<R>, ProcessError> where T: serde::Serialize, T: Debug, for<'de> R: serde::Deserialize<'de>, R: Debug {
         let route = Route {
@@ -1113,6 +1134,7 @@ pub enum ProcessError {
 	Io(std::io::Error),
     SerdeJson(serde_json::Error),
     FramePayloadSizeExceeded,
+    ZeroSizedPayloadNotAllowed,
     ReadLoopCompleted,
     IncorrectFrameType,
     IncorrectMsgType,

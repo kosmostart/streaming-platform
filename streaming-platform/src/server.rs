@@ -7,7 +7,7 @@ use serde_json::from_slice;
 use tokio::runtime::Runtime;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc::{self, UnboundedSender};
-use sp_dto::bytes::{Buf, BytesMut, BufMut};
+use sp_dto::bytes::{BytesMut, BufMut};
 use sp_dto::{Key, MsgMeta, MsgType, Subscribes};
 use sp_cfg::ServerConfig;
 use crate::proto::*;
@@ -167,16 +167,30 @@ async fn auth_tcp_stream(tcp_stream: &mut TcpStream, state: &mut State, client_n
 
 				match frame.get_frame_type() {
 					Ok(frame_type) => {
-
 						match frame_type {
 							FrameType::MsgMeta | FrameType::MsgMetaEnd => {
-								stream_layout.msg_meta.extend_from_slice(&frame.payload[..frame.payload_size as usize]);
+                                match frame.payload {
+                                    Some(payload) => {
+                                        stream_layout.msg_meta.extend_from_slice(&payload[..frame.payload_size as usize]);
+                                    }
+                                    None => {}
+                                }								
 							}
 							FrameType::Payload | FrameType::PayloadEnd => {
-								stream_layout.payload.extend_from_slice(&frame.payload[..frame.payload_size as usize]);
+                                match frame.payload {
+                                    Some(payload) => {
+                                        stream_layout.payload.extend_from_slice(&payload[..frame.payload_size as usize]);
+                                    }
+                                    None => {}
+                                }								
 							}
 							FrameType::Attachment | FrameType::AttachmentEnd => {
-								stream_layout.attachments_data.extend_from_slice(&frame.payload[..frame.payload_size as usize]);
+                                match frame.payload {
+                                    Some(payload) => {
+                                        stream_layout.attachments_data.extend_from_slice(&payload[..frame.payload_size as usize]);
+                                    }
+                                    None => {}
+                                }								
 							}
 							FrameType::End => {								
 								break;

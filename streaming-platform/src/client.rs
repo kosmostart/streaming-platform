@@ -385,17 +385,24 @@ async fn process_full_message_mode(addr: String, mut write_tcp_stream: TcpStream
 
 				match frame.get_frame_type() {
 					Ok(frame_type) => {
-
 						match frame_type {
 							FrameType::MsgMeta | FrameType::MsgMetaEnd => {
 								match stream_layouts.get_mut(&frame.stream_id) {
 									Some(stream_layout) => {
-										stream_layout.msg_meta.extend_from_slice(&frame.payload[..frame.payload_size as usize]);
+                                        match frame.payload {
+                                            Some(payload) => {
+                                                stream_layout.msg_meta.extend_from_slice(&payload[..frame.payload_size as usize]);
+                                            }
+                                            None => {}
+                                        }
 									}
 									None => {
 										stream_layouts.insert(frame.stream_id, StreamLayout {
 											id: frame.stream_id,
-											msg_meta: frame.payload[..frame.payload_size as usize].to_vec(),
+											msg_meta: match frame.payload {
+                                                Some(payload) => payload[..frame.payload_size as usize].to_vec(),
+                                                None => vec![]
+                                            },
 											payload: vec![],
 											attachments_data: vec![]
 										});
@@ -403,12 +410,22 @@ async fn process_full_message_mode(addr: String, mut write_tcp_stream: TcpStream
 								}
 							}
 							FrameType::Payload | FrameType::PayloadEnd => {
-								let stream_layout = stream_layouts.get_mut(&frame.stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
-								stream_layout.payload.extend_from_slice(&frame.payload[..frame.payload_size as usize]);
+                                match frame.payload {
+                                    Some(payload) => {
+                                        let stream_layout = stream_layouts.get_mut(&frame.stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
+								        stream_layout.payload.extend_from_slice(&payload[..frame.payload_size as usize]);
+                                    }
+                                    None => {}
+                                }
 							}
 							FrameType::Attachment | FrameType::AttachmentEnd => {
-								let stream_layout = stream_layouts.get_mut(&frame.stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
-								stream_layout.attachments_data.extend_from_slice(&frame.payload[..frame.payload_size as usize]);
+                                match frame.payload {
+                                    Some(payload) => {
+                                        let stream_layout = stream_layouts.get_mut(&frame.stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
+								        stream_layout.attachments_data.extend_from_slice(&payload[..frame.payload_size as usize]);
+                                    }
+                                    None => {}
+                                }
 							}
 							FrameType::End => {
 								let stream_layout = stream_layouts.remove(&frame.stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;

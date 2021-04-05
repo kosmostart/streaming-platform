@@ -87,13 +87,21 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
 						FrameType::MsgMeta => {						
 							match stream_layouts.get_mut(&frame.stream_id) {
 								Some(stream_layout) => {
-									stream_layout.layout.msg_meta.extend_from_slice(&frame.payload[..frame.payload_size as usize]);
+                                    match frame.payload {
+                                        Some(payload) => {
+                                            stream_layout.layout.msg_meta.extend_from_slice(&payload[..frame.payload_size as usize]);
+                                        }
+                                        None => {}
+                                    }
 								}
 								None => {									
 									stream_layouts.insert(frame.stream_id, FileStreamLayout {
 										layout: StreamLayout {
 											id: frame.stream_id,
-											msg_meta: frame.payload[..frame.payload_size as usize].to_vec(),
+											msg_meta: match frame.payload {
+                                                Some(payload) => payload[..frame.payload_size as usize].to_vec(),
+                                                None => vec![]
+                                            },
 											payload: vec![],
 											attachments_data: vec![]
 										},
@@ -110,8 +118,13 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
 							info!("MsgMetaEnd frame");
 							
 							match stream_layouts.get_mut(&frame.stream_id) {
-								Some(stream_layout) => {									
-									stream_layout.layout.msg_meta.extend_from_slice(&frame.payload[..frame.payload_size as usize]);
+								Some(stream_layout) => {
+                                    match frame.payload {
+                                        Some(payload) => {
+                                            stream_layout.layout.msg_meta.extend_from_slice(&payload[..frame.payload_size as usize]);	
+                                        }
+                                        None => {}
+                                    }
 
 									let msg_meta: MsgMeta = from_slice(&stream_layout.layout.msg_meta)?;
 
@@ -134,7 +147,12 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
 										rpc_result: RpcResult::Ok
 									};
 
-									stream_layout.layout.msg_meta.extend_from_slice(&frame.payload[..frame.payload_size as usize]);									
+                                    match frame.payload {
+                                        Some(payload) => {
+                                            stream_layout.layout.msg_meta.extend_from_slice(&payload[..frame.payload_size as usize]);	
+                                        }
+                                        None => {}
+                                    }									
 
 									let msg_meta: MsgMeta = from_slice(&stream_layout.layout.msg_meta)?;
                                     info!("Started stream {:?}", msg_meta.key);
@@ -145,12 +163,23 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
 							};
 						}						
 						FrameType::Payload  => {
-							let stream_layout = stream_layouts.get_mut(&frame.stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
-							stream_layout.layout.payload.extend_from_slice(&frame.payload[..frame.payload_size as usize]);							
+                            match frame.payload {
+                                Some(payload) => {
+                                    let stream_layout = stream_layouts.get_mut(&frame.stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
+                                    stream_layout.layout.payload.extend_from_slice(&payload[..frame.payload_size as usize]);
+                                }
+                                None => {}
+                            }					
 						}
 						FrameType::PayloadEnd => {
 							let stream_layout = stream_layouts.get_mut(&frame.stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
-							stream_layout.layout.payload.extend_from_slice(&frame.payload[..frame.payload_size as usize]);
+
+                            match frame.payload {
+                                Some(payload) => {
+                                    stream_layout.layout.payload.extend_from_slice(&payload[..frame.payload_size as usize]);
+                                }
+                                None => {}
+                            }							
 
 							match &stream_layout.msg_meta {
 								Some(msg_meta) => {
@@ -172,18 +201,29 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
 							}
 						}
 						FrameType::Attachment => {
-                            info!("Attachment frame");							
-							let stream_layout = stream_layouts.get_mut(&frame.stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
+                            info!("Attachment frame");
+                            match frame.payload {
+                                Some(payload) => {
+                                    let stream_layout = stream_layouts.get_mut(&frame.stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
 
-							let file = stream_layout.file.as_mut()?;
-							file.write_all(&frame.payload[..frame.payload_size as usize]).await?;							
+                                    let file = stream_layout.file.as_mut()?;
+							        file.write_all(&payload[..frame.payload_size as usize]).await?;
+                                }
+                                None => {}                                
+                            }													
 						}						
 						FrameType::AttachmentEnd => {
                             info!("Attachment end frame");							
 							let stream_layout = stream_layouts.get_mut(&frame.stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
 
-							let file = stream_layout.file.as_mut()?;
-							file.write_all(&frame.payload[..frame.payload_size as usize]).await?;
+                            match frame.payload {
+                                Some(payload) => {
+                                    let file = stream_layout.file.as_mut()?;
+							        file.write_all(&payload[..frame.payload_size as usize]).await?;
+                                }
+                                None => {}                                
+                            }
+
 							stream_layout.file = None;
 						}
 						FrameType::End => {

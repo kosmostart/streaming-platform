@@ -382,13 +382,21 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
 						FrameType::MsgMeta => {						
 							match stream_layouts.get_mut(&frame.stream_id) {
 								Some(stream_layout) => {
-									stream_layout.layout.msg_meta.extend_from_slice(&frame.payload[..frame.payload_size as usize]);
+									match frame.payload {
+                                        Some(payload) => {
+                                            stream_layout.layout.msg_meta.extend_from_slice(&payload[..frame.payload_size as usize]);
+                                        }
+                                        None => {}
+                                    }
 								}
 								None => {									
 									stream_layouts.insert(frame.stream_id, DownstreamStreamLayout {
 										layout: StreamLayout {
 											id: frame.stream_id,
-											msg_meta: frame.payload[..frame.payload_size as usize].to_vec(),
+											msg_meta: match frame.payload {
+                                                Some(payload) => payload[..frame.payload_size as usize].to_vec(),
+                                                None => vec![]
+                                            },
 											payload: vec![],
 											attachments_data: vec![]
 										},
@@ -401,8 +409,13 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
 							info!("MsgMetaEnd frame");
 							
 							match stream_layouts.get_mut(&frame.stream_id) {
-								Some(stream_layout) => {									
-									stream_layout.layout.msg_meta.extend_from_slice(&frame.payload[..frame.payload_size as usize]);
+								Some(stream_layout) => {
+                                    match frame.payload {
+                                        Some(payload) => {
+                                            stream_layout.layout.msg_meta.extend_from_slice(&payload[..frame.payload_size as usize]);
+                                        }
+                                        None => {}
+                                    }								
 
 									let msg_meta: MsgMeta = from_slice(&stream_layout.layout.msg_meta)?;
 
@@ -419,7 +432,12 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
 										txs: HashMap::new()
 									};
 
-									stream_layout.layout.msg_meta.extend_from_slice(&frame.payload[..frame.payload_size as usize]);									
+									match frame.payload {
+                                        Some(payload) => {
+                                            stream_layout.layout.msg_meta.extend_from_slice(&payload[..frame.payload_size as usize]);
+                                        }
+                                        None => {}
+                                    }
 
 									let msg_meta: MsgMeta = from_slice(&stream_layout.layout.msg_meta)?;
 
@@ -428,8 +446,13 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
 							};
 						}
 						FrameType::Payload | FrameType::PayloadEnd => {
-							let stream_layout = stream_layouts.get_mut(&frame.stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
-							stream_layout.layout.attachments_data.extend_from_slice(&frame.payload[..frame.payload_size as usize]);
+                            match frame.payload {
+                                Some(payload) => {
+                                    let stream_layout = stream_layouts.get_mut(&frame.stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
+                                    stream_layout.layout.attachments_data.extend_from_slice(&payload[..frame.payload_size as usize]);
+                                }
+                                None => {}
+                            }
 						}
 						FrameType::Attachment | FrameType::AttachmentEnd => {
                             info!("Attachment frame");
@@ -451,19 +474,24 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
 
                             let mut requests_to_remove = vec![];
 
-                            for (&request_id, (body_tx, _)) in stream_layout.txs.iter_mut() {
-                                let data = Bytes::copy_from_slice(&frame.payload[..frame.payload_size as usize]);
-
-                                match body_tx.send_data(data).await {                
-                                    Ok(()) => {
-                                        info!("Attachment frame send");
-                                    }
-                                    Err(_) => {
-                                        warn!("Failed to send data with body_tx");
-                                        requests_to_remove.push(request_id);
+                            match frame.payload {
+                                Some(payload) => {
+                                    for (&request_id, (body_tx, _)) in stream_layout.txs.iter_mut() {
+                                        let data = Bytes::copy_from_slice(&payload[..frame.payload_size as usize]);
+        
+                                        match body_tx.send_data(data).await {                
+                                            Ok(()) => {
+                                                info!("Attachment frame send");
+                                            }
+                                            Err(_) => {
+                                                warn!("Failed to send data with body_tx");
+                                                requests_to_remove.push(request_id);
+                                            }
+                                        }
+        
                                     }
                                 }
-
+                                None => {}
                             }
 
                             for request_id in requests_to_remove {

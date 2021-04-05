@@ -9,7 +9,7 @@ use serde_derive::Deserialize;
 use lz4::{Decoder, EncoderBuilder};
 
 #[derive(Debug, Deserialize)]
-pub struct Config {
+pub struct DeployUnitConfig {
     pub result_file_tag: String,
     pub dirs: Option<Vec<TargetDir>>,
     pub files: Option<Vec<TargetFile>>
@@ -26,7 +26,7 @@ pub struct TargetFile {
     pub path: String
 }
 
-pub fn pack(config: Config) -> Result<String, Error> {
+pub fn pack(config: DeployUnitConfig) -> Result<String, Error> {
     println!("{:#?}", config);
 
     let from = config.result_file_tag.clone() + ".tmp";

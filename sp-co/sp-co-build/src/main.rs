@@ -62,7 +62,7 @@ pub async fn process_event(config: HashMap<String, String>, mut mb: MagicBall, m
 
 pub struct DeployConfig {
     pub build_configs: Vec<BuildConfig>,
-    pub deploy_unit_config: sp_pack_core::Config,
+    pub deploy_unit_config: sp_pack_core::DeployUnitConfig,
     pub run_config: Option<RunConfig>
 }
 
@@ -92,95 +92,152 @@ pub async fn process_rpc(config: HashMap<String, String>, mut mb: MagicBall, msg
 
     let res = match msg.meta.key.action.as_ref() {
         "Deploy" => {
-            tokio::spawn(async move {                
-                let build_path = "d:/src/cfg-if/Cargo.toml";
+            tokio::spawn(async move {
+                let pull_config = PullConfig {
+                    repository_path: "d:/src/cfg-if".to_owned(),
+                    remote_name: "origin".to_owned(),
+                    remote_branch: "master".to_owned()
+                };
 
-                let cmd = "cargo";
-                
-                let args = [
-                    "build",
-                    "--release",
-                    "--manifest-path",
-                    build_path
-                ];
+                let build_config = BuildConfig {
+                    build_cmd: "cargo".to_owned(),
+                    args: Some(vec![
+                        "build".to_owned(),
+                        "--release".to_owned(),
+                        "--manifest-path".to_owned(),
+                        "d:/src/cfg-if/Cargo.toml".to_owned()
+                    ]),
+                    pull_config: Some(pull_config)
+                };
 
-                //let args = ["--help"];
+                let deploy_unit_config = sp_pack_core::DeployUnitConfig {
+                    result_file_tag: "hello".to_owned(),
+                    dirs: None,
+                    files: Some(vec![
+                        sp_pack_core::TargetFile {
+                            path: "d:/src/cfg-if/target/release/libcfg_if.rlib".to_owned()
+                        }
+                    ])
+                };
+
+                let hello_cfg = HashMap::new();
+
+                hello_cfg.insert("arg1".to_owned(), "value1".to_owned());
+                hello_cfg.insert("arg2".to_owned(), "value2".to_owned());
+
+                let run_config = RunConfig {
+                    run_units: vec![
+                        RunUnit {
+                            path: "d:/src/hello/target/debug/hello.exe",
+                            config: Some(hello_cfg)
+                        }
+                    ]
+                };
+
+                let deploy_config = DeployConfig {
+                    build_configs: vec![
+                        build_config
+                    ],
+                    deploy_unit_config,
+                    run_config: None
+                };
 
 				mb.stream_event(Key::new("DeployStream", "Deploy", "Deploy"), json!({})).await.unwrap();
-                
-                let path = "d:/src/cfg-if";
-                let remote_name = "origin";
-                let remote_branch = "master";
 
-                let res = repository::pull::go(path, remote_name, remote_branch);
+                for build_config in deploy_config.build_configs {
 
-                let mut payload = format!("Pull result is {:?}", res).as_bytes().to_vec();
-                payload.push(0x0D);
-                payload.push(0x0A);
-                payload.push(0x0D);
-                payload.push(0x0A);
+                    let mut pull_result_msg;
 
-                mb.send_frame(&payload, payload.len()).unwrap();
-
-                let mut handle = std::process::Command::new(cmd)
-                    .args(&args)
-                    //.stdin(std::process::Stdio::piped())
-                    .stdout(std::process::Stdio::piped())
-                    //.stderr(std::process::Stdio::piped())
-                    .spawn()
-                    .expect("");
-
-                let mut stdout = handle.stdout.take().unwrap();		
-                
-                let mut buf = [0; 100];
-
-                loop {
-					let n = stdout.read(&mut buf).unwrap();
-
-					match n {
-						0 => break,
-						_ => mb.send_frame(&buf[..n], n).unwrap()
-					}
-				}
-            
-                let ecode = handle.wait().expect("failed to wait on child");
-            
-                info!("{:?}", ecode);
-
-                let mut payload = format!("Exit code is {:?}", ecode).as_bytes().to_vec();
-                payload.push(0x0D);
-                payload.push(0x0A);
-                payload.push(0x0D);
-                payload.push(0x0A);
-
-                mb.send_frame(&payload, payload.len()).unwrap();
-
-                let mut build_result_msg;
-
-                match ecode.success() {
-                    true => {
-                        build_result_msg = "Build result is Ok";
+                    match build_config.pull_config {
+                        Some(pull_config) => {
+                            let res = repository::pull::go(path, remote_name, remote_branch);
+                            pull_result_msg = format!("Pull result is {:?}", res);
+                        }
+                        None => {
+                            pull_result_msg = "Pull config not passed".to_owned();
+                        }
                     }
-                    false => {
-                        build_result_msg = "Build result is Err";
+
+                    let mut payload = pull_result_msg.as_bytes().to_vec();
+                    payload.push(0x0D);
+                    payload.push(0x0A);
+                    payload.push(0x0D);
+                    payload.push(0x0A);
+
+                    mb.send_frame(&payload, payload.len()).unwrap();
+
+                    let mut handle = match build_config.args {
+                        Some(args) => {
+                            std::process::Command::new(cmd)
+                                .args(&args)
+                                //.stdin(std::process::Stdio::piped())
+                                .stdout(std::process::Stdio::piped())
+                                //.stderr(std::process::Stdio::piped())
+                                .spawn()
+                                .expect("Failed to start build command")
+                        }
+                        None => {
+                            std::process::Command::new(cmd)
+                                //.stdin(std::process::Stdio::piped())
+                                .stdout(std::process::Stdio::piped())
+                                //.stderr(std::process::Stdio::piped())
+                                .spawn()
+                                .expect("Failed to start build command")
+                        }
+                    };
+
+                    let mut stdout = handle.stdout.take().unwrap();		
+                    
+                    let mut buf = [0; 100];
+
+                    loop {
+                        let n = stdout.read(&mut buf).unwrap();
+
+                        match n {
+                            0 => break,
+                            _ => mb.send_frame(&buf[..n], n).unwrap()
+                        }
                     }
+                
+                    let ecode = handle.wait().expect("failed to wait on child");
+                
+                    info!("{:?}", ecode);
+
+                    let mut payload = format!("Exit code is {:?}", ecode).as_bytes().to_vec();
+                    payload.push(0x0D);
+                    payload.push(0x0A);
+                    payload.push(0x0D);
+                    payload.push(0x0A);
+
+                    mb.send_frame(&payload, payload.len()).unwrap();
+
+                    let mut build_result_msg;
+
+                    match ecode.success() {
+                        true => {
+                            build_result_msg = "Build result is Ok";
+                        }
+                        false => {
+                            build_result_msg = "Build result is Err";
+                        }
+                    }
+
+                    info!("{}", build_result_msg);
+
+                    let mut payload = build_result_msg.as_bytes().to_vec();
+                    payload.push(0x0D);
+                    payload.push(0x0A);
+                    payload.push(0x0D);
+                    payload.push(0x0A);
+
+                    mb.send_frame(&payload, payload.len()).unwrap();
                 }
-
-                info!("{}", build_result_msg);
-
-                let mut payload = build_result_msg.as_bytes().to_vec();
-                payload.push(0x0D);
-                payload.push(0x0A);
-                payload.push(0x0D);
-                payload.push(0x0A);
-
-                mb.send_frame(&payload, payload.len()).unwrap();
 
                 match ecode.success() {
                     true => {
                         use sp_pack_core::TargetFile;
 
-                        let build_config = sp_pack_core::Config {
+                        let build_config = sp_pack_core::DeployUnitConfig {
                             result_file_tag: "hello".to_owned(),
                             dirs: None,
                             files: Some(vec![

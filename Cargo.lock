@@ -1659,6 +1659,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "sp-co-cfg"
+version = "0.1.0"
+
+[[package]]
 name = "sp-co-cli"
 version = "0.1.0"
 dependencies = [

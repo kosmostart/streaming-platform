@@ -5,7 +5,7 @@ use serde_json::{json, Value, from_slice, to_vec, to_string, from_str, from_valu
 use log::*;
 use tokio::{io::AsyncWriteExt, fs::File, sync::mpsc::{UnboundedSender, UnboundedReceiver}};
 use sysinfo::{ProcessExt, SystemExt};
-use streaming_platform::{ClientMsg, Frame, FrameType, MAX_FRAME_PAYLOAD_SIZE, MagicBall, ProcessError, RestreamMsg, StreamLayout, client::start_stream, sp_cfg, sp_dto::{MsgMeta, MsgType, rpc_response_dto2_sizes, Participator, RpcResult}, tokio::{self, io::AsyncReadExt}};
+use streaming_platform::{ClientMsg, Frame, FrameType, MAX_FRAME_PAYLOAD_SIZE, MagicBall, ProcessError, RestreamMsg, StreamLayout, client, sp_cfg, sp_dto::{MsgMeta, MsgType, rpc_response_dto2_sizes, Participator, RpcResult}, tokio::{self, io::AsyncReadExt}};
 use sp_build_core::{unpack, RunConfig};
 
 struct FileStreamLayout {
@@ -26,7 +26,7 @@ fn main() {
     config.insert("host".to_owned(), "127.0.0.1:11001".to_owned());
     config.insert("access_key".to_owned(), "".to_owned());
 
-    start_stream(config, process_stream, startup, None, None, None, ());
+    client::start_stream(config, process_stream, startup, None, None, None, ());
 }
 
 pub async fn startup(_config: HashMap<String, String>, mut _mb: MagicBall, _startup_data: Option<Value>, _: ()) {

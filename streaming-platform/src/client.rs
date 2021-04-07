@@ -37,7 +37,7 @@ where
 /// startup is executed on the start of this function.
 /// dependency is w/e clonable dependency needed when processing data.
 /// The protocol message format is in sp-dto crate.
-pub fn start<T: 'static, Q: 'static, R: 'static, D: 'static>(config: HashMap<String, String>, process_event: ProcessEvent<T, Value, D>, process_rpc: ProcessRpc<Q, Value, D>, startup: Startup<R, D>, startup_data: Option<Value>, dependency: D) 
+pub fn start_full_message<T: 'static, Q: 'static, R: 'static, D: 'static>(config: HashMap<String, String>, process_event: ProcessEvent<T, Value, D>, process_rpc: ProcessRpc<Q, Value, D>, startup: Startup<R, D>, startup_data: Option<Value>, dependency: D) 
 where 
     T: Future<Output = Result<(), Box<dyn Error>>> + Send,
     Q: Future<Output = Result<Response<Value>, Box<dyn Error>>> + Send,

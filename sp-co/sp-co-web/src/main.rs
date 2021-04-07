@@ -17,5 +17,5 @@ pub fn main() {
     config.insert("auth_token_key".to_owned(), "This is key omg".to_owned());
     //config.insert("deploy_path".to_owned(), "".to_owned());
  
-    client::start(config, sp_web::process_event, sp_web::process_rpc, sp_web::startup, None, ());
+    client::start_full_message(config, sp_web::process_event, sp_web::process_rpc, sp_web::startup, None, ());
  }

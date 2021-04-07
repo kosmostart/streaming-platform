@@ -299,7 +299,7 @@ pub fn main() {
     config.insert("host".to_owned(), "127.0.0.1:11001".to_owned());
     config.insert("access_key".to_owned(), "".to_owned());
  
-    client::start(config, process_event, process_rpc, startup, None, ());
+    client::start_full_message(config, process_event, process_rpc, startup, None, ());
  }
 
  

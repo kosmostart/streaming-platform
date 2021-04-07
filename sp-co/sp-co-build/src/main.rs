@@ -3,7 +3,7 @@ use std::io::Read;
 use serde_json::{json, Value, from_value, to_vec};
 use log::*;
 use streaming_platform::{MAX_FRAME_PAYLOAD_SIZE, tokio::{self, fs::File, io::AsyncReadExt}, client, MagicBall, sp_dto::{Key, MsgMeta, Message, Response, resp}};
-use sp_pack_core::pack;
+use sp_build_core::{pack, DeployUnitConfig, TargetFile, RunConfig, RunUnit};
 
 mod flow;
 mod repository {
@@ -11,47 +11,6 @@ mod repository {
     pub mod pull;
     pub mod add;
     pub mod commit;
-}
-
-#[derive(Debug)]
-enum Error {
-    Io(std::io::Error),
-    SerdeJson(serde_json::Error),
-    StreamingPlatform(streaming_platform::ProcessError),
-    IncorrectKeyInRequest,
-    SendFrame
-}
-
-impl std::fmt::Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "SuperErrorError is here!")
-    }
-}
-
-impl std::error::Error for Error {}
-
-impl From<std::io::Error> for Error {
-	fn from(e: std::io::Error) -> Error {
-		Error::Io(e)
-	}
-}
-
-impl From<serde_json::Error> for Error {
-	fn from(e: serde_json::Error) -> Error {
-		Error::SerdeJson(e)
-	}
-}
-
-impl From<streaming_platform::ProcessError> for Error {
-    fn from(e: streaming_platform::ProcessError) -> Error {
-        Error::StreamingPlatform(e)
-    }
-}
-
-impl From<tokio::sync::mpsc::error::SendError<streaming_platform::Frame>> for Error {
-    fn from(_: tokio::sync::mpsc::error::SendError<streaming_platform::Frame>) -> Error {
-        Error::SendFrame
-    }
 }
 
 pub async fn process_event(config: HashMap<String, String>, mut mb: MagicBall, msg: Message<Value>, _: ()) -> Result<(), Box<dyn std::error::Error>>  {
@@ -62,11 +21,12 @@ pub async fn process_event(config: HashMap<String, String>, mut mb: MagicBall, m
 
 pub struct DeployConfig {
     pub build_configs: Vec<BuildConfig>,
-    pub deploy_unit_config: sp_pack_core::DeployUnitConfig,
+    pub deploy_unit_config: DeployUnitConfig,
     pub run_config: Option<RunConfig>
 }
 
 pub struct BuildConfig {
+    pub build_name: String,
     pub build_cmd: String,
     pub args: Option<Vec<String>>,
     pub pull_config: Option<PullConfig>
@@ -76,15 +36,6 @@ pub struct PullConfig {
     pub repository_path: String,
     pub remote_name: String,
     pub remote_branch: String
-}
-
-pub struct RunConfig {
-    pub run_units: Vec<RunUnit>
-}
-
-pub struct RunUnit {
-    pub path: String,
-    pub config: Option<HashMap<String, String>>
 }
 
 pub async fn process_rpc(config: HashMap<String, String>, mut mb: MagicBall, msg: Message<Value>, _: ()) -> Result<Response<Value>, Box<dyn std::error::Error>> {   
@@ -100,6 +51,7 @@ pub async fn process_rpc(config: HashMap<String, String>, mut mb: MagicBall, msg
                 };
 
                 let build_config = BuildConfig {
+                    build_name: "Hello".to_owned(),
                     build_cmd: "cargo".to_owned(),
                     args: Some(vec![
                         "build".to_owned(),
@@ -110,17 +62,17 @@ pub async fn process_rpc(config: HashMap<String, String>, mut mb: MagicBall, msg
                     pull_config: Some(pull_config)
                 };
 
-                let deploy_unit_config = sp_pack_core::DeployUnitConfig {
+                let deploy_unit_config = DeployUnitConfig {
                     result_file_tag: "hello".to_owned(),
                     dirs: None,
                     files: Some(vec![
-                        sp_pack_core::TargetFile {
+                        TargetFile {
                             path: "d:/src/cfg-if/target/release/libcfg_if.rlib".to_owned()
                         }
                     ])
                 };
 
-                let hello_cfg = HashMap::new();
+                let mut hello_cfg = HashMap::new();
 
                 hello_cfg.insert("arg1".to_owned(), "value1".to_owned());
                 hello_cfg.insert("arg2".to_owned(), "value2".to_owned());
@@ -128,7 +80,7 @@ pub async fn process_rpc(config: HashMap<String, String>, mut mb: MagicBall, msg
                 let run_config = RunConfig {
                     run_units: vec![
                         RunUnit {
-                            path: "d:/src/hello/target/debug/hello.exe",
+                            path: "d:/src/hello/target/debug/hello.exe".to_owned(),
                             config: Some(hello_cfg)
                         }
                     ]
@@ -144,21 +96,22 @@ pub async fn process_rpc(config: HashMap<String, String>, mut mb: MagicBall, msg
 
 				mb.stream_event(Key::new("DeployStream", "Deploy", "Deploy"), json!({})).await.unwrap();
 
-                for build_config in deploy_config.build_configs {
+                let mut build_success = false;
 
+                for build_config in deploy_config.build_configs {
                     let mut pull_result_msg;
 
                     match build_config.pull_config {
                         Some(pull_config) => {
-                            let res = repository::pull::go(path, remote_name, remote_branch);
-                            pull_result_msg = format!("Pull result is {:?}", res);
+                            let res = repository::pull::go(&pull_config.repository_path, &pull_config.remote_name, &pull_config.remote_branch);
+                            pull_result_msg = format!("pull result is {:?}", res);
                         }
                         None => {
-                            pull_result_msg = "Pull config not passed".to_owned();
+                            pull_result_msg = "pull config not passed".to_owned();
                         }
                     }
 
-                    let mut payload = pull_result_msg.as_bytes().to_vec();
+                    let mut payload = format!("Build {}, {}", build_config.build_name, pull_result_msg).as_bytes().to_vec();
                     payload.push(0x0D);
                     payload.push(0x0A);
                     payload.push(0x0D);
@@ -168,7 +121,7 @@ pub async fn process_rpc(config: HashMap<String, String>, mut mb: MagicBall, msg
 
                     let mut handle = match build_config.args {
                         Some(args) => {
-                            std::process::Command::new(cmd)
+                            std::process::Command::new(build_config.build_cmd)
                                 .args(&args)
                                 //.stdin(std::process::Stdio::piped())
                                 .stdout(std::process::Stdio::piped())
@@ -177,7 +130,7 @@ pub async fn process_rpc(config: HashMap<String, String>, mut mb: MagicBall, msg
                                 .expect("Failed to start build command")
                         }
                         None => {
-                            std::process::Command::new(cmd)
+                            std::process::Command::new(build_config.build_cmd)
                                 //.stdin(std::process::Stdio::piped())
                                 .stdout(std::process::Stdio::piped())
                                 //.stderr(std::process::Stdio::piped())
@@ -200,10 +153,11 @@ pub async fn process_rpc(config: HashMap<String, String>, mut mb: MagicBall, msg
                     }
                 
                     let ecode = handle.wait().expect("failed to wait on child");
+                    build_success = ecode.success();
                 
                     info!("{:?}", ecode);
 
-                    let mut payload = format!("Exit code is {:?}", ecode).as_bytes().to_vec();
+                    let mut payload = format!("Build {}, exit code is {:?}", build_config.build_name, ecode).as_bytes().to_vec();
                     payload.push(0x0D);
                     payload.push(0x0A);
                     payload.push(0x0D);
@@ -215,14 +169,14 @@ pub async fn process_rpc(config: HashMap<String, String>, mut mb: MagicBall, msg
 
                     match ecode.success() {
                         true => {
-                            build_result_msg = "Build result is Ok";
+                            build_result_msg = "Ok";
                         }
                         false => {
-                            build_result_msg = "Build result is Err";
+                            build_result_msg = "Err";
                         }
                     }
 
-                    info!("{}", build_result_msg);
+                    info!("Build {}, build result is {}", build_config.build_name, build_result_msg);
 
                     let mut payload = build_result_msg.as_bytes().to_vec();
                     payload.push(0x0D);
@@ -233,11 +187,9 @@ pub async fn process_rpc(config: HashMap<String, String>, mut mb: MagicBall, msg
                     mb.send_frame(&payload, payload.len()).unwrap();
                 }
 
-                match ecode.success() {
+                match build_success {
                     true => {
-                        use sp_pack_core::TargetFile;
-
-                        let build_config = sp_pack_core::DeployUnitConfig {
+                        let deploy_unit_config = DeployUnitConfig {
                             result_file_tag: "hello".to_owned(),
                             dirs: None,
                             files: Some(vec![
@@ -249,17 +201,17 @@ pub async fn process_rpc(config: HashMap<String, String>, mut mb: MagicBall, msg
 
                         let mut pack_result_msg;
 
-                        match pack(build_config) {
-                            Ok(pack_result_path) => {
-                                pack_result_msg = "Pack result is Ok, path to pack is ".to_owned() + &pack_result_path;
+                        match pack(deploy_unit_config) {
+                            Ok(deploy_unit_path) => {
+                                pack_result_msg = "Pack result is Ok, path to deploy unit is ".to_owned() + &deploy_unit_path;
                                 info!("{}", pack_result_msg);
 
-                                let msg = send_file(mb.clone(), &pack_result_path, &pack_result_path).await.unwrap();
+                                let msg = deploy_unit(mb.clone(), &deploy_unit_path, &deploy_unit_path).await.unwrap();
 
-                                let deploy_pack_result_msg = format!("{:#?}", msg.payload);
-                                info!("{}", deploy_pack_result_msg);
+                                let deploy_unit_msg = format!("{:#?}", msg.payload);
+                                info!("{}", deploy_unit_msg);
 
-                                let mut payload = deploy_pack_result_msg.as_bytes().to_vec();
+                                let mut payload = deploy_unit_msg.as_bytes().to_vec();
                                 payload.push(0x0D);
                                 payload.push(0x0A);
                                 payload.push(0x0D);
@@ -301,13 +253,13 @@ pub async fn process_rpc(config: HashMap<String, String>, mut mb: MagicBall, msg
 pub async fn startup(config: HashMap<String, String>, mut mb: MagicBall, startup_data: Option<Value>, _: ()) {
 }
 
-async fn send_file(mut mb: MagicBall, path: &str, file_name: &str) -> Result<Message<Value>, Error> {
+async fn deploy_unit(mut mb: MagicBall, path: &str, file_name: &str) -> Result<Message<Value>, Error> {
     info!("Opening file {}", path);
 
     let mut file = File::open(&path).await?;
     let size = file.metadata().await?.len();
 
-    let correlation_id = mb.stream_rpc(Key::new("DeployPack", "Deploy", "Deploy"), json!({
+    let correlation_id = mb.stream_rpc(Key::new("DeployUnit", "Deploy", "Deploy"), json!({
         "file_name": file_name
     })).await?;
 
@@ -347,3 +299,45 @@ pub fn main() {
  
     client::start(config, process_event, process_rpc, startup, None, ());
  }
+
+ 
+#[derive(Debug)]
+enum Error {
+    Io(std::io::Error),
+    SerdeJson(serde_json::Error),
+    StreamingPlatform(streaming_platform::ProcessError),
+    IncorrectKeyInRequest,
+    SendFrame
+}
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "SuperErrorError is here!")
+    }
+}
+
+impl std::error::Error for Error {}
+
+impl From<std::io::Error> for Error {
+	fn from(e: std::io::Error) -> Error {
+		Error::Io(e)
+	}
+}
+
+impl From<serde_json::Error> for Error {
+	fn from(e: serde_json::Error) -> Error {
+		Error::SerdeJson(e)
+	}
+}
+
+impl From<streaming_platform::ProcessError> for Error {
+    fn from(e: streaming_platform::ProcessError) -> Error {
+        Error::StreamingPlatform(e)
+    }
+}
+
+impl From<tokio::sync::mpsc::error::SendError<streaming_platform::Frame>> for Error {
+    fn from(_: tokio::sync::mpsc::error::SendError<streaming_platform::Frame>) -> Error {
+        Error::SendFrame
+    }
+}

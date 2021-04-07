@@ -9,7 +9,7 @@ members = [
 	"sp-web",
 	"sp-yew",
 	"sp-manager",
-	"sp-co/sp-pack-core",
+	"sp-co/sp-build-core",
 	"sp-co/sp-co-hub",
 	"sp-co/sp-co-build",
 	"sp-co/sp-co-pod",

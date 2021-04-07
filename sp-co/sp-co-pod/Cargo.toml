@@ -14,4 +14,4 @@ serde = "*"
 serde_derive = "*"
 serde_json = "*"
 streaming-platform = { path = "../../streaming-platform" }
-sp-pack-core = { path = "../sp-pack-core" }
+sp-build-core = { path = "../sp-build-core" }

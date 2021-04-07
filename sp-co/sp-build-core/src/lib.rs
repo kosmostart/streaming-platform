@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs::{File, remove_file};
 use std::io::{self, Error};
 use std::path::Path;
@@ -5,7 +6,7 @@ use std::io::BufReader;
 use std::io::prelude::*;
 use rand::{Rng, thread_rng};
 use chrono::Utc;
-use serde_derive::Deserialize;
+use serde_derive::{Serialize, Deserialize};
 use lz4::{Decoder, EncoderBuilder};
 
 #[derive(Debug, Deserialize)]
@@ -24,6 +25,17 @@ pub struct TargetDir {
 #[derive(Debug, Deserialize)]
 pub struct TargetFile {
     pub path: String
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RunConfig {
+    pub run_units: Vec<RunUnit>
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RunUnit {
+    pub path: String,
+    pub config: Option<HashMap<String, String>>
 }
 
 pub fn pack(config: DeployUnitConfig) -> Result<String, Error> {

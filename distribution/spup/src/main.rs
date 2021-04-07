@@ -3,7 +3,7 @@ use serde_json::{json, Value, from_slice};
 use log::*;
 use tokio::{io::AsyncWriteExt, fs::File, sync::mpsc::UnboundedReceiver};
 use streaming_platform::{client::stream_mode, tokio::{self, runtime::Runtime}, MagicBall, ClientMsg, RestreamMsg, StreamLayout, sp_dto::{Key, MsgType, rpc_response_dto2_sizes, rpc_dto_with_correlation_id_sizes, Route, Participator, RouteSpec, RpcResult}};
-use sp_pack_core::unpack;
+use sp_build_core::unpack;
 
 mod cfg;
 

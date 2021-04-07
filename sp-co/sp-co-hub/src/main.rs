@@ -25,11 +25,11 @@ fn main() {
     ]);
 
     rpc_subscribes.insert("Pod".to_owned(), vec![
-        Key::new("DeployPack", "Deploy", "Deploy")
+        Key::new("DeployUnit", "Deploy", "Deploy")
     ]);
 
     rpc_response_subscribes.insert("Build".to_owned(), vec![
-        Key::new("DeployPack", "Deploy", "Deploy")
+        Key::new("DeployUnit", "Deploy", "Deploy")
     ]);
 
     rpc_response_subscribes.insert("Web".to_owned(), vec![

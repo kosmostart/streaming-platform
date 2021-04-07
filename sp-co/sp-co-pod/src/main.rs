@@ -5,7 +5,7 @@ use serde_json::{json, Value, from_slice, to_vec, to_string, from_str};
 use log::*;
 use tokio::{io::AsyncWriteExt, fs::File, sync::mpsc::{UnboundedSender, UnboundedReceiver}};
 use streaming_platform::{ClientMsg, Frame, FrameType, MAX_FRAME_PAYLOAD_SIZE, MagicBall, ProcessError, RestreamMsg, StreamLayout, client::start_stream, sp_cfg, sp_dto::{MsgMeta, MsgType, rpc_response_dto2_sizes, Participator, RpcResult}, tokio::{self, io::AsyncReadExt}};
-use sp_pack_core::unpack;
+use sp_build_core::unpack;
 
 struct FileStreamLayout {
     layout: StreamLayout,
@@ -185,7 +185,7 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
 							match &stream_layout.msg_meta {
 								Some(msg_meta) => {
 									match msg_meta.key.action.as_ref() {
-										"DeployPack" => {							
+										"DeployUnit" => {							
 											let payload: Value = from_slice(&stream_layout.layout.payload)?;
                                             info!("{:#?}", payload);
 											let path = String::new() + payload["file_name"].as_str()?;
@@ -234,7 +234,7 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
                                     match stream_layout.msg_meta {
                                         Some(msg_meta) => {
                                             match msg_meta.key.action.as_ref() {
-                                                "DeployPack" => {
+                                                "DeployUnit" => {
                                                     let payload = stream_layout.payload?;
                                                     let file_name = payload["file_name"].as_str()?;
 

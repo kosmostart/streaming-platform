@@ -15,4 +15,4 @@ serde_derive = "*"
 serde_json = "*"
 toml = "*"
 streaming-platform = { path = "../../streaming-platform" }
-sp-pack-core = { path = "../../sp-co/sp-pack-core" }
+sp-build-core = { path = "../../sp-co/sp-build-core" }

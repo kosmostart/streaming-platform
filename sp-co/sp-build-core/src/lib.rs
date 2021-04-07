@@ -34,6 +34,7 @@ pub struct RunConfig {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RunUnit {
+    pub name: String,
     pub path: String,
     pub config: Option<HashMap<String, String>>
 }

@@ -717,7 +717,7 @@ impl MagicBall {
         
         Ok(())
     }
-	pub async fn stream_event<T>(&mut self, key: Key, payload: T) -> Result<(), ProcessError> where T: serde::Serialize, for<'de> T: serde::Deserialize<'de>, T: Debug {
+	pub async fn start_event_stream<T>(&mut self, key: Key, payload: T) -> Result<(), ProcessError> where T: serde::Serialize, for<'de> T: serde::Deserialize<'de>, T: Debug {
         let route = Route {
             source: Participator::Service(self.addr.clone()),
             spec: RouteSpec::Simple,
@@ -735,7 +735,7 @@ impl MagicBall {
         
         Ok(())
     }
-    pub async fn stream_rpc<T>(&mut self, key: Key, payload: T) -> Result<Uuid, ProcessError> where T: serde::Serialize, for<'de> T: serde::Deserialize<'de>, T: Debug {
+    pub async fn start_rpc_stream<T>(&mut self, key: Key, payload: T) -> Result<Uuid, ProcessError> where T: serde::Serialize, for<'de> T: serde::Deserialize<'de>, T: Debug {
         let route = Route {
             source: Participator::Service(self.addr.clone()),
             spec: RouteSpec::Simple,
@@ -753,7 +753,7 @@ impl MagicBall {
         
         Ok(correlation_id)
     }
-    pub async fn stream_rpc_response<T>(&mut self, mut msg_meta: MsgMeta, payload: T) -> Result<(), ProcessError> where T: serde::Serialize, for<'de> T: serde::Deserialize<'de>, T: Debug {
+    pub async fn start_rpc_stream_response<T>(&mut self, mut msg_meta: MsgMeta, payload: T) -> Result<(), ProcessError> where T: serde::Serialize, for<'de> T: serde::Deserialize<'de>, T: Debug {
         msg_meta.route.points.push(Participator::Service(self.addr.clone()));
 
         let rpc_result = RpcResult::Ok;
@@ -769,7 +769,7 @@ impl MagicBall {
         
         Ok(())
     }
-    pub async fn stream_rpc_response_custom_res<T>(&mut self, mut msg_meta: MsgMeta, payload: T, rpc_result: RpcResult) -> Result<(), ProcessError> where T: serde::Serialize, for<'de> T: serde::Deserialize<'de>, T: Debug {
+    pub async fn start_rpc_stream_response_custom_res<T>(&mut self, mut msg_meta: MsgMeta, payload: T, rpc_result: RpcResult) -> Result<(), ProcessError> where T: serde::Serialize, for<'de> T: serde::Deserialize<'de>, T: Debug {
         msg_meta.route.points.push(Participator::Service(self.addr.clone()));
 
         let (dto, msg_meta_size, payload_size, attachments_sizes) = rpc_response_dto_sizes(self.addr.clone(), msg_meta.key.clone(), msg_meta.correlation_id, payload, vec![], vec![], rpc_result.clone(), msg_meta.route, self.auth_token.clone(), self.auth_data.clone())?;

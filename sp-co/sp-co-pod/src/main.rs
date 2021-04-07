@@ -1,11 +1,12 @@
 #![feature(try_trait)]
 use std::collections::HashMap;
 use std::fs;
-use serde_json::{json, Value, from_slice, to_vec, to_string, from_str};
+use serde_json::{json, Value, from_slice, to_vec, to_string, from_str, from_value};
 use log::*;
 use tokio::{io::AsyncWriteExt, fs::File, sync::mpsc::{UnboundedSender, UnboundedReceiver}};
+use sysinfo::{ProcessExt, SystemExt};
 use streaming_platform::{ClientMsg, Frame, FrameType, MAX_FRAME_PAYLOAD_SIZE, MagicBall, ProcessError, RestreamMsg, StreamLayout, client::start_stream, sp_cfg, sp_dto::{MsgMeta, MsgType, rpc_response_dto2_sizes, Participator, RpcResult}, tokio::{self, io::AsyncReadExt}};
-use sp_build_core::unpack;
+use sp_build_core::{unpack, RunConfig};
 
 struct FileStreamLayout {
     layout: StreamLayout,
@@ -235,20 +236,62 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
                                         Some(msg_meta) => {
                                             match msg_meta.key.action.as_ref() {
                                                 "DeployUnit" => {
-                                                    let payload = stream_layout.payload?;
-                                                    let file_name = payload["file_name"].as_str()?;
+                                                    let mut payload = stream_layout.payload?;
+                                                    let deploy_unit_name = payload["deploy_unit_name"].as_str()?;
 
-                                                    info!("File name: {}", file_name);
+                                                    info!("Deploy unit name: {}", deploy_unit_name);
 
                                                     let mut unpack_result_msg;
+                                                    let mut run_config_msg = None;
+                                                    let mut run_result_msg = vec![];
 
-                                                    match unpack(".".to_owned(), file_name.to_owned()) {
+                                                    match unpack(".".to_owned(), deploy_unit_name.to_owned()) {
                                                         Ok(()) => {
                                                             unpack_result_msg = "Unpack result is Ok".to_owned();
                                                             info!("{}", unpack_result_msg);
 
-                                                            //stop();
-                                                            //start();
+                                                            let run_config: Option<RunConfig> = from_value(payload["run_config"].take())?;
+
+                                                            match run_config {
+                                                                Some(run_config) => {
+                                                                    run_config_msg = Some(format!("Run config passed, run units amount is {}", run_config.run_units.len()));
+
+                                                                    for run_unit in run_config.run_units {
+                                                                        fix_running(&run_unit.name);
+
+                                                                        info!("Starting {}", run_unit.name);
+
+                                                                        let mut run_result;
+
+                                                                        let res = match run_unit.config {
+                                                                            Some(config) => {
+                                                                                match to_string(&config) {
+                                                                                    Ok(config) => std::process::Command::new(run_unit.path.clone() + "/" + &run_unit.name)
+                                                                                        .arg(config)
+                                                                                        .spawn(),
+                                                                                    Err(e) => Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Config serialization to JSON string failed, {:?}", e)))
+                                                                                }
+                                                                            },
+                                                                            None => std::process::Command::new(run_unit.path.clone() + "/" + &run_unit.name)                                    
+                                                                                .spawn()
+                                                                        };
+
+                                                                        match res {
+                                                                            Ok(instance) => {
+                                                                                run_result = format!("Started process {} with id {}, path {}", run_unit.name, instance.id(), run_unit.path);
+                                                                            }
+                                                                            Err(e) => {
+                                                                                run_result = format!("Failed to start process {}, {:?}, path {}", run_unit.name, e, run_unit.path);
+                                                                            }
+                                                                        }
+
+                                                                        run_result_msg.push(run_result);
+                                                                    }
+                                                                }
+                                                                None => {
+                                                                    run_config_msg = Some("Run config not passed".to_owned());
+                                                                }
+                                                            }
                                                         }
                                                         Err(e) => {
                                                             unpack_result_msg = format!("Unpack result is Err, {:?}", e);
@@ -257,7 +300,9 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
                                                     }
                                                     
                                                     mb.send_rpc_response(msg_meta, json!({
-                                                        "unpack_result": unpack_result_msg
+                                                        "unpack_result": unpack_result_msg,
+                                                        "run_config_msg": run_config_msg,
+                                                        "run_result_msg": run_result_msg
                                                     })).await?;
                                                 }
                                                 _ => {}
@@ -286,130 +331,6 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
 		}
 	}
 
-    /*
-    match client_msg {
-        ClientMsg::MsgMeta(stream_id, msg_meta) => {            
-            stream_layouts.insert(stream_id, FileStreamLayout {
-                stream: StreamLayout {
-                    id: stream_id,
-                    msg_meta,
-                    payload: vec![],
-                    attachments_data: vec![]
-                },
-                payload: None,
-                download_payload: None,                
-                file: None,
-                rpc_result: RpcResult::Ok
-            });
-        }
-        ClientMsg::PayloadData(stream_id, n, buf) => {
-            let stream_layout = stream_layouts.get_mut(&stream_id).ok_or(Error::CustomError("not found stream for payload data".to_owned()))?;
-            stream_layout.stream.payload.extend_from_slice(&buf[..n]);            
-        }
-        ClientMsg::PayloadFinished(stream_id, n, buf) => {
-            let stream_layout = stream_layouts.get_mut(&stream_id).ok_or(Error::CustomError("not found stream for payload finish".to_owned()))?;
-            stream_layout.stream.payload.extend_from_slice(&buf[..n]);
-            match stream_layout.stream.msg_meta.key.action.as_ref() {
-                "Upload" => {
-                    let _attachment = stream_layout.stream.msg_meta.attachments.iter().nth(0).ok_or(Error::CustomError("no attachment found in msg meta for upload key".to_owned()))?;
-                    let payload: Value = from_slice(&stream_layout.stream.payload)?;                    
-                    let path = String::new();
-                    stream_layout.file = Some(File::create(path).await?);
-                    stream_layout.payload = Some(payload);
-                }
-                "Download" => {
-                    let payload: Value = from_slice(&stream_layout.stream.payload)?;
-                    stream_layout.download_payload = Some(payload);                        
-                }
-                _ => {}
-            }                        
-        }
-        ClientMsg::AttachmentData(stream_id, _index, n, buf) => {
-            let stream_layout = stream_layouts.get_mut(&stream_id).ok_or(Error::CustomError("not found stream for attachment data".to_owned()))?;
-            match stream_layout.stream.msg_meta.key.action.as_ref() {
-                "Upload" => {
-                    let file = stream_layout.file.as_mut().ok_or(Error::CustomError("file is empty for attachment data".to_owned()))?;
-                    file.write_all(&buf[..n]).await?;
-                }
-                _ => {}
-            }                                                
-        }
-        ClientMsg::AttachmentFinished(stream_id, _index, n, buf) => {
-            let stream_layout = stream_layouts.get_mut(&stream_id).ok_or(Error::CustomError("not found stream for attachment finish".to_owned()))?;
-            match stream_layout.stream.msg_meta.key.action.as_ref() {
-                "Upload" => {
-                    let file = stream_layout.file.as_mut().ok_or(Error::CustomError("file is empty for attachment data".to_owned()))?;
-                    file.write_all(&buf[..n]).await?;
-                    stream_layout.file = None;
-                }
-                _ => {}
-            }                                        
-        }
-        ClientMsg::MessageFinished(stream_id) => {                                
-            let stream_layout = stream_layouts.remove(&stream_id).ok_or(Error::CustomError("not found stream for message finish".to_owned()))?;
-            match stream_layout.stream.msg_meta.key.action.as_ref() {                            
-                "Upload" => {                                        
-                    let _payload = stream_layout.payload.ok_or(Error::CustomError("empty payload for upload message finish".to_owned()))?;                                        
-                    let reponse_payload = to_vec(&json!({
-
-                    }))?;
-                    let mut route = stream_layout.stream.msg_meta.route.clone();
-                    route.points.push(Participator::Service(mb.addr.clone()));
-                    let (res, msg_meta_size, payload_size, attachments_size) = rpc_response_dto2_sizes(
-                        mb.addr.clone(),                        
-                        stream_layout.stream.msg_meta.key.clone(), 
-                        stream_layout.stream.msg_meta.correlation_id, 
-                        reponse_payload,
-                        vec![], vec![],
-                        stream_layout.rpc_result.clone(),
-                        route,
-                        mb.auth_token.clone(),
-                        mb.auth_data.clone()
-                    )?;
-                    mb.write_vec(stream_layout.stream.id, res, msg_meta_size, payload_size, attachments_size).await.expect("failed to write response to upload");
-                }
-                "Download" => {
-                    let FileStreamLayout { 
-                        stream,
-                        payload: _,
-                        download_payload,                        
-                        file: _,
-                        rpc_result: _
-                    } = stream_layout;
-                    let payload = download_payload.ok_or(Error::CustomError("empty download payload for download message finish".to_owned()))?;
-                    let access_key = payload["access_key"].as_str().ok_or(Error::OptionIsNone("access_key".to_owned()))?;                    
-                    let target_dir = dirs.iter().find(|x| x.access_key == access_key).ok_or(Error::TargetDirNotFoundByAccessKey)?;
-                    let path = fs::read_dir(&target_dir.path)?.nth(0).ok_or(Error::NoFilesInTargetDir)??.path();
-
-                    let file_name = path.file_name()
-                        .ok_or(Error::FileNameIsEmpty)?
-                        .to_str()
-                        .ok_or(Error::FileNameIsEmpty)?
-                        .to_owned();
-
-                    if path.is_file() {                
-                        let mb = mb.clone();
-
-                        tokio::spawn(async move {                    
-                            match download_file(mb, stream.msg_meta, path, file_name.clone()).await {
-                                Ok(()) => {
-                                    info!("file download complete, name {}", file_name);
-                                }
-                                Err(e) => {
-                                    error!("download file error {:?}", e);
-                                }
-                            }
-                        });
-                    } else {
-                        println!("not a file my friends");
-                    }                                                            
-                }
-                _ => {}
-            }
-        }
-        _ => {}
-    }
-    */
     Ok(())
 }
 
@@ -417,7 +338,7 @@ async fn send_file(mut mb: MagicBall, msg_meta: MsgMeta, path: std::path::PathBu
     let mut file = File::open(&path).await?;
     let size = file.metadata().await?.len();
 
-    mb.stream_rpc_response(msg_meta, json!({
+    mb.start_rpc_stream_response(msg_meta, json!({
         "file_name": file_name
     })).await?;
 
@@ -444,6 +365,53 @@ async fn send_file(mut mb: MagicBall, msg_meta: MsgMeta, path: std::path::PathBu
     mb.complete_stream()?;
 
     Ok(())
+}
+
+fn fix_running(name: &str) {
+    info!("Fixing running processes for {}", name);
+    info!("Quering system data");
+
+    let mut system = sysinfo::System::new();
+    // First we update all information of our system struct.
+    system.refresh_all();
+    let mut running = vec![];
+
+    for (id, process) in system.get_processes() {
+        //info!("{}:{} status: {:?}", pid, proc_.name(), proc_.status());
+
+        running.push((*id as usize, process.name().to_owned()));
+    }
+
+    info!("Processes running: {}", running.len());
+
+    for (id, process_name) in running {
+        if process_name == name {
+            stop_process_by_id(id, &process_name);
+        }
+    }
+
+    info!("Done for {}", name);
+}
+
+fn stop_process_by_id(id: usize, name: &str) {
+    info!("Attempt to stop process {} with id {}", name, id);
+
+    if cfg!(windows) {
+        std::process::Command::new("taskkill")
+            .arg("/F")
+            .arg("/PID")
+            .arg(id.to_string())
+            .output()
+            .expect(&format!("Process stop failed, name {}, id {}", name, id));
+    }
+    else {
+        std::process::Command::new("kill")            
+            .arg(id.to_string())
+            .output()
+            .expect(&format!("Process stop failed, name {}, id {}", name, id));
+    }
+
+    info!("Process stop result is Ok, name {}, id {}", name, id);
 }
 
 #[derive(Debug)]

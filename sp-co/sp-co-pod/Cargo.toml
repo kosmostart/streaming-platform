@@ -13,5 +13,6 @@ env_logger = "*"
 serde = "*"
 serde_derive = "*"
 serde_json = "*"
+sysinfo = "*"
 streaming-platform = { path = "../../streaming-platform" }
 sp-build-core = { path = "../sp-build-core" }

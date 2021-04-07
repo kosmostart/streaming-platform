@@ -80,6 +80,7 @@ pub async fn process_rpc(config: HashMap<String, String>, mut mb: MagicBall, msg
                 let run_config = RunConfig {
                     run_units: vec![
                         RunUnit {
+                            name: "hello.exe".to_owned(),
                             path: "d:/src/hello/target/debug/hello.exe".to_owned(),
                             config: Some(hello_cfg)
                         }
@@ -94,7 +95,7 @@ pub async fn process_rpc(config: HashMap<String, String>, mut mb: MagicBall, msg
                     run_config: None
                 };
 
-				mb.stream_event(Key::new("DeployStream", "Deploy", "Deploy"), json!({})).await.unwrap();
+				mb.start_event_stream(Key::new("DeployStream", "Deploy", "Deploy"), json!({})).await.unwrap();
 
                 let mut build_success = false;
 
@@ -206,7 +207,7 @@ pub async fn process_rpc(config: HashMap<String, String>, mut mb: MagicBall, msg
                                 pack_result_msg = "Pack result is Ok, path to deploy unit is ".to_owned() + &deploy_unit_path;
                                 info!("{}", pack_result_msg);
 
-                                let msg = deploy_unit(mb.clone(), &deploy_unit_path, &deploy_unit_path).await.unwrap();
+                                let msg = deploy_unit(mb.clone(), &deploy_unit_path, &deploy_unit_path, deploy_config.run_config).await.unwrap();
 
                                 let deploy_unit_msg = format!("{:#?}", msg.payload);
                                 info!("{}", deploy_unit_msg);
@@ -253,14 +254,15 @@ pub async fn process_rpc(config: HashMap<String, String>, mut mb: MagicBall, msg
 pub async fn startup(config: HashMap<String, String>, mut mb: MagicBall, startup_data: Option<Value>, _: ()) {
 }
 
-async fn deploy_unit(mut mb: MagicBall, path: &str, file_name: &str) -> Result<Message<Value>, Error> {
+async fn deploy_unit(mut mb: MagicBall, path: &str, deploy_unit_name: &str, run_config: Option<RunConfig>) -> Result<Message<Value>, Error> {
     info!("Opening file {}", path);
 
     let mut file = File::open(&path).await?;
     let size = file.metadata().await?.len();
 
-    let correlation_id = mb.stream_rpc(Key::new("DeployUnit", "Deploy", "Deploy"), json!({
-        "file_name": file_name
+    let correlation_id = mb.start_rpc_stream(Key::new("DeployUnit", "Deploy", "Deploy"), json!({
+        "deploy_unit_name": deploy_unit_name,
+        "run_config": run_config
     })).await?;
 
     match size {

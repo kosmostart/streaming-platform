@@ -14,7 +14,6 @@ serde = "*"
 serde_derive = "*"
 serde_json = "*"
 chrono = { version = "*", features = ["serde"] }
-byteorder = "*"
-rkyv = "0.4.3"
+rkyv = "*"
 sled = { version = "*"}
 streaming-platform = { path = "../../streaming-platform" }

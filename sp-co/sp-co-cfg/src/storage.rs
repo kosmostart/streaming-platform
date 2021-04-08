@@ -72,7 +72,7 @@ impl Dc {
         payload["deactivated_at"] = json!(None as Option<NaiveDateTime>);
         payload["updated_at"] = json!(None as Option<NaiveDateTime>);
 
-        let _ = self.tree.insert(id.to_be_bytes(), serialize(&convert_value(payload))?)?;
+        let _ = self.tree.insert(id.to_be_bytes(), &serialize(&convert_value(payload))?[..])?;
     
         Ok(id)
     }
@@ -88,7 +88,7 @@ impl Dc {
 
         let converted_payload = convert_value(payload);
 
-        let _ = self.tree.insert(id.to_be_bytes(), serialize(&converted_payload)?)?;
+        let _ = self.tree.insert(id.to_be_bytes(), &serialize(&converted_payload)?[..])?;
 
         let res = convert_value2(converted_payload);
     
@@ -125,7 +125,7 @@ impl Dc {
         match self.tree.contains_key(id_bytes)? {
             true => {                    
                 payload["updated_at"] = json!(Utc::now().naive_utc());                    
-                self.tree.insert(id_bytes.to_vec(), serialize(&convert_value(payload))?)?;
+                self.tree.insert(id_bytes.to_vec(), &serialize(&convert_value(payload))?[..])?;
             }
             false => {
                 info!("Entity with id {} not found, root path {}", id, self.root_path);
@@ -195,7 +195,7 @@ impl TxDc<'_> {
         payload["deactivated_at"] = json!(None as Option<NaiveDateTime>);
         payload["updated_at"] = json!(None as Option<NaiveDateTime>);
 
-        let _ = self.tree.insert(id.to_be_bytes().to_vec(), serialize(&convert_value(payload))?)?;
+        let _ = self.tree.insert(id.to_be_bytes().to_vec(), &serialize(&convert_value(payload))?[..])?;
     
         Ok(id)
     }
@@ -211,7 +211,7 @@ impl TxDc<'_> {
 
         let converted_payload = convert_value(payload);
 
-        let _ = self.tree.insert(id.to_be_bytes().to_vec(), serialize(&converted_payload)?)?;
+        let _ = self.tree.insert(id.to_be_bytes().to_vec(), &serialize(&converted_payload)?[..])?;
 
         let res = convert_value2(converted_payload);
     
@@ -236,7 +236,7 @@ impl TxDc<'_> {
             Some(_) => {
                 payload["updated_at"] = json!(Utc::now().naive_utc());
 
-                self.tree.insert(id_bytes.to_vec(), serialize(&convert_value(payload))?)?;
+                self.tree.insert(id_bytes.to_vec(), &serialize(&convert_value(payload))?[..])?;
             }
             None => {
                 info!("Entity with id {} not found", id);

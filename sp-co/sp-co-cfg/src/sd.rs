@@ -1,18 +1,6 @@
 use std::collections::HashMap;
-use byteorder::ByteOrder;
 use serde_json::json;
-use rkyv::{
-    archived_value,
-    de::{
-        Deserializer,
-        deserializers::AllocDeserializer
-    },
-    ser::{
-        serializers::WriteSerializer,
-        Serializer,
-    },
-    Archive, Deserialize, Serialize
-};
+use rkyv::{AlignedVec, Archive, Deserialize, Fallible, Serialize, archived_root, de::{deserializers::AllocDeserializer, Deserializer}, ser::{serializers::AlignedSerializer, Serializer}};
 use crate::error::Error;
 
 pub const POSITION_LEN: usize = 8;
@@ -23,12 +11,12 @@ pub enum Value {
     Bool(bool),
     Number(Number),
     String(String),
-    Array(#[recursive] Vec<Value>),
-    Object(#[recursive] HashMap<String, Value>)
+    Array(#[omit_bounds] Vec<Value>),
+    Object(#[omit_bounds] HashMap<String, Value>)
 }
 
-impl<S: Serializer> Serialize<S> for Value {
-    fn serialize(&self, serializer: &mut S) -> Result<Self::Resolver, S::Error> {
+impl Serialize<AlignedSerializer<AlignedVec>> for Value {
+    fn serialize(&self, serializer: &mut AlignedSerializer<AlignedVec>) -> Result<Self::Resolver, <AlignedSerializer<AlignedVec> as Fallible>::Error> {
         Ok(match self {
             Value::Null => ValueResolver::Null,
             Value::Bool(b) => ValueResolver::Bool(b.serialize(serializer)?),
@@ -60,34 +48,22 @@ pub enum Number {
     Float(f64),
 }
 
-pub fn serialize(value: &Value) -> Result<Vec<u8>, Error> {
-    let mut serializer = WriteSerializer::new(Vec::new());
+pub fn serialize(value: &Value) -> Result<AlignedVec, Error> {
+    let mut serializer = AlignedSerializer::new(AlignedVec::new());
 
-    let pos = serializer.serialize_value(value)?;
-    let mut pos_buf = [0; POSITION_LEN];
-    byteorder::BigEndian::write_u64(&mut pos_buf, pos as u64);
+    let _ = serializer.serialize_value(value).expect("failed to serialize value");
 
-    let mut buf = serializer.into_inner();
+    let res = serializer.into_inner();
 
-    buf.push(pos_buf[0]);
-    buf.push(pos_buf[1]);
-    buf.push(pos_buf[2]);
-    buf.push(pos_buf[3]);
-    buf.push(pos_buf[4]);
-    buf.push(pos_buf[5]);
-    buf.push(pos_buf[6]);
-    buf.push(pos_buf[7]);
-
-    Ok(buf)
+    Ok(res)
 }
 
 pub fn deserialize(buf: &[u8]) -> Result<Value, Error> {
-    let payload_size = buf.len() - POSITION_LEN;
-    let position = byteorder::BigEndian::read_u64(&buf[payload_size..]);
-    let mut deserializer = AllocDeserializer;
-    let archived = unsafe { archived_value::<Value>(&buf[..payload_size], position as usize) };
+    let archived = unsafe { archived_root::<Value>(buf) };
 
-    let res = archived.deserialize(&mut deserializer)?;
+    let mut deserializer = AllocDeserializer;
+
+    let res = archived.deserialize(&mut deserializer).expect("failed to deserialize value");
 
     Ok(res)
 }

@@ -1,5 +1,6 @@
 #![feature(try_trait)]
 use std::collections::HashMap;
+use log::*;
 use chrono::Utc;
 use serde_json::{json, Value, to_vec};
 use streaming_platform::{client, MagicBall, sp_dto::{MsgMeta, Message, Response, resp}};
@@ -21,6 +22,12 @@ pub async fn process_rpc(config: HashMap<String, String>, mut mb: MagicBall, msg
 
     let res = match msg.meta.key.action.as_ref() {
         "Add" => {
+            info!("Received add");
+
+            if !msg.payload["key"].is_string() {
+                return Err(Box::new(Error::CustomError("Empty key in payload".to_owned())));
+            }
+
             let active = dc.filter(|a| a["deactivated_at"].is_null())?;
 
             for (id, mut payload) in active {
@@ -37,6 +44,8 @@ pub async fn process_rpc(config: HashMap<String, String>, mut mb: MagicBall, msg
             })
         }
         "Get" => {
+            info!("Received get");
+
             if !msg.payload["key"].is_string() {
                 return Err(Box::new(Error::CustomError("Empty key in payload".to_owned())));
             }
@@ -65,7 +74,7 @@ pub fn main() {
     config.insert("access_key".to_owned(), "".to_owned());
 
     let user_id = 1;
-    let root_path = "d:/src/cfg-storage";
+    let root_path = "d:/src/sp-co-cfg-storage";
 
     let dc = Dc::new(user_id, root_path).expect("Failed to create dc");
  

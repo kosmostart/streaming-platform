@@ -28,13 +28,20 @@ fn main() {
         Key::new("DeployUnit", "Deploy", "Deploy")
     ]);
 
+    rpc_subscribes.insert("Cfg".to_owned(), vec![
+        Key::new("Add", "Cfg", "Cfg"),
+        Key::new("Get", "Cfg", "Cfg")
+    ]);
+
     rpc_response_subscribes.insert("Build".to_owned(), vec![
         Key::new("DeployUnit", "Deploy", "Deploy")
     ]);
 
     rpc_response_subscribes.insert("Web".to_owned(), vec![
         Key::new("Auth", "Auth", "Auth"),
-        Key::new("Deploy", "Deploy", "Deploy")
+        Key::new("Deploy", "Deploy", "Deploy"),
+        Key::new("Add", "Cfg", "Cfg"),
+        Key::new("Get", "Cfg", "Cfg")
     ]);
 
     server::start(config, Subscribes::ByAddr(event_subscribes, rpc_subscribes, rpc_response_subscribes));

@@ -41,7 +41,7 @@ pub async fn process_rpc(config: HashMap<String, String>, mut mb: MagicBall, msg
                 return Err(Box::new(Error::CustomError("Empty key in payload".to_owned())));
             }
 
-            match dc.find(|a| a["payload"]["key"] == msg.payload["key"] && a["deactivated_at"].is_null())? {
+            match dc.find(|a| a["key"] == msg.payload["key"] && a["deactivated_at"].is_null())? {
                 Some((_, payload)) => payload,
                 None => json!({})
             }

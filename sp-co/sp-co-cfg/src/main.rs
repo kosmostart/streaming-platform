@@ -1,5 +1,6 @@
 #![feature(try_trait)]
 use std::collections::HashMap;
+use chrono::Utc;
 use serde_json::{json, Value, to_vec};
 use streaming_platform::{client, MagicBall, sp_dto::{MsgMeta, Message, Response, resp}};
 use crate::error::Error;
@@ -15,17 +16,35 @@ pub async fn process_event(config: HashMap<String, String>, mut mb: MagicBall, m
     Ok(())
 }
 
-pub async fn process_rpc(config: HashMap<String, String>, mut mb: MagicBall, msg: Message<Value>, _: Dc) -> Result<Response<Value>, Box<dyn std::error::Error>> {   
+pub async fn process_rpc(config: HashMap<String, String>, mut mb: MagicBall, msg: Message<Value>, dc: Dc) -> Result<Response<Value>, Box<dyn std::error::Error>> {   
     //info!("{:#?}", msg);
 
     let res = match msg.meta.key.action.as_ref() {
         "Add" => {
+            let active = dc.filter(|a| a["deactivated_at"].is_null())?;
+
+            for (id, mut payload) in active {
+                payload["deactivated_at"] = json!(Utc::now().naive_utc());
+                let _ = dc.update(id, payload)?;
+            }
+
+            let _ = dc.create(json!({
+                "key": msg.payload["key"],
+                "payload": msg.payload["payload"]
+            }))?;
+
             json!({
             })
         }
         "Get" => {
-            json!({                
-            })
+            if !msg.payload["key"].is_string() {
+                return Err(Box::new(Error::CustomError("Empty key in payload".to_owned())));
+            }
+
+            match dc.find(|a| a["payload"]["key"] == msg.payload["key"] && a["deactivated_at"].is_null())? {
+                Some((_, payload)) => payload,
+                None => json!({})
+            }
         }
         _ => return Err(Box::new(Error::IncorrectKeyInRequest))
     };

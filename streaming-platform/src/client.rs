@@ -101,7 +101,7 @@ where
                 }
             }
         }
-    });    
+    });  
     let mb = MagicBall::new(addr2, write_tx2, rpc_inbound_tx);
     tokio::spawn(process_stream(config.clone(), mb.clone(), read_rx, restream_tx, restream_rx, dependency.clone()));
     tokio::spawn(startup(config, mb, startup_data, dependency));

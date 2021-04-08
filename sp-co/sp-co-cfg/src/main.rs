@@ -22,7 +22,7 @@ pub async fn process_rpc(config: HashMap<String, String>, mut mb: MagicBall, msg
 
     let res = match msg.meta.key.action.as_ref() {
         "Add" => {
-            info!("Received add");
+            info!("Received Add, payload key {:?}", msg.payload["key"]);
 
             if !msg.payload["key"].is_string() {
                 return Err(Box::new(Error::CustomError("Empty key in payload".to_owned())));
@@ -44,7 +44,7 @@ pub async fn process_rpc(config: HashMap<String, String>, mut mb: MagicBall, msg
             })
         }
         "Get" => {
-            info!("Received get");
+            info!("Received Get, payload key {:?}", msg.payload["key"]);
 
             if !msg.payload["key"].is_string() {
                 return Err(Box::new(Error::CustomError("Empty key in payload".to_owned())));

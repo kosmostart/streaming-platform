@@ -188,7 +188,7 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
 										"DeployUnit" => {							
 											let payload: Value = from_slice(&stream_layout.layout.payload)?;
                                             info!("{:#?}", payload);
-											let path = String::new() + payload["file_name"].as_str()?;
+											let path = String::new() + payload["file_name"].as_str().ok_or(Error::None)?;
                                             info!("Creating file {}", path);
 											stream_layout.file = Some(File::create(path).await?);
 											stream_layout.payload = Some(payload);
@@ -207,7 +207,7 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
                                 Some(payload) => {
                                     let stream_layout = stream_layouts.get_mut(&frame.stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
 
-                                    let file = stream_layout.file.as_mut()?;
+                                    let file = stream_layout.file.as_mut().ok_or(Error::None)?;
 							        file.write_all(&payload[..frame.payload_size as usize]).await?;
                                 }
                                 None => {}                                
@@ -219,7 +219,7 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
 
                             match frame.payload {
                                 Some(payload) => {
-                                    let file = stream_layout.file.as_mut()?;
+                                    let file = stream_layout.file.as_mut().ok_or(Error::None)?;
 							        file.write_all(&payload[..frame.payload_size as usize]).await?;
                                 }
                                 None => {}                                
@@ -235,8 +235,8 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
                                         Some(msg_meta) => {
                                             match msg_meta.key.action.as_ref() {
                                                 "DeployUnit" => {
-                                                    let mut payload = stream_layout.payload?;
-                                                    let deploy_unit_name = payload["deploy_unit_name"].as_str()?;
+                                                    let mut payload = stream_layout.payload.ok_or(Error::None)?;
+                                                    let deploy_unit_name = payload["deploy_unit_name"].as_str().ok_or(Error::None)?;
 
                                                     info!("Deploy unit name: {}", deploy_unit_name);
 
@@ -425,12 +425,6 @@ pub enum Error {
     NoFilesInTargetDir,
     OptionIsNone(String),
     CustomError(String)
-}
-
-impl From<std::option::NoneError> for Error {
-	fn from(_e: std::option::NoneError) -> Error {		
-		Error::None
-	}
 }
 
 impl From<std::io::Error> for Error {

@@ -21,6 +21,6 @@ anyhow = "1"
 serde = "1"
 serde_derive = "1"
 serde_json = "1"
-yew = { git = "https://github.com/yewstack/yew" }
-yew-services = { git = "https://github.com/yewstack/yew-services" }
+yew = { path = "../../yew/packages/yew" }
+yew-services = { path = "../../yew/packages/yew-services" }
 sp-dto = { path = "../sp-dto" }

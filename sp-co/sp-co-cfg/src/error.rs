@@ -36,12 +36,6 @@ impl std::error::Error for Error {
     }    
 }
 
-impl From<std::option::NoneError> for Error {
-	fn from(_e: std::option::NoneError) -> Error {
-		Error::None
-	}
-}
-
 impl From<std::array::TryFromSliceError> for Error {
 	fn from(e: std::array::TryFromSliceError) -> Error {
 		Error::ConversionFromSlice(e)

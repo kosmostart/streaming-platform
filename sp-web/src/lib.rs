@@ -1,5 +1,3 @@
-#![feature(proc_macro_hygiene)]
-#![feature(async_closure)]
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::env::current_dir;
@@ -63,6 +61,9 @@ pub async fn process_rpc(_config: HashMap<String, String>, mut _mb: MagicBall, _
     resp(json!({}))    
 }
 
+pub async fn startup2(config: HashMap<String, String>, mb: MagicBall, startup_data: Option<Value>, _: ()) {	
+}
+
 pub async fn startup(config: HashMap<String, String>, mb: MagicBall, startup_data: Option<Value>, _: ()) {	
 	let (mut restream_tx, mut restream_rx) = mpsc::unbounded_channel();
     let mut restream_tx2 = restream_tx.clone();
@@ -72,7 +73,7 @@ pub async fn startup(config: HashMap<String, String>, mb: MagicBall, startup_dat
         let stream_addr = config2.get("stream_addr").expect("missing stream_addr config value").to_owned();
         let host = config2.get("host").expect("missing host config value").to_owned();
         let access_key = "";
-        stream_mode(&host, &stream_addr, access_key, process_stream, async move |_, _, _, _| {}, config2, None, Some(restream_tx2), Some(restream_rx), ()).await;
+        stream_mode(&host, &stream_addr, access_key, process_stream, startup2, config2, None, Some(restream_tx2), Some(restream_rx), ()).await;
     });
 	
     let listen_addr = config.get("listen_addr").expect("Missing listen_addr config value");

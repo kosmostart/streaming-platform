@@ -1,4 +1,3 @@
-#![feature(try_trait)]
 use std::collections::HashMap;
 use std::fs;
 use serde_json::{json, Value, from_slice, to_vec, to_string, from_str, from_value};

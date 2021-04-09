@@ -4,10 +4,10 @@ use serde_derive::{Serialize, Deserialize};
 use serde_json::Value;
 use yew::callback::Callback;
 use yew::prelude::worker::*;
-use yew::services::console::ConsoleService;
-use yew::services::fetch::{self, FetchService, FetchTask};
 use yew::agent::HandlerId;
 use yew::format::Nothing;
+use yew_services::console::ConsoleService;
+use yew_services::fetch::{self, FetchService, FetchTask};
 use sp_dto::{Key, Subscribes, Participator, MsgType, uuid::Uuid, MsgMeta, Route, RouteSpec, CmpSpec, rpc_dto_with_correlation_id, get_msg};
 
 pub struct Worker {

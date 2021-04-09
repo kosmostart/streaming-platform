@@ -1,4 +1,3 @@
-#![feature(try_trait)]
 use std::collections::HashMap;
 use log::*;
 use chrono::Utc;

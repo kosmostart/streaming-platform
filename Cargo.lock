@@ -164,12 +164,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
-name = "cfg-match"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8100e46ff92eb85bf6dc2930c73f2a4f7176393c84a9446b3d501e1b354e7b34"
-
-[[package]]
 name = "chrono"
 version = "0.4.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1877,6 +1871,7 @@ dependencies = [
  "serde_json",
  "sp-dto",
  "yew",
+ "yew-services",
 ]
 
 [[package]]
@@ -2510,24 +2505,17 @@ dependencies = [
 [[package]]
 name = "yew"
 version = "0.17.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2d8703eb5b883e816cd74c65e2f6dd4144eeedb77c1b3e0284e8f3f593b80ab1"
+source = "git+https://github.com/yewstack/yew#e5dca4525723fb93f75b44a30c914810a1b06d2a"
 dependencies = [
  "anyhow",
  "anymap",
  "bincode",
- "cfg-if 0.1.10",
- "cfg-match",
  "console_error_panic_hook",
- "futures",
  "gloo",
  "http",
  "indexmap",
  "js-sys",
  "log",
- "proc-macro-hack",
- "proc-macro-nested",
- "ryu",
  "serde",
  "serde_json",
  "slab",
@@ -2541,13 +2529,29 @@ dependencies = [
 [[package]]
 name = "yew-macro"
 version = "0.17.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "61a9a452e63b6222b28b426dafbc6b207192e0127cdb93324cc7407b8c7e1768"
+source = "git+https://github.com/yewstack/yew#e5dca4525723fb93f75b44a30c914810a1b06d2a"
 dependencies = [
  "boolinator",
  "lazy_static",
- "proc-macro-hack",
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "yew-services"
+version = "0.1.0"
+source = "git+https://github.com/yewstack/yew#e5dca4525723fb93f75b44a30c914810a1b06d2a"
+dependencies = [
+ "anyhow",
+ "gloo",
+ "http",
+ "js-sys",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+ "yew",
 ]

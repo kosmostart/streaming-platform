@@ -449,3 +449,50 @@ async fn process_full_message_mode(addr: String, mut write_tcp_stream: TcpStream
 		}
 	}  
 }
+
+pub async fn cfg_mode<T: 'static, R: 'static, D: 'static>(host: &str, addr: &str, access_key: &str, config: HashMap<String, String>, restream_tx: Option<UnboundedSender<RestreamMsg>>, restream_rx: Option<UnboundedReceiver<RestreamMsg>>, dependency: D)
+where 
+    T: Future<Output = ()> + Send,
+    R: Future<Output = ()> + Send,
+    D: Clone + Send + Sync
+{    
+    let (read_tx, read_rx) = mpsc::unbounded_channel();
+    let (write_tx, write_rx) = mpsc::unbounded_channel();
+    let (rpc_inbound_tx, mut rpc_inbound_rx) = mpsc::unbounded_channel();
+    let (rpc_outbound_tx, mut _rpc_outbound_rx) = mpsc::unbounded_channel();
+    let addr = addr.to_owned();
+    let addr2 = addr.to_owned();   
+    let addr3 = addr.to_owned();
+    let access_key = access_key.to_owned();        
+    let write_tx2 = write_tx.clone();    
+    tokio::spawn(async move {
+        let mut rpcs = HashMap::new();        
+
+        loop {
+            let msg = rpc_inbound_rx.recv().await.expect("rpc inbound msg receive failed");
+
+            match msg {
+                RpcMsg::AddRpc(correlation_id, rpc_tx) => {
+                    rpcs.insert(correlation_id, rpc_tx);
+                }                
+                RpcMsg::RpcDataRequest(correlation_id) => {
+                    match rpcs.remove(&correlation_id) {
+                        Some(rpc_tx) => {
+                            match rpc_outbound_tx.send(RpcMsg::RpcDataResponse(correlation_id, rpc_tx)) {
+                                Ok(()) => {}
+                                Err(_) => panic!("rpc outbound tx send failed on rpc data request")
+                            }
+                        }
+                        None => {                            
+                        }
+                    }
+                }
+                _=> {                    
+                }
+            }
+        }
+    });  
+    let mb = MagicBall::new(addr2, write_tx2, rpc_inbound_tx);
+    tokio::spawn(process_cfg_stream(config.clone(), mb.clone(), read_rx, restream_tx, restream_rx, dependency.clone()));
+    connect_stream_future(host, addr3, access_key, read_tx, write_rx).await;
+}

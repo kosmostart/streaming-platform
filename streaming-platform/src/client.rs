@@ -4,7 +4,7 @@ use std::error::Error;
 use log::*;
 use tokio::runtime::Runtime;
 use tokio::net::TcpStream;
-use tokio::sync::{mpsc::{self, UnboundedSender, UnboundedReceiver}, oneshot};
+use tokio::sync::{mpsc::{self, UnboundedSender, UnboundedReceiver}};
 use serde_json::{json, Value, from_slice, to_vec};
 use sp_dto::*;
 use crate::proto::*;
@@ -69,8 +69,11 @@ where
     D: Clone + Send + Sync
 {
     let (cfg_host, cfg_addr, cfg_access_key) = ("", "", "");
-    let (cfg_tx, cfg_rx) = oneshot::channel();
+    let (cfg_tx, mut cfg_rx) = mpsc::unbounded_channel();
+
     tokio::spawn(cfg_mode(cfg_host, cfg_addr, cfg_access_key, cfg_tx));
+
+    let cfg = cfg_rx.recv().await.expect("Failed to get config");
 
     let (read_tx, read_rx) = mpsc::unbounded_channel();
     let (write_tx, write_rx) = mpsc::unbounded_channel();
@@ -463,7 +466,7 @@ struct CfgStreamLayout {
     payload: Option<Value>
 }
 
-pub async fn cfg_mode(host: &str, addr: &str, access_key: &str, result_tx: oneshot::Sender<Value>) {    
+pub async fn cfg_mode(host: &str, addr: &str, access_key: &str, result_tx: UnboundedSender<Value>) {    
     let (read_tx, read_rx) = mpsc::unbounded_channel();
     let (write_tx, write_rx) = mpsc::unbounded_channel();
     let (rpc_inbound_tx, mut rpc_inbound_rx) = mpsc::unbounded_channel();
@@ -506,14 +509,18 @@ pub async fn cfg_mode(host: &str, addr: &str, access_key: &str, result_tx: onesh
     connect_stream_future(host, addr3, access_key, read_tx, write_rx).await;
 }
 
-pub async fn process_cfg_stream(mut mb: MagicBall, mut rx: UnboundedReceiver<ClientMsg>, mut result_tx: oneshot::Sender<Value>) {
+pub async fn process_cfg_stream(mut mb: MagicBall, mut rx: UnboundedReceiver<ClientMsg>, mut result_tx: UnboundedSender<Value>) {
     let mut stream_layouts = HashMap::new();
 
     loop {        
         let client_msg = rx.recv().await.expect("connection issues acquired");
         let stream_id = client_msg.get_stream_id();
         match process_client_msg(&mut mb, &mut stream_layouts, client_msg, &mut result_tx).await {
-            Ok(()) => {}
+            Ok(completed) => {
+                if completed {
+                    break;
+                }
+            }
             Err(e) => {
                 error!("Process client msg error, {:?}", e);
                 /*
@@ -553,7 +560,7 @@ pub async fn process_cfg_stream(mut mb: MagicBall, mut rx: UnboundedReceiver<Cli
     }
 }
 
-async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64, CfgStreamLayout>, client_msg: ClientMsg, result_tx: &mut oneshot::Sender<Value>) -> Result<(), ProcessError> {
+async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64, CfgStreamLayout>, client_msg: ClientMsg, result_tx: &mut UnboundedSender<Value>) -> Result<bool, ProcessError> {
     match client_msg {
 		ClientMsg::Frame(frame) => {
 			match frame.get_frame_type() {
@@ -653,7 +660,7 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
 							match &stream_layout.msg_meta {
 								Some(msg_meta) => {
 									match msg_meta.key.action.as_ref() {
-										"DeployUnit" => {							
+										"Get" => {							
 											let payload: Value = from_slice(&stream_layout.layout.payload)?;
                                             info!("{:#?}", payload);
 											stream_layout.payload = Some(payload);
@@ -679,8 +686,11 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
                                     match stream_layout.msg_meta {
                                         Some(msg_meta) => {
                                             match msg_meta.key.action.as_ref() {
-                                                "DeployUnit" => {
-                                                    let mut payload = stream_layout.payload.ok_or(ProcessError::None)?;       
+                                                "Get" => {
+                                                    let mut payload = stream_layout.payload.ok_or(ProcessError::None)?;
+                                                    result_tx.send(payload).expect("Failed to send config");
+
+                                                    return Ok(true);    
                                                 }
                                                 _ => {}
                                             }
@@ -708,5 +718,5 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
 		}
 	}
 
-    Ok(())
+    Ok(false)
 }

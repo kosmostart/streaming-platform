@@ -4,7 +4,7 @@ use std::error::Error;
 use log::*;
 use tokio::runtime::Runtime;
 use tokio::net::TcpStream;
-use tokio::sync::mpsc::{self, UnboundedSender, UnboundedReceiver};
+use tokio::sync::{mpsc::{self, UnboundedSender, UnboundedReceiver}, oneshot};
 use serde_json::{json, Value, from_slice, to_vec};
 use sp_dto::*;
 use crate::proto::*;
@@ -27,6 +27,7 @@ where
     let host = config.get("host").expect("Missing host config value").to_owned();    
     let access_key = config.get("access_key").expect("Missing access_key config value").to_owned();
     let rt = Runtime::new().expect("Failed to create runtime");
+
     rt.block_on(stream_mode(&host, &addr, &access_key, process_stream, startup, config, startup_data, restream_tx, restream_rx, dependency));
 }
 
@@ -48,6 +49,7 @@ where
     let host = config.get("host").expect("Missing host config value").to_owned();
     let access_key = config.get("access_key").expect("Missing access_key config value").to_owned();
     let rt = Runtime::new().expect("Failed to create runtime");
+
     rt.block_on(full_message_mode(&host, &addr, &access_key, process_event, process_rpc, startup, config, startup_data, dependency));
 }
 
@@ -65,7 +67,11 @@ where
     T: Future<Output = ()> + Send,
     R: Future<Output = ()> + Send,
     D: Clone + Send + Sync
-{    
+{
+    let (cfg_host, cfg_addr, cfg_access_key) = ("", "", "");
+    let (cfg_tx, cfg_rx) = oneshot::channel();
+    tokio::spawn(cfg_mode(cfg_host, cfg_addr, cfg_access_key, cfg_tx));
+
     let (read_tx, read_rx) = mpsc::unbounded_channel();
     let (write_tx, write_rx) = mpsc::unbounded_channel();
     let (rpc_inbound_tx, mut rpc_inbound_rx) = mpsc::unbounded_channel();
@@ -74,7 +80,8 @@ where
     let addr2 = addr.to_owned();   
     let addr3 = addr.to_owned();
     let access_key = access_key.to_owned();        
-    let write_tx2 = write_tx.clone();    
+    let write_tx2 = write_tx.clone();
+
     tokio::spawn(async move {
         let mut rpcs = HashMap::new();        
 
@@ -450,12 +457,13 @@ async fn process_full_message_mode(addr: String, mut write_tcp_stream: TcpStream
 	}  
 }
 
-pub async fn cfg_mode<T: 'static, R: 'static, D: 'static>(host: &str, addr: &str, access_key: &str, config: HashMap<String, String>, restream_tx: Option<UnboundedSender<RestreamMsg>>, restream_rx: Option<UnboundedReceiver<RestreamMsg>>, dependency: D)
-where 
-    T: Future<Output = ()> + Send,
-    R: Future<Output = ()> + Send,
-    D: Clone + Send + Sync
-{    
+struct CfgStreamLayout {
+    layout: StreamLayout,
+    msg_meta: Option<MsgMeta>,
+    payload: Option<Value>
+}
+
+pub async fn cfg_mode(host: &str, addr: &str, access_key: &str, result_tx: oneshot::Sender<Value>) {    
     let (read_tx, read_rx) = mpsc::unbounded_channel();
     let (write_tx, write_rx) = mpsc::unbounded_channel();
     let (rpc_inbound_tx, mut rpc_inbound_rx) = mpsc::unbounded_channel();
@@ -464,7 +472,8 @@ where
     let addr2 = addr.to_owned();   
     let addr3 = addr.to_owned();
     let access_key = access_key.to_owned();        
-    let write_tx2 = write_tx.clone();    
+    let write_tx2 = write_tx.clone();
+
     tokio::spawn(async move {
         let mut rpcs = HashMap::new();        
 
@@ -493,6 +502,211 @@ where
         }
     });  
     let mb = MagicBall::new(addr2, write_tx2, rpc_inbound_tx);
-    tokio::spawn(process_cfg_stream(config.clone(), mb.clone(), read_rx, restream_tx, restream_rx, dependency.clone()));
+    tokio::spawn(process_cfg_stream(mb.clone(), read_rx, result_tx));
     connect_stream_future(host, addr3, access_key, read_tx, write_rx).await;
+}
+
+pub async fn process_cfg_stream(mut mb: MagicBall, mut rx: UnboundedReceiver<ClientMsg>, mut result_tx: oneshot::Sender<Value>) {
+    let mut stream_layouts = HashMap::new();
+
+    loop {        
+        let client_msg = rx.recv().await.expect("connection issues acquired");
+        let stream_id = client_msg.get_stream_id();
+        match process_client_msg(&mut mb, &mut stream_layouts, client_msg, &mut result_tx).await {
+            Ok(()) => {}
+            Err(e) => {
+                error!("Process client msg error, {:?}", e);
+                /*
+                match stream_id {
+                    Some(stream_id) => {
+                        match stream_layouts.remove(&stream_id) {
+                            Some(stream_layout) => {
+                                match stream_layout.stream.msg_meta.msg_type {
+                                    MsgType::RpcRequest => {
+                                        let mut route = stream_layout.stream.msg_meta.route.clone();
+                                        route.points.push(Participator::Service(mb.addr.clone()));
+                                        let (res, msg_meta_size, payload_size, attachments_size) = rpc_response_dto2_sizes(
+                                            mb.addr.clone(),                                            
+                                            stream_layout.stream.msg_meta.key.clone(),
+                                            stream_layout.stream.msg_meta.correlation_id, 
+                                            vec![],
+                                            vec![], vec![],
+                                            RpcResult::Err,
+                                            route,
+                                            mb.auth_token.clone(),
+                                            mb.auth_data.clone()
+                                        ).expect("failed to create rpc reply");
+                                        mb.write_vec(stream_layout.stream.id, res, msg_meta_size, payload_size, attachments_size).await.expect("failed to write response to upload");
+                                    }
+                                    _ => {}
+                                }                        
+                            }
+                            None => {}
+                        }
+                        error!("{:?}", e);
+                    }
+                    None => {}
+                }
+                */
+            }
+        }
+    }
+}
+
+async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64, CfgStreamLayout>, client_msg: ClientMsg, result_tx: &mut oneshot::Sender<Value>) -> Result<(), ProcessError> {
+    match client_msg {
+		ClientMsg::Frame(frame) => {
+			match frame.get_frame_type() {
+				Ok(frame_type) => {
+					match frame_type {
+						FrameType::MsgMeta => {						
+							match stream_layouts.get_mut(&frame.stream_id) {
+								Some(stream_layout) => {
+                                    match frame.payload {
+                                        Some(payload) => {
+                                            stream_layout.layout.msg_meta.extend_from_slice(&payload[..frame.payload_size as usize]);
+                                        }
+                                        None => {}
+                                    }
+								}
+								None => {									
+									stream_layouts.insert(frame.stream_id, CfgStreamLayout {
+										layout: StreamLayout {
+											id: frame.stream_id,
+											msg_meta: match frame.payload {
+                                                Some(payload) => payload[..frame.payload_size as usize].to_vec(),
+                                                None => vec![]
+                                            },
+											payload: vec![],
+											attachments_data: vec![]
+										},
+										msg_meta:None,
+										payload: None
+									});
+								}
+							}
+						}
+						FrameType::MsgMetaEnd => {
+							info!("MsgMetaEnd frame");
+							
+							match stream_layouts.get_mut(&frame.stream_id) {
+								Some(stream_layout) => {
+                                    match frame.payload {
+                                        Some(payload) => {
+                                            stream_layout.layout.msg_meta.extend_from_slice(&payload[..frame.payload_size as usize]);	
+                                        }
+                                        None => {}
+                                    }
+
+									let msg_meta: MsgMeta = from_slice(&stream_layout.layout.msg_meta)?;
+
+                                    info!("Started stream {:?}", msg_meta.key);
+
+									stream_layout.msg_meta = Some(msg_meta);
+								}
+								None => {									
+									let mut stream_layout = CfgStreamLayout {
+										layout: StreamLayout {
+											id: frame.stream_id,
+											msg_meta: vec![],
+											payload: vec![],
+											attachments_data: vec![]
+										},
+										msg_meta: None,
+										payload: None
+									};
+
+                                    match frame.payload {
+                                        Some(payload) => {
+                                            stream_layout.layout.msg_meta.extend_from_slice(&payload[..frame.payload_size as usize]);	
+                                        }
+                                        None => {}
+                                    }									
+
+									let msg_meta: MsgMeta = from_slice(&stream_layout.layout.msg_meta)?;
+                                    info!("Started stream {:?}", msg_meta.key);
+                                    stream_layout.msg_meta = Some(msg_meta);
+
+									stream_layouts.insert(frame.stream_id, stream_layout);
+								}
+							};
+						}						
+						FrameType::Payload => {
+                            match frame.payload {
+                                Some(payload) => {
+                                    let stream_layout = stream_layouts.get_mut(&frame.stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
+                                    stream_layout.layout.payload.extend_from_slice(&payload[..frame.payload_size as usize]);
+                                }
+                                None => {}
+                            }					
+						}
+						FrameType::PayloadEnd => {
+							let stream_layout = stream_layouts.get_mut(&frame.stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
+
+                            match frame.payload {
+                                Some(payload) => {
+                                    stream_layout.layout.payload.extend_from_slice(&payload[..frame.payload_size as usize]);
+                                }
+                                None => {}
+                            }							
+
+							match &stream_layout.msg_meta {
+								Some(msg_meta) => {
+									match msg_meta.key.action.as_ref() {
+										"DeployUnit" => {							
+											let payload: Value = from_slice(&stream_layout.layout.payload)?;
+                                            info!("{:#?}", payload);
+											stream_layout.payload = Some(payload);
+										}
+										_ => {}
+									}
+								}
+								None => {
+									error!("Msg meta empty, stream id {}", frame.stream_id);
+								}
+							}
+						}
+						FrameType::Attachment => {
+                            info!("Attachment frame");												
+						}						
+						FrameType::AttachmentEnd => {
+                            info!("Attachment end frame");
+						}
+						FrameType::End => {
+                            info!("Stream end frame");	
+							match stream_layouts.remove(&frame.stream_id) {
+								Some(mut stream_layout) => {
+                                    match stream_layout.msg_meta {
+                                        Some(msg_meta) => {
+                                            match msg_meta.key.action.as_ref() {
+                                                "DeployUnit" => {
+                                                    let mut payload = stream_layout.payload.ok_or(ProcessError::None)?;       
+                                                }
+                                                _ => {}
+                                            }
+                                        }
+                                        None => {
+                                            error!("Msg meta empty, stream id {}", frame.stream_id);
+                                        }
+                                    }
+                                }
+								None => {
+									error!("Not found stream layout for stream end");
+								}
+							}
+						}
+					}
+
+				}
+				Err(e) => {
+					error!("Get frame type failed, frame type {}, {:?}", frame.frame_type, e);
+				}
+			}
+		}
+		_ => {
+			error!("Incorrect client message received")
+		}
+	}
+
+    Ok(())
 }

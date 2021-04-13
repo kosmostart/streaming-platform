@@ -68,21 +68,18 @@ where
     R: Future<Output = ()> + Send,
     D: Clone + Send + Sync
 {
-    let (cfg_host, cfg_addr, cfg_access_key) = ("", "", "");
+    let cfg_host = "";
+
     let (cfg_tx, mut cfg_rx) = mpsc::unbounded_channel();
 
-    tokio::spawn(cfg_mode(cfg_host, cfg_addr, cfg_access_key, cfg_tx));
+    tokio::spawn(cfg_mode(cfg_host, addr.to_owned(), access_key.to_owned(), cfg_tx));
 
     let cfg = cfg_rx.recv().await.expect("Failed to get config");
 
     let (read_tx, read_rx) = mpsc::unbounded_channel();
     let (write_tx, write_rx) = mpsc::unbounded_channel();
     let (rpc_inbound_tx, mut rpc_inbound_rx) = mpsc::unbounded_channel();
-    let (rpc_outbound_tx, mut _rpc_outbound_rx) = mpsc::unbounded_channel();
-    let addr = addr.to_owned();
-    let addr2 = addr.to_owned();   
-    let addr3 = addr.to_owned();
-    let access_key = access_key.to_owned();        
+    let (rpc_outbound_tx, mut _rpc_outbound_rx) = mpsc::unbounded_channel();    
     let write_tx2 = write_tx.clone();
 
     tokio::spawn(async move {
@@ -112,10 +109,10 @@ where
             }
         }
     });  
-    let mb = MagicBall::new(addr2, write_tx2, rpc_inbound_tx);
+    let mb = MagicBall::new(addr.to_owned(), write_tx2, rpc_inbound_tx);
     tokio::spawn(process_stream(config.clone(), mb.clone(), read_rx, restream_tx, restream_rx, dependency.clone()));
     tokio::spawn(startup(config, mb, startup_data, dependency));
-    connect_stream_future(host, addr3, access_key, read_tx, write_rx).await;
+    connect_stream_future(host, addr.to_owned(), access_key.to_owned(), read_tx, write_rx).await;
 }
 
 /// Future for message based client based on provided config.
@@ -466,15 +463,11 @@ struct CfgStreamLayout {
     payload: Option<Value>
 }
 
-pub async fn cfg_mode(host: &str, addr: &str, access_key: &str, result_tx: UnboundedSender<Value>) {    
+pub async fn cfg_mode(host: &str, addr: String, access_key: String, result_tx: UnboundedSender<Value>) {    
     let (read_tx, read_rx) = mpsc::unbounded_channel();
     let (write_tx, write_rx) = mpsc::unbounded_channel();
     let (rpc_inbound_tx, mut rpc_inbound_rx) = mpsc::unbounded_channel();
-    let (rpc_outbound_tx, mut _rpc_outbound_rx) = mpsc::unbounded_channel();
-    let addr = addr.to_owned();
-    let addr2 = addr.to_owned();   
-    let addr3 = addr.to_owned();
-    let access_key = access_key.to_owned();        
+    let (rpc_outbound_tx, mut _rpc_outbound_rx) = mpsc::unbounded_channel();       
     let write_tx2 = write_tx.clone();
 
     tokio::spawn(async move {
@@ -504,9 +497,9 @@ pub async fn cfg_mode(host: &str, addr: &str, access_key: &str, result_tx: Unbou
             }
         }
     });  
-    let mb = MagicBall::new(addr2, write_tx2, rpc_inbound_tx);
+    let mb = MagicBall::new(addr.clone(), write_tx2, rpc_inbound_tx);
     tokio::spawn(process_cfg_stream(mb.clone(), read_rx, result_tx));
-    connect_stream_future(host, addr3, access_key, read_tx, write_rx).await;
+    connect_stream_future(host, addr, access_key, read_tx, write_rx).await;
 }
 
 pub async fn process_cfg_stream(mut mb: MagicBall, mut rx: UnboundedReceiver<ClientMsg>, mut result_tx: UnboundedSender<Value>) {

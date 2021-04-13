@@ -18,20 +18,14 @@ struct FileStreamLayout {
 
 fn main() {
     env_logger::init();
-
-    let mut config = HashMap::new();
-
-    config.insert("addr".to_owned(), "Pod".to_owned());
-    config.insert("host".to_owned(), "127.0.0.1:11001".to_owned());
-    config.insert("access_key".to_owned(), "".to_owned());
-
-    client::start_stream(config, process_stream, startup, None, None, None, ());
+    
+    client::start_stream("127.0.0.1:11001", "Pod", "", process_stream, startup, None, None, None, ());
 }
 
-pub async fn startup(_config: HashMap<String, String>, mut _mb: MagicBall, _startup_data: Option<Value>, _: ()) {
+pub async fn startup(_config: Value, mut _mb: MagicBall, _startup_data: Option<Value>, _: ()) {
 }
 
-pub async fn process_stream(config: HashMap<String, String>, mut mb: MagicBall, mut rx: UnboundedReceiver<ClientMsg>, _: Option<UnboundedSender<RestreamMsg>>, _: Option<UnboundedReceiver<RestreamMsg>>, _: ()) {
+pub async fn process_stream(config: Value, mut mb: MagicBall, mut rx: UnboundedReceiver<ClientMsg>, _: Option<UnboundedSender<RestreamMsg>>, _: Option<UnboundedReceiver<RestreamMsg>>, _: ()) {
     let dirs: Vec<sp_cfg::Dir> = vec![];
     let mut stream_layouts = HashMap::new();
 

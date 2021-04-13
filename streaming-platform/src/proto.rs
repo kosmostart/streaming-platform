@@ -341,15 +341,15 @@ pub trait DI<T> {
 */
 
 /// Type for function called on data stream processing
-pub type ProcessStream<T, D> = fn(HashMap<String, String>, MagicBall, UnboundedReceiver<ClientMsg>, Option<UnboundedSender<RestreamMsg>>, Option<UnboundedReceiver<RestreamMsg>>, D) -> T;
+pub type ProcessStream<T, D> = fn(Value, MagicBall, UnboundedReceiver<ClientMsg>, Option<UnboundedSender<RestreamMsg>>, Option<UnboundedReceiver<RestreamMsg>>, D) -> T;
 /// Type for function called on event processing with json payload
-pub type ProcessEvent<T, R, D> = fn(HashMap<String, String>, MagicBall, Message<R>, D) -> T;
+pub type ProcessEvent<T, R, D> = fn(Value, MagicBall, Message<R>, D) -> T;
 /// Type for function called on rpc processing with json payload
-pub type ProcessRpc<T, R, D> = fn(HashMap<String, String>, MagicBall, Message<R>, D) -> T;
+pub type ProcessRpc<T, R, D> = fn(Value, MagicBall, Message<R>, D) -> T;
 /// Type for function called on stream client starting
-pub type StreamStartup<T, D> = fn(HashMap<String, String>, Option<Value>, D) -> T;
+pub type StreamStartup<T, D> = fn(Value, Option<Value>, D) -> T;
 /// Type for function called on client starting
-pub type Startup<T, D> = fn(HashMap<String, String>, MagicBall, Option<Value>, D) -> T;
+pub type Startup<T, D> = fn(Value, MagicBall, Option<Value>, D) -> T;
 
 /// Messages received from client
 pub enum ClientMsg {    

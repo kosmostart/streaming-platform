@@ -18,13 +18,13 @@ impl std::fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
-pub async fn process_event(config: HashMap<String, String>, mut mb: MagicBall, msg: Message<Value>, _: ()) -> Result<(), Box<dyn std::error::Error>>  {
+pub async fn process_event(config: Value, mut mb: MagicBall, msg: Message<Value>, _: ()) -> Result<(), Box<dyn std::error::Error>>  {
     //info!("{:#?}", msg);
     
     Ok(())
 }
 
-pub async fn process_rpc(config: HashMap<String, String>, mut mb: MagicBall, msg: Message<Value>, _: ()) -> Result<Response<Value>, Box<dyn std::error::Error>> {   
+pub async fn process_rpc(config: Value, mut mb: MagicBall, msg: Message<Value>, _: ()) -> Result<Response<Value>, Box<dyn std::error::Error>> {   
     //info!("{:#?}", msg);
 
     let res = match msg.meta.key.action.as_ref() {
@@ -50,17 +50,11 @@ pub async fn process_rpc(config: HashMap<String, String>, mut mb: MagicBall, msg
     resp(res)
 }
 
-pub async fn startup(config: HashMap<String, String>, mut mb: MagicBall, startup_data: Option<Value>, _: ()) {
+pub async fn startup(config: Value, mut mb: MagicBall, startup_data: Option<Value>, _: ()) {
 }
 
 pub fn main() {
     env_logger::init();
-
-    let mut config = HashMap::new();
-
-    config.insert("addr".to_owned(), "Auth".to_owned());
-    config.insert("host".to_owned(), "127.0.0.1:11001".to_owned());
-    config.insert("access_key".to_owned(), "".to_owned());
  
-    client::start_full_message(config, process_event, process_rpc, startup, None, ());
+    client::start_full_message("127.0.0.1:11001", "Auth", "", process_event, process_rpc, startup, None, ());
  }

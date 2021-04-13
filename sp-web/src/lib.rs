@@ -53,34 +53,34 @@ mod sse_stream {
     }
 }
 
-pub async fn process_event(_config: HashMap<String, String>, mut _mb: MagicBall, _msg: Message<Value>, _: ()) -> Result<(), Box<dyn std::error::Error>>  {
+pub async fn process_event(_config: Value, mut _mb: MagicBall, _msg: Message<Value>, _: ()) -> Result<(), Box<dyn std::error::Error>>  {
     Ok(())
 }
 
-pub async fn process_rpc(_config: HashMap<String, String>, mut _mb: MagicBall, _msg: Message<Value>, _: ()) -> Result<streaming_platform::sp_dto::Response<Value>, Box<dyn std::error::Error>> {
+pub async fn process_rpc(_config: Value, mut _mb: MagicBall, _msg: Message<Value>, _: ()) -> Result<streaming_platform::sp_dto::Response<Value>, Box<dyn std::error::Error>> {
     resp(json!({}))    
 }
 
-pub async fn startup2(config: HashMap<String, String>, mb: MagicBall, startup_data: Option<Value>, _: ()) {	
+pub async fn startup2(config: Value, mb: MagicBall, startup_data: Option<Value>, _: ()) {	
 }
 
-pub async fn startup(config: HashMap<String, String>, mb: MagicBall, startup_data: Option<Value>, _: ()) {	
+pub async fn startup(config: Value, mb: MagicBall, startup_data: Option<Value>, _: ()) {	
 	let (mut restream_tx, mut restream_rx) = mpsc::unbounded_channel();
     let mut restream_tx2 = restream_tx.clone();
     let config2 = config.clone();
 
     tokio::spawn(async move {
-        let stream_addr = config2.get("stream_addr").expect("missing stream_addr config value").to_owned();
-        let host = config2.get("host").expect("missing host config value").to_owned();
+        let stream_addr = config2["stream_addr"].as_str().expect("Missing stream_addr config value").to_owned();
+        let host = config2["host"].as_str().expect("Missing host config value").to_owned();
         let access_key = "";
-        stream_mode(&host, &stream_addr, access_key, process_stream, startup2, config2, None, Some(restream_tx2), Some(restream_rx), ()).await;
+        stream_mode(&host, &stream_addr, access_key, process_stream, startup2, None, Some(restream_tx2), Some(restream_rx), ()).await;
     });
 	
-    let listen_addr = config.get("listen_addr").expect("Missing listen_addr config value");
-    let cert_path = config.get("cert_path");
-    let key_path = config.get("key_path");
+    let listen_addr = config["listen_addr"].as_str().expect("Missing listen_addr config value");
+    let cert_path = config["cert_path"].as_str();
+    let key_path = config["key_path"].as_str();
 
-    let aca_origin = config.get("aca_origin").map(|x| x.to_owned());
+    let aca_origin = config["aca_origin"].as_str().map(|x| x.to_owned());
     let aca_origin2 = aca_origin.clone();
     let aca_origin3 = aca_origin.clone();
 	let aca_origin4 = aca_origin.clone();
@@ -89,7 +89,7 @@ pub async fn startup(config: HashMap<String, String>, mb: MagicBall, startup_dat
 
     let listen_addr = listen_addr.parse::<SocketAddr>().expect("Incorrect listen addr passed");
 
-    let auth_token_key = config.get("auth_token_key").map(|x| x.to_owned()).expect("Missing auth_token_key config value");
+    let auth_token_key = config["auth_token_key"].as_str().map(|x| x.to_owned()).expect("Missing auth_token_key config value");
     let auth_token_key1 = auth_token_key.clone();
     let auth_token_key2 = auth_token_key.clone();
     let auth_token_key3 = auth_token_key.clone();
@@ -127,7 +127,7 @@ pub async fn startup(config: HashMap<String, String>, mb: MagicBall, startup_dat
         None => {}
     };
 
-    let deploy_path = match config.get("deploy_path") {
+    let deploy_path = match config["deploy_path"].as_str() {
         Some(path) => path.to_owned(),
         None => current_dir().expect("failed to get current dir").to_str().expect("failed to get current dir str (for deploy path)").to_owned()
     };
@@ -607,7 +607,7 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
     Ok(())
 }
 
-pub async fn process_stream(config: HashMap<String, String>, mut mb: MagicBall, mut rx: UnboundedReceiver<ClientMsg>, mut restream_tx: Option<UnboundedSender<RestreamMsg>>, mut restream_rx: Option<UnboundedReceiver<RestreamMsg>>, _: ()) {    
+pub async fn process_stream(config: Value, mut mb: MagicBall, mut rx: UnboundedReceiver<ClientMsg>, mut restream_tx: Option<UnboundedSender<RestreamMsg>>, mut restream_rx: Option<UnboundedReceiver<RestreamMsg>>, _: ()) {    
     let mut restream_tx = restream_tx.expect("Restream tx is empty");
     let mut restream_rx = restream_rx.expect("Restream rx is empty");
     let mut mb2 = mb.clone();

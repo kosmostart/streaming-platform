@@ -17,18 +17,14 @@ use crate::proto::*;
 /// restream_rx can be used for restreaming data somewhere else, for example returning data for incoming web request
 /// dependency is w/e clonable dependency needed when processing data.
 /// The protocol message format is in sp-dto crate.
-pub fn start_stream<T: 'static, R: 'static, D: 'static>(config: HashMap<String, String>, process_stream: ProcessStream<T, D>, startup: Startup<R, D>, startup_data: Option<Value>, restream_tx: Option<UnboundedSender<RestreamMsg>>, restream_rx: Option<UnboundedReceiver<RestreamMsg>>, dependency: D) 
+pub fn start_stream<T: 'static, R: 'static, D: 'static>(host: &str, addr: &str, access_key: &str, process_stream: ProcessStream<T, D>, startup: Startup<R, D>, startup_data: Option<Value>, restream_tx: Option<UnboundedSender<RestreamMsg>>, restream_rx: Option<UnboundedReceiver<RestreamMsg>>, dependency: D) 
 where 
     T: Future<Output = ()> + Send,
     R: Future<Output = ()> + Send,
     D: Clone + Send + Sync
 {        
-    let addr = config.get("addr").expect("Missing addr config value").to_owned();
-    let host = config.get("host").expect("Missing host config value").to_owned();    
-    let access_key = config.get("access_key").expect("Missing access_key config value").to_owned();
     let rt = Runtime::new().expect("Failed to create runtime");
-
-    rt.block_on(stream_mode(&host, &addr, &access_key, process_stream, startup, config, startup_data, restream_tx, restream_rx, dependency));
+    rt.block_on(stream_mode(&host, &addr, &access_key, process_stream, startup, startup_data, restream_tx, restream_rx, dependency));
 }
 
 /// Starts a message based client based on provided config. Creates new runtime and blocks.
@@ -38,19 +34,15 @@ where
 /// startup is executed on the start of this function.
 /// dependency is w/e clonable dependency needed when processing data.
 /// The protocol message format is in sp-dto crate.
-pub fn start_full_message<T: 'static, Q: 'static, R: 'static, D: 'static>(config: HashMap<String, String>, process_event: ProcessEvent<T, Value, D>, process_rpc: ProcessRpc<Q, Value, D>, startup: Startup<R, D>, startup_data: Option<Value>, dependency: D) 
+pub fn start_full_message<T: 'static, Q: 'static, R: 'static, D: 'static>(host: &str, addr: &str, access_key: &str, process_event: ProcessEvent<T, Value, D>, process_rpc: ProcessRpc<Q, Value, D>, startup: Startup<R, D>, startup_data: Option<Value>, dependency: D) 
 where 
     T: Future<Output = Result<(), Box<dyn Error>>> + Send,
     Q: Future<Output = Result<Response<Value>, Box<dyn Error>>> + Send,
     R: Future<Output = ()> + Send,
     D: Clone + Send + Sync
 {    
-    let addr = config.get("addr").expect("Missing addr config value").to_owned();
-    let host = config.get("host").expect("Missing host config value").to_owned();
-    let access_key = config.get("access_key").expect("Missing access_key config value").to_owned();
     let rt = Runtime::new().expect("Failed to create runtime");
-
-    rt.block_on(full_message_mode(&host, &addr, &access_key, process_event, process_rpc, startup, config, startup_data, dependency));
+    rt.block_on(full_message_mode(host, addr, access_key, process_event, process_rpc, startup, startup_data, dependency));
 }
 
 /// Future for stream based client based on provided config.
@@ -62,7 +54,7 @@ where
 /// restream_rx can be used for restreaming data somewhere else, for example returning data for incoming web request
 /// dependency is w/e clonable dependency needed when processing data.
 /// The protocol message format is in sp-dto crate.
-pub async fn stream_mode<T: 'static, R: 'static, D: 'static>(host: &str, addr: &str, access_key: &str, process_stream: ProcessStream<T, D>, startup: Startup<R, D>, config: HashMap<String, String>, startup_data: Option<Value>, restream_tx: Option<UnboundedSender<RestreamMsg>>, restream_rx: Option<UnboundedReceiver<RestreamMsg>>, dependency: D)
+pub async fn stream_mode<T: 'static, R: 'static, D: 'static>(host: &str, addr: &str, access_key: &str, process_stream: ProcessStream<T, D>, startup: Startup<R, D>, startup_data: Option<Value>, restream_tx: Option<UnboundedSender<RestreamMsg>>, restream_rx: Option<UnboundedReceiver<RestreamMsg>>, dependency: D)
 where 
     T: Future<Output = ()> + Send,
     R: Future<Output = ()> + Send,
@@ -71,10 +63,8 @@ where
     let cfg_host = "";
 
     let (cfg_tx, mut cfg_rx) = mpsc::unbounded_channel();
-
     tokio::spawn(cfg_mode(cfg_host, addr.to_owned(), access_key.to_owned(), cfg_tx));
-
-    let cfg = cfg_rx.recv().await.expect("Failed to get config");
+    let config = cfg_rx.recv().await.expect("Failed to get config");
 
     let (read_tx, read_rx) = mpsc::unbounded_channel();
     let (write_tx, write_rx) = mpsc::unbounded_channel();
@@ -123,14 +113,20 @@ where
 /// restream_rx can be used for restreaming data somewhere else, for example returning data for incoming web request
 /// dependency is w/e clonable dependency needed when processing data.
 /// The protocol message format is in sp-dto crate.
-pub async fn full_message_mode<P: 'static, T: 'static, Q: 'static, R: 'static, D: 'static>(host: &str, addr: &str, access_key: &str, process_event: ProcessEvent<T, P, D>, process_rpc: ProcessRpc<Q, P, D>, startup: Startup<R, D>, config: HashMap<String, String>, startup_data: Option<Value>, dependency: D)
+pub async fn full_message_mode<P: 'static, T: 'static, Q: 'static, R: 'static, D: 'static>(host: &str, addr: &str, access_key: &str, process_event: ProcessEvent<T, P, D>, process_rpc: ProcessRpc<Q, P, D>, startup: Startup<R, D>, startup_data: Option<Value>, dependency: D)
 where 
     T: Future<Output = Result<(), Box<dyn Error>>> + Send,
     Q: Future<Output = Result<Response<P>, Box<dyn Error>>> + Send,
     R: Future<Output = ()> + Send,
     P: serde::Serialize, for<'de> P: serde::Deserialize<'de> + Send,
     D: Clone + Send + Sync
-{    
+{
+    let cfg_host = "";
+
+    let (cfg_tx, mut cfg_rx) = mpsc::unbounded_channel();
+    tokio::spawn(cfg_mode(cfg_host, addr.to_owned(), access_key.to_owned(), cfg_tx));
+    let config = cfg_rx.recv().await.expect("Failed to get config");
+
     let (read_tx, mut read_rx) = mpsc::unbounded_channel();
     let (write_tx, write_rx) = mpsc::unbounded_channel();
     let (rpc_inbound_tx, mut rpc_inbound_rx) = mpsc::unbounded_channel();

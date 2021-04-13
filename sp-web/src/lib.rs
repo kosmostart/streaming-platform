@@ -64,7 +64,7 @@ pub async fn process_rpc(_config: Value, mut _mb: MagicBall, _msg: Message<Value
 pub async fn startup2(config: Value, mb: MagicBall, startup_data: Option<Value>, _: ()) {	
 }
 
-pub async fn startup(config: Value, mb: MagicBall, startup_data: Option<Value>, _: ()) {	
+pub async fn startup(config: Value, mb: MagicBall, startup_data: Option<Value>, _: ()) {
 	let (mut restream_tx, mut restream_rx) = mpsc::unbounded_channel();
     let mut restream_tx2 = restream_tx.clone();
     

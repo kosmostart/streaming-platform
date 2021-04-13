@@ -461,7 +461,7 @@ struct CfgStreamLayout {
     payload: Option<Value>
 }
 
-pub async fn cfg_mode(cfg_host: String, cfg_token: String, result_tx: UnboundedSender<Value>) {    
+pub async fn cfg_mode(cfg_host: String, cfg_token: String, result_tx: UnboundedSender<Value>) {
     let (read_tx, read_rx) = mpsc::unbounded_channel();
     let (write_tx, write_rx) = mpsc::unbounded_channel();
     let (rpc_inbound_tx, mut rpc_inbound_rx) = mpsc::unbounded_channel();
@@ -472,7 +472,7 @@ pub async fn cfg_mode(cfg_host: String, cfg_token: String, result_tx: UnboundedS
         let mut rpcs = HashMap::new();        
 
         loop {
-            let msg = rpc_inbound_rx.recv().await.expect("rpc inbound msg receive failed");
+            let msg = rpc_inbound_rx.recv().await.expect("Rpc inbound msg receive failed");
 
             match msg {
                 RpcMsg::AddRpc(correlation_id, rpc_tx) => {
@@ -483,7 +483,7 @@ pub async fn cfg_mode(cfg_host: String, cfg_token: String, result_tx: UnboundedS
                         Some(rpc_tx) => {
                             match rpc_outbound_tx.send(RpcMsg::RpcDataResponse(correlation_id, rpc_tx)) {
                                 Ok(()) => {}
-                                Err(_) => panic!("rpc outbound tx send failed on rpc data request")
+                                Err(_) => panic!("Rpc outbound tx send failed on rpc data request")
                             }
                         }
                         None => {                            
@@ -496,19 +496,33 @@ pub async fn cfg_mode(cfg_host: String, cfg_token: String, result_tx: UnboundedS
         }
     });
 
-    let addr = "";
+    let addr = uuid::Uuid::new_v4().to_string();
     let access_key = "";
 
-    let mb = MagicBall::new(addr.to_owned(), write_tx2, rpc_inbound_tx);
+    let mut mb = MagicBall::new(addr.clone(), write_tx2, rpc_inbound_tx);
+
     tokio::spawn(process_cfg_stream(mb.clone(), read_rx, result_tx));
-    connect_stream_future(cfg_host.to_owned(), addr.to_owned(), access_key.to_owned(), read_tx, write_rx).await;
+
+    match mb.send_rpc(Key::new("Get", "Cfg", "Cfg"), json!({
+        "cfg_token": cfg_token
+    })).await {
+        Ok(correlation_id) => {
+            info!("Sent cfg rpc, correlation id {}", correlation_id);
+        }
+        Err(e) => {
+            error!("Failed to send cfg rpc, {:?}", e);
+            panic!("Failed to send cfg rpc");
+        }
+    }
+
+    connect_stream_future(cfg_host.to_owned(), addr, access_key.to_owned(), read_tx, write_rx).await;
 }
 
 pub async fn process_cfg_stream(mut mb: MagicBall, mut rx: UnboundedReceiver<ClientMsg>, mut result_tx: UnboundedSender<Value>) {
     let mut stream_layouts = HashMap::new();
 
     loop {        
-        let client_msg = rx.recv().await.expect("connection issues acquired");
+        let client_msg = rx.recv().await.expect("Connection issues acquired");
         let stream_id = client_msg.get_stream_id();
         match process_client_msg(&mut mb, &mut stream_layouts, client_msg, &mut result_tx).await {
             Ok(completed) => {

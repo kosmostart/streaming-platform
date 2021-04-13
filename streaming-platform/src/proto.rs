@@ -703,6 +703,24 @@ impl MagicBall {
         
         Ok(())
     }
+    pub async fn send_rpc<T>(&mut self, key: Key, payload: T) -> Result<Uuid, ProcessError> where T: serde::Serialize, for<'de> T: serde::Deserialize<'de>, T: Debug {
+        let route = Route {
+            source: Participator::Service(self.addr.clone()),
+            spec: RouteSpec::Simple,
+            points: vec![Participator::Service(self.addr.clone())]
+        };
+
+        let (correlation_id, dto, msg_meta_size, payload_size, attachments_sizes) = rpc_dto_with_correlation_id_sizes(self.addr.clone(), key.clone(), payload, route, self.auth_token.clone(), self.auth_data.clone())?;
+
+		self.frame_type = FrameType::Attachment as u8;
+		self.msg_type = MsgType::RpcRequest.get_u8();
+        self.key_hash = get_key_hash(key);
+        self.stream_id = self.get_stream_id();
+
+        self.write_full_message(self.msg_type, self.key_hash, self.stream_id, dto, msg_meta_size, payload_size, attachments_sizes, true).await?;
+        
+        Ok(correlation_id)
+    }
     pub async fn send_event_with_route<T>(&mut self, key: Key, payload: T, mut route: Route) -> Result<(), ProcessError> where T: serde::Serialize, for<'de> T: serde::Deserialize<'de>, T: Debug {
         //info!("send_event, route {:?}, key {}, payload {:?}, ", route, addr, key, payload);
 

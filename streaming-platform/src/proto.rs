@@ -416,7 +416,7 @@ pub async fn write_frame(tcp_stream: &mut TcpStream, frame: Frame) -> Result<(),
     Ok(())
 }
 
-pub async fn write_loop(addr: String, mut client_rx: UnboundedReceiver<Frame>, tcp_stream: &mut TcpStream) -> Result<(), ProcessError> {    
+pub async fn write_loop(mut client_rx: UnboundedReceiver<Frame>, tcp_stream: &mut TcpStream) -> Result<(), ProcessError> {    
     loop {       
         match client_rx.recv().await {
             Some(frame) => {

@@ -293,9 +293,8 @@ pub fn main() {
 
     //flow::start_ui();
  
-    client::start_full_message("127.0.0.1:11001", "Build", "", process_event, process_rpc, startup, None, ());
+    client::start_full_message("127.0.0.1:11001", "Build", process_event, process_rpc, startup, None, ());
  }
-
  
 #[derive(Debug)]
 enum Error {

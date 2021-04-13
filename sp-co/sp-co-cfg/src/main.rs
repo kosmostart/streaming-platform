@@ -68,8 +68,8 @@ pub fn main() {
 
     let user_id = 1;
     let root_path = "d:/src/sp-co-cfg-storage";
-    
+
     let dc = Dc::new(user_id, root_path).expect("Failed to create dc");
  
-    client::start_full_message("127.0.0.1:11001", "Cfg", "", process_event, process_rpc, startup, None, dc);
+    client::start_full_message("127.0.0.1:11001", "Cfg", process_event, process_rpc, startup, None, dc);
  }

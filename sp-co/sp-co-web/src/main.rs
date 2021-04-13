@@ -16,5 +16,5 @@ pub fn main() {
     //config.insert("deploy_path".to_owned(), "".to_owned());
     */
  
-    client::start_full_message("127.0.0.1:11001", "Web", "", sp_web::process_event, sp_web::process_rpc, sp_web::startup, None, ());
+    client::start_full_message("127.0.0.1:11001", "Web", sp_web::process_event, sp_web::process_rpc, sp_web::startup, None, ());
  }

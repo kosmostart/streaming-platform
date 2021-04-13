@@ -56,5 +56,5 @@ pub async fn startup(config: Value, mut mb: MagicBall, startup_data: Option<Valu
 pub fn main() {
     env_logger::init();
  
-    client::start_full_message("127.0.0.1:11001", "Auth", "", process_event, process_rpc, startup, None, ());
+    client::start_full_message("127.0.0.1:11001", "Auth", process_event, process_rpc, startup, None, ());
  }

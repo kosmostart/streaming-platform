@@ -17,14 +17,14 @@ use crate::proto::*;
 /// restream_rx can be used for restreaming data somewhere else, for example returning data for incoming web request
 /// dependency is w/e clonable dependency needed when processing data.
 /// The protocol message format is in sp-dto crate.
-pub fn start_stream<T: 'static, R: 'static, D: 'static>(host: &str, addr: &str, access_key: &str, process_stream: ProcessStream<T, D>, startup: Startup<R, D>, startup_data: Option<Value>, restream_tx: Option<UnboundedSender<RestreamMsg>>, restream_rx: Option<UnboundedReceiver<RestreamMsg>>, dependency: D) 
+pub fn start_stream<T: 'static, R: 'static, D: 'static>(cfg_host: &str, cfg_token: &str, process_stream: ProcessStream<T, D>, startup: Startup<R, D>, startup_data: Option<Value>, restream_tx: Option<UnboundedSender<RestreamMsg>>, restream_rx: Option<UnboundedReceiver<RestreamMsg>>, dependency: D) 
 where 
     T: Future<Output = ()> + Send,
     R: Future<Output = ()> + Send,
     D: Clone + Send + Sync
 {        
     let rt = Runtime::new().expect("Failed to create runtime");
-    rt.block_on(stream_mode(&host, &addr, &access_key, process_stream, startup, startup_data, restream_tx, restream_rx, dependency));
+    rt.block_on(stream_mode(cfg_host, cfg_token, process_stream, startup, startup_data, restream_tx, restream_rx, dependency));
 }
 
 /// Starts a message based client based on provided config. Creates new runtime and blocks.
@@ -34,7 +34,7 @@ where
 /// startup is executed on the start of this function.
 /// dependency is w/e clonable dependency needed when processing data.
 /// The protocol message format is in sp-dto crate.
-pub fn start_full_message<T: 'static, Q: 'static, R: 'static, D: 'static>(host: &str, addr: &str, access_key: &str, process_event: ProcessEvent<T, Value, D>, process_rpc: ProcessRpc<Q, Value, D>, startup: Startup<R, D>, startup_data: Option<Value>, dependency: D) 
+pub fn start_full_message<T: 'static, Q: 'static, R: 'static, D: 'static>(cfg_host: &str, cfg_token: &str, process_event: ProcessEvent<T, Value, D>, process_rpc: ProcessRpc<Q, Value, D>, startup: Startup<R, D>, startup_data: Option<Value>, dependency: D) 
 where 
     T: Future<Output = Result<(), Box<dyn Error>>> + Send,
     Q: Future<Output = Result<Response<Value>, Box<dyn Error>>> + Send,
@@ -42,7 +42,7 @@ where
     D: Clone + Send + Sync
 {    
     let rt = Runtime::new().expect("Failed to create runtime");
-    rt.block_on(full_message_mode(host, addr, access_key, process_event, process_rpc, startup, startup_data, dependency));
+    rt.block_on(full_message_mode(cfg_host, cfg_token, process_event, process_rpc, startup, startup_data, dependency));
 }
 
 /// Future for stream based client based on provided config.
@@ -54,17 +54,19 @@ where
 /// restream_rx can be used for restreaming data somewhere else, for example returning data for incoming web request
 /// dependency is w/e clonable dependency needed when processing data.
 /// The protocol message format is in sp-dto crate.
-pub async fn stream_mode<T: 'static, R: 'static, D: 'static>(host: &str, addr: &str, access_key: &str, process_stream: ProcessStream<T, D>, startup: Startup<R, D>, startup_data: Option<Value>, restream_tx: Option<UnboundedSender<RestreamMsg>>, restream_rx: Option<UnboundedReceiver<RestreamMsg>>, dependency: D)
+pub async fn stream_mode<T: 'static, R: 'static, D: 'static>(cfg_host: &str, cfg_token: &str, process_stream: ProcessStream<T, D>, startup: Startup<R, D>, startup_data: Option<Value>, restream_tx: Option<UnboundedSender<RestreamMsg>>, restream_rx: Option<UnboundedReceiver<RestreamMsg>>, dependency: D)
 where 
     T: Future<Output = ()> + Send,
     R: Future<Output = ()> + Send,
     D: Clone + Send + Sync
 {
-    let cfg_host = "";
-
     let (cfg_tx, mut cfg_rx) = mpsc::unbounded_channel();
-    tokio::spawn(cfg_mode(cfg_host, addr.to_owned(), access_key.to_owned(), cfg_tx));
+    tokio::spawn(cfg_mode(cfg_host.to_owned(), cfg_token.to_owned(), cfg_tx));
     let config = cfg_rx.recv().await.expect("Failed to get config");
+
+    let host = config["host"].as_str().expect("Failed to get host from config").to_owned();
+    let addr = config["addr"].as_str().expect("Failed to get addr from config").to_owned();
+    let access_key = config["access_key"].as_str().expect("Failed to get access key from config").to_owned();
 
     let (read_tx, read_rx) = mpsc::unbounded_channel();
     let (write_tx, write_rx) = mpsc::unbounded_channel();
@@ -98,7 +100,8 @@ where
                 }
             }
         }
-    });  
+    });
+
     let mb = MagicBall::new(addr.to_owned(), write_tx2, rpc_inbound_tx);
     tokio::spawn(process_stream(config.clone(), mb.clone(), read_rx, restream_tx, restream_rx, dependency.clone()));
     tokio::spawn(startup(config, mb, startup_data, dependency));
@@ -113,7 +116,7 @@ where
 /// restream_rx can be used for restreaming data somewhere else, for example returning data for incoming web request
 /// dependency is w/e clonable dependency needed when processing data.
 /// The protocol message format is in sp-dto crate.
-pub async fn full_message_mode<P: 'static, T: 'static, Q: 'static, R: 'static, D: 'static>(host: &str, addr: &str, access_key: &str, process_event: ProcessEvent<T, P, D>, process_rpc: ProcessRpc<Q, P, D>, startup: Startup<R, D>, startup_data: Option<Value>, dependency: D)
+pub async fn full_message_mode<P: 'static, T: 'static, Q: 'static, R: 'static, D: 'static>(cfg_host: &str, cfg_token: &str, process_event: ProcessEvent<T, P, D>, process_rpc: ProcessRpc<Q, P, D>, startup: Startup<R, D>, startup_data: Option<Value>, dependency: D)
 where 
     T: Future<Output = Result<(), Box<dyn Error>>> + Send,
     Q: Future<Output = Result<Response<P>, Box<dyn Error>>> + Send,
@@ -121,11 +124,13 @@ where
     P: serde::Serialize, for<'de> P: serde::Deserialize<'de> + Send,
     D: Clone + Send + Sync
 {
-    let cfg_host = "";
-
     let (cfg_tx, mut cfg_rx) = mpsc::unbounded_channel();
-    tokio::spawn(cfg_mode(cfg_host, addr.to_owned(), access_key.to_owned(), cfg_tx));
+    tokio::spawn(cfg_mode(cfg_host.to_owned(), cfg_token.to_owned(), cfg_tx));
     let config = cfg_rx.recv().await.expect("Failed to get config");
+
+    let host = config["host"].as_str().expect("Failed to get host from config").to_owned();
+    let addr = config["addr"].as_str().expect("Failed to get addr from config");
+    let access_key = config["access_key"].as_str().expect("Failed to get access key from config");
 
     let (read_tx, mut read_rx) = mpsc::unbounded_channel();
     let (write_tx, write_rx) = mpsc::unbounded_channel();
@@ -136,6 +141,7 @@ where
     let addr2 = addr.to_owned();
     let addr3 = addr.to_owned();
     let access_key = access_key.to_owned();
+
     let rpc_inbound_tx2 = rpc_inbound_tx.clone();
     
     let write_tx2 = write_tx.clone();
@@ -278,7 +284,7 @@ where
         }    
     });
 
-    connect_full_message_future(host, addr3, access_key, read_tx, write_rx).await;
+    connect_full_message_future(&host, addr3, access_key, read_tx, write_rx).await;
 }
 
 async fn auth(addr: String, access_key: String, tcp_stream: &mut TcpStream) -> Result<(), ProcessError> {
@@ -296,16 +302,16 @@ async fn auth(addr: String, access_key: String, tcp_stream: &mut TcpStream) -> R
 }
 
 
-async fn connect_stream_future(host: &str, addr: String, access_key: String, read_tx: UnboundedSender<ClientMsg>, write_rx: UnboundedReceiver<Frame>) {
-    let mut write_stream = TcpStream::connect(host).await.expect("Connection to host failed");
+async fn connect_stream_future(host: String, addr: String, access_key: String, read_tx: UnboundedSender<ClientMsg>, write_rx: UnboundedReceiver<Frame>) {
+    let mut write_stream = TcpStream::connect(host.clone()).await.expect("Connection to host failed");
     auth(addr.clone(), access_key.clone(), &mut write_stream).await.expect("Write stream authorization failed");
 
-    let mut read_stream = TcpStream::connect(host).await.expect("Connection to host failed");
+    let mut read_stream = TcpStream::connect(host.clone()).await.expect("Connection to host failed");
     auth(addr.clone(), access_key, &mut read_stream).await.expect("Read stream authorization failed");
 
     info!("Connected in stream mode to {} as {}", host, addr);
 
-    let res = process_stream_mode(addr, write_stream, read_stream, read_tx, write_rx).await;
+    let res = process_stream_mode(write_stream, read_stream, read_tx, write_rx).await;
 
     info!("{:?}", res);
 }
@@ -319,22 +325,20 @@ async fn connect_full_message_future(host: &str, addr: String, access_key: Strin
 
     info!("Connected in full message mode to {} as {}", host, addr);
 
-    let res = process_full_message_mode(addr, write_stream, read_stream, read_tx, write_rx).await;
+    let res = process_full_message_mode(write_stream, read_stream, read_tx, write_rx).await;
 
     info!("{:?}", res);
 }
 
-async fn process_stream_mode(addr: String, mut write_tcp_stream: TcpStream, mut read_tcp_stream: TcpStream, read_tx: UnboundedSender<ClientMsg>, write_rx: UnboundedReceiver<Frame>) -> Result<(), ProcessError> {
+async fn process_stream_mode(mut write_tcp_stream: TcpStream, mut read_tcp_stream: TcpStream, read_tx: UnboundedSender<ClientMsg>, write_rx: UnboundedReceiver<Frame>) -> Result<(), ProcessError> {
     //let (auth_msg_meta, auth_payload, auth_attachments) = read_full(&mut socket_read).await?;
     //let auth_payload: Value = from_slice(&auth_payload)?;    
 
     //println!("auth {:?}", auth_msg_meta);
     //println!("auth {:?}", auth_payload);
-    
-    let addr2 = addr.clone();
 
     tokio::spawn(async move {
-        let res = write_loop(addr2, write_rx, &mut write_tcp_stream).await;
+        let res = write_loop(write_rx, &mut write_tcp_stream).await;
         error!("{:?}", res);
     });
 
@@ -360,7 +364,7 @@ async fn process_stream_mode(addr: String, mut write_tcp_stream: TcpStream, mut 
 	}
 }
 
-async fn process_full_message_mode(addr: String, mut write_tcp_stream: TcpStream, mut read_tcp_stream: TcpStream, read_tx: UnboundedSender<ClientMsg>, write_rx: UnboundedReceiver<Frame>) -> Result<(), ProcessError> {    
+async fn process_full_message_mode(mut write_tcp_stream: TcpStream, mut read_tcp_stream: TcpStream, read_tx: UnboundedSender<ClientMsg>, write_rx: UnboundedReceiver<Frame>) -> Result<(), ProcessError> {    
     //let (auth_msg_meta, auth_payload, auth_attachments) = read_full(&mut socket_read).await?;
     //let auth_payload: Value = from_slice(&auth_payload)?;    
 
@@ -370,10 +374,8 @@ async fn process_full_message_mode(addr: String, mut write_tcp_stream: TcpStream
     let mut stream_layouts: HashMap<u64, StreamLayout> = HashMap::new();
     let mut state = State::new();
 
-    let addr2 = addr.clone();
-
     tokio::spawn(async move {
-        let res = write_loop(addr2, write_rx, &mut write_tcp_stream).await;
+        let res = write_loop(write_rx, &mut write_tcp_stream).await;
         error!("{:?}", res);
     });
 
@@ -445,7 +447,7 @@ async fn process_full_message_mode(addr: String, mut write_tcp_stream: TcpStream
 						}
 					}
 					Err(e) => {
-						error!("Get frame type failed in read: {:?}, addr {}", e, addr);
+						error!("Get frame type failed in read: {:?}", e);
 					}
 				}				
 			}
@@ -459,7 +461,7 @@ struct CfgStreamLayout {
     payload: Option<Value>
 }
 
-pub async fn cfg_mode(host: &str, addr: String, access_key: String, result_tx: UnboundedSender<Value>) {    
+pub async fn cfg_mode(cfg_host: String, cfg_token: String, result_tx: UnboundedSender<Value>) {    
     let (read_tx, read_rx) = mpsc::unbounded_channel();
     let (write_tx, write_rx) = mpsc::unbounded_channel();
     let (rpc_inbound_tx, mut rpc_inbound_rx) = mpsc::unbounded_channel();
@@ -492,10 +494,14 @@ pub async fn cfg_mode(host: &str, addr: String, access_key: String, result_tx: U
                 }
             }
         }
-    });  
-    let mb = MagicBall::new(addr.clone(), write_tx2, rpc_inbound_tx);
+    });
+
+    let addr = "";
+    let access_key = "";
+
+    let mb = MagicBall::new(addr.to_owned(), write_tx2, rpc_inbound_tx);
     tokio::spawn(process_cfg_stream(mb.clone(), read_rx, result_tx));
-    connect_stream_future(host, addr, access_key, read_tx, write_rx).await;
+    connect_stream_future(cfg_host.to_owned(), addr.to_owned(), access_key.to_owned(), read_tx, write_rx).await;
 }
 
 pub async fn process_cfg_stream(mut mb: MagicBall, mut rx: UnboundedReceiver<ClientMsg>, mut result_tx: UnboundedSender<Value>) {

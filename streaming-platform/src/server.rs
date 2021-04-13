@@ -215,9 +215,9 @@ async fn auth_tcp_stream(tcp_stream: &mut TcpStream, state: &mut State, client_n
 async fn process_read_tcp_stream(addr: String, mut tcp_stream: TcpStream, client_net_addr: SocketAddr, server_tx: UnboundedSender<ServerMsg>) -> Result<(), ProcessError> {  
     let (client_tx, client_rx) = mpsc::unbounded_channel();
 
-    server_tx.send(ServerMsg::AddClient(addr.clone(), client_net_addr, client_tx))?;    
+    server_tx.send(ServerMsg::AddClient(addr, client_net_addr, client_tx))?;    
 
-    write_loop(addr, client_rx, &mut tcp_stream).await
+    write_loop(client_rx, &mut tcp_stream).await
 }
 
 async fn process_write_tcp_stream(tcp_stream: &mut TcpStream, state: &mut State, addr: String, event_subscribes: HashMap<u64, Vec<String>>, rpc_subscribes: HashMap<u64, Vec<String>>, rpc_response_subscribes: HashMap<u64, Vec<String>>, _client_net_addr: SocketAddr, server_tx: UnboundedSender<ServerMsg>) -> Result<(), ProcessError> {

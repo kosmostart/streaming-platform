@@ -67,13 +67,14 @@ pub async fn startup2(config: Value, mb: MagicBall, startup_data: Option<Value>,
 pub async fn startup(config: Value, mb: MagicBall, startup_data: Option<Value>, _: ()) {	
 	let (mut restream_tx, mut restream_rx) = mpsc::unbounded_channel();
     let mut restream_tx2 = restream_tx.clone();
+    
     let config2 = config.clone();
 
     tokio::spawn(async move {
-        let stream_addr = config2["stream_addr"].as_str().expect("Missing stream_addr config value").to_owned();
-        let host = config2["host"].as_str().expect("Missing host config value").to_owned();
-        let access_key = "";
-        stream_mode(&host, &stream_addr, access_key, process_stream, startup2, None, Some(restream_tx2), Some(restream_rx), ()).await;
+        let cfg_host = config2["cfg_host"].as_str().expect("Missing cfg_host config value").to_owned();
+        let cfg_token = config2["cfg_token"].as_str().expect("Missing cfg_token config value").to_owned();
+
+        stream_mode(&cfg_host, &cfg_token, process_stream, startup2, None, Some(restream_tx2), Some(restream_rx), ()).await;
     });
 	
     let listen_addr = config["listen_addr"].as_str().expect("Missing listen_addr config value");

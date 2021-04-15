@@ -45,11 +45,16 @@ pub async fn process_rpc(config: Value, mut mb: MagicBall, msg: Message<Value>, 
         "Get" => {
             info!("Received Get, payload key {:?}", msg.payload["key"]);
 
-            if !msg.payload["key"].is_string() {
+            if !msg.payload["key"].is_string() && !msg.payload["cfg_token"].is_string() {
                 return Err(Box::new(Error::CustomError("Empty key in payload".to_owned())));
             }
 
-            match dc.find(|a| a["key"] == msg.payload["key"] && a["deactivated_at"].is_null())? {
+            let key = match msg.payload["key"].as_str() {
+                Some(key) => key,
+                None => msg.payload["cfg_token"].as_str().ok_or(Error::None)?
+            };
+
+            match dc.find(|a| a["key"] == key && a["deactivated_at"].is_null())? {
                 Some((_, payload)) => payload,
                 None => json!({})
             }
@@ -72,7 +77,7 @@ pub fn main() {
     let dc = Dc::new(user_id, root_path).expect("Failed to create dc");
 
     let config = json!({
-        "host": "127.0.0.1:11001",
+        "host": "127.0.0.1:11002",
         "addr": "Cfg",
         "access_key": ""
     });

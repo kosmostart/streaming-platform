@@ -5,7 +5,7 @@ fn main() {
     env_logger::init();
     
     let config = ServerConfig {
-        host: "127.0.0.1:11001".to_owned()
+        host: "127.0.0.1:11002".to_owned()
     };
 
     let mut event_subscribes = HashMap::new();

@@ -134,14 +134,14 @@ pub struct Key {
 /// Parameters are as follows: event_subscribes, rpc_subscribes, rpc_response_subscribes
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum Subscribes {
-    ByAddr(HashMap<String, Vec<Key>>, HashMap<String, Vec<Key>>, HashMap<String, Vec<Key>>),
-    ByKey(HashMap<Key, Vec<String>>, HashMap<Key, Vec<String>>, HashMap<Key, Vec<String>>)
+    ByAddr(HashMap<String, Vec<Key>>, HashMap<String, Vec<Key>>),
+    ByKey(HashMap<Key, Vec<String>>, HashMap<Key, Vec<String>>)
 }
 
 impl Subscribes {
-    pub fn traverse_to_keys(self) -> (HashMap<Key, Vec<String>>, HashMap<Key, Vec<String>>, HashMap<Key, Vec<String>>) {
+    pub fn traverse_to_keys(self) -> (HashMap<Key, Vec<String>>, HashMap<Key, Vec<String>>) {
         match self {
-            Subscribes::ByAddr(event_subscribes, rpc_subscribes, rpc_response_subscribes) => {
+            Subscribes::ByAddr(event_subscribes, rpc_subscribes) => {
                 let mut event_res: HashMap<_, Vec<String>> = HashMap::new();
 
                 for (addr, keys) in event_subscribes.into_iter() {
@@ -172,24 +172,9 @@ impl Subscribes {
                     }
                 }
 
-                let mut rpc_response_res: HashMap<_, Vec<String>> = HashMap::new();
-
-                for (addr, keys) in rpc_response_subscribes.into_iter() {
-                    for key in keys {
-                        match rpc_response_res.get_mut(&key) {
-                            Some(addrs) => {
-                                addrs.push(addr.clone());
-                            }
-                            None => {
-                                rpc_response_res.insert(key, vec![addr.clone()]);
-                            }
-                        }
-                    }
-                }
-
-                (event_res, rpc_res, rpc_response_res)
+                (event_res, rpc_res)
             },
-            Subscribes::ByKey(event_subscribes, rpc_subscribes, rpc_response_subscribes) => (event_subscribes, rpc_subscribes, rpc_response_subscribes)
+            Subscribes::ByKey(event_subscribes, rpc_subscribes) => (event_subscribes, rpc_subscribes)
         }
     }
 }
@@ -434,7 +419,7 @@ pub fn event_dto<T>(tx: String, key: Key, payload: T, route: Route, auth_token: 
     Ok(buf)
 }
 
-pub fn event_dto_with_sizes<T>(tx: String, key: Key, payload: T, route: Route, auth_token: Option<String>, auth_data: Option<Value>) -> Result<(Vec<u8>, u64, u64, Vec<u64>), Error> where T: Debug, T: serde::Serialize {
+pub fn event_dto_with_sizes<T>(tx: String, key: Key, payload: T, route: Route, auth_token: Option<String>, auth_data: Option<Value>) -> Result<(Uuid, Vec<u8>, u64, u64, Vec<u64>), Error> where T: Debug, T: serde::Serialize {
     let mut payload = serde_json::to_vec(&payload)?;
     let correlation_id = Uuid::new_v4();
     let msg_meta = MsgMeta {
@@ -456,7 +441,7 @@ pub fn event_dto_with_sizes<T>(tx: String, key: Key, payload: T, route: Route, a
     buf.put_u32(msg_meta.len() as u32);
     buf.append(&mut msg_meta);
     buf.append(&mut payload);    
-    Ok((buf, msg_meta_size, payload_size, attachments_sizes))
+    Ok((correlation_id, buf, msg_meta_size, payload_size, attachments_sizes))
 }
 
 pub fn rpc_response_dto<T>(tx: String, key: Key, correlation_id: Uuid, payload: T, result: RpcResult, route: Route, auth_token: Option<String>, auth_data: Option<Value>) -> Result<Vec<u8>, Error> where T: Debug, T: serde::Serialize {
@@ -486,7 +471,7 @@ pub fn rpc_response_dto<T>(tx: String, key: Key, correlation_id: Uuid, payload: 
     Ok(buf)
 }
 
-pub fn rpc_dto<T>(tx: String, key: Key, payload: T, route: Route, auth_token: Option<String>, auth_data: Option<Value>) -> Result<Vec<u8>, Error> where T: Debug, T: serde::Serialize {
+pub fn rpc_dto<T>(tx: String, key: Key, payload: T, route: Route, auth_token: Option<String>, auth_data: Option<Value>) -> Result<(Uuid, Vec<u8>), Error> where T: Debug, T: serde::Serialize {
     let mut payload = serde_json::to_vec(&payload)?;
     let correlation_id = Uuid::new_v4();
 
@@ -511,57 +496,10 @@ pub fn rpc_dto<T>(tx: String, key: Key, payload: T, route: Route, auth_token: Op
     buf.append(&mut msg_meta);
     buf.append(&mut payload);
 
-    Ok(buf)
-}
-
-pub fn rpc_dto_with_sizes<T>(tx: String, key: Key, payload: T, route: Route, auth_token: Option<String>, auth_data: Option<Value>) -> Result<(Vec<u8>, u64, u64, Vec<u64>), Error> where T: Debug, T: serde::Serialize {
-    let mut payload = serde_json::to_vec(&payload)?;
-    let correlation_id = Uuid::new_v4();
-    let msg_meta = MsgMeta {
-        tx,        
-        key,
-        msg_type: MsgType::RpcRequest,
-        correlation_id,
-        route,
-        payload_size: payload.len() as u64,
-        auth_token,
-        auth_data,
-		attachments: vec![]
-    };
-    let payload_size = msg_meta.payload_size;
-    let attachments_sizes = msg_meta.attachments_sizes();
-    let mut msg_meta = serde_json::to_vec(&msg_meta)?;
-    let msg_meta_size = msg_meta.len() as u64;
-    let mut buf = vec![];
-    buf.put_u32(msg_meta.len() as u32);
-    buf.append(&mut msg_meta);
-    buf.append(&mut payload);
-    Ok((buf, msg_meta_size, payload_size, attachments_sizes))
-}
-
-pub fn rpc_dto_with_correlation_id<T>(tx: String, key: Key, payload: T, route: Route, auth_token: Option<String>, auth_data: Option<Value>) -> Result<(Uuid, Vec<u8>), Error> where T: Debug, T: serde::Serialize {
-    let mut payload = serde_json::to_vec(&payload)?;
-    let correlation_id = Uuid::new_v4();
-    let msg_meta = MsgMeta {
-        tx,        
-        key,
-        msg_type: MsgType::RpcRequest,
-        correlation_id,
-        route,
-        payload_size: payload.len() as u64,
-        auth_token,
-        auth_data,
-		attachments: vec![]
-    };    
-    let mut msg_meta = serde_json::to_vec(&msg_meta)?;
-    let mut buf = vec![];
-    buf.put_u32(msg_meta.len() as u32);
-    buf.append(&mut msg_meta);
-    buf.append(&mut payload);
     Ok((correlation_id, buf))
 }
 
-pub fn rpc_dto_with_correlation_id_sizes<T>(tx: String, key: Key, payload: T, route: Route, auth_token: Option<String>, auth_data: Option<Value>) -> Result<(Uuid, Vec<u8>, u64, u64, Vec<u64>), Error> where T: Debug, T: serde::Serialize {
+pub fn rpc_dto_with_sizes<T>(tx: String, key: Key, payload: T, route: Route, auth_token: Option<String>, auth_data: Option<Value>) -> Result<(Uuid, Vec<u8>, u64, u64, Vec<u64>), Error> where T: Debug, T: serde::Serialize {
     let mut payload = serde_json::to_vec(&payload)?;
     let correlation_id = Uuid::new_v4();
     let msg_meta = MsgMeta {
@@ -586,7 +524,7 @@ pub fn rpc_dto_with_correlation_id_sizes<T>(tx: String, key: Key, payload: T, ro
     Ok((correlation_id, buf, msg_meta_size, payload_size, attachments_sizes))
 }
 
-pub fn rpc_dto_with_attachments<T>(tx: String, key: Key, payload: T, attachments: Vec<(String, Vec<u8>)>, route: Route, auth_token: Option<String>, auth_data: Option<Value>) -> Result<Vec<u8>, Error> where T: Debug, T: serde::Serialize {
+pub fn rpc_dto_with_attachments<T>(tx: String, key: Key, payload: T, attachments: Vec<(String, Vec<u8>)>, route: Route, auth_token: Option<String>, auth_data: Option<Value>) -> Result<(Uuid, Vec<u8>), Error> where T: Debug, T: serde::Serialize {
     let mut payload = serde_json::to_vec(&payload)?;
     let correlation_id = Uuid::new_v4();
     let mut attachments_meta = vec![];
@@ -622,46 +560,10 @@ pub fn rpc_dto_with_attachments<T>(tx: String, key: Key, payload: T, attachments
     buf.append(&mut payload);
     buf.append(&mut attachments_payload);
 
-    Ok(buf)
+    Ok((correlation_id, buf))
 }
 
-pub fn rpc_dto_with_later_attachments<T>(tx: String, key: Key, payload: T, attachments: Vec<(String, u64)>, route: Route, auth_token: Option<String>, auth_data: Option<Value>) -> Result<Vec<u8>, Error> where T: Debug, T: serde::Serialize {
-    let mut payload = serde_json::to_vec(&payload)?;
-    let correlation_id = Uuid::new_v4();
-    let mut attachments_meta = vec![];    
-
-    for (attachment_name,attachment_size) in attachments {
-        attachments_meta.push(Attachment {
-            name: attachment_name,
-            size: attachment_size
-        });                
-    }
-
-    let msg_meta = MsgMeta {
-        tx,        
-        key,
-        msg_type: MsgType::RpcRequest,
-        correlation_id,
-        route,
-        payload_size: payload.len() as u64,
-        auth_token,
-        auth_data,
-		attachments: attachments_meta
-    };
-
-    let mut msg_meta = serde_json::to_vec(&msg_meta)?;    
-
-    let mut buf = vec![];
-
-    buf.put_u32(msg_meta.len() as u32);
-
-    buf.append(&mut msg_meta);
-    buf.append(&mut payload);    
-
-    Ok(buf)
-}
-
-pub fn event_dto2(tx: String, key: Key, mut payload: Vec<u8>, route: Route, auth_token: Option<String>, auth_data: Option<Value>) -> Result<Vec<u8>, Error> {        
+pub fn event_dto2(tx: String, key: Key, mut payload: Vec<u8>, route: Route, auth_token: Option<String>, auth_data: Option<Value>) -> Result<(Uuid, Vec<u8>), Error> {        
     let correlation_id = Uuid::new_v4();
     
     let msg_meta = MsgMeta {
@@ -685,7 +587,7 @@ pub fn event_dto2(tx: String, key: Key, mut payload: Vec<u8>, route: Route, auth
     buf.append(&mut msg_meta);
     buf.append(&mut payload);
     
-    Ok(buf)
+    Ok((correlation_id, buf))
 }
 
 pub fn rpc_response_dto_sizes<T>(tx: String, key: Key, correlation_id: Uuid, payload: T, attachments: Vec<(String, u64)>, mut attachments_data: Vec<u8>, result: RpcResult, route: Route, auth_token: Option<String>, auth_data: Option<Value>) -> Result<(Vec<u8>, u64, u64, Vec<u64>), Error> where T: Debug, T: serde::Serialize {
@@ -751,41 +653,7 @@ pub fn rpc_response_dto2_sizes(tx: String, key: Key, correlation_id: Uuid, mut p
     Ok((buf, msg_meta_size, payload_size, attachments_sizes))
 }
 
-pub fn rpc_response_dto_with_later_attachments2(tx: String, key: Key, correlation_id: Uuid, mut payload: Vec<u8>, attachments: Vec<(String, u64)>, result: RpcResult, route: Route, auth_token: Option<String>, auth_data: Option<Value>) -> Result<Vec<u8>, Error> {
-    let mut attachments_meta = vec![];
-
-    for (attachment_name,attachment_size) in attachments {
-        attachments_meta.push(Attachment {
-            name: attachment_name,
-            size: attachment_size
-        });                
-    }
-
-    let msg_meta = MsgMeta {
-        tx,        
-        key,
-        msg_type: MsgType::RpcResponse(result),
-        correlation_id,
-        route,
-        payload_size: payload.len() as u64,
-        auth_token,
-        auth_data,
-		attachments: attachments_meta
-    };
-
-    let mut msg_meta = serde_json::to_vec(&msg_meta)?;        
-
-    let mut buf = vec![];
-
-    buf.put_u32(msg_meta.len() as u32);
-
-    buf.append(&mut msg_meta);
-    buf.append(&mut payload);
-    
-    Ok(buf)
-}
-
-pub fn rpc_dto2(tx: String, key: Key, mut payload: Vec<u8>, route: Route, auth_token: Option<String>, auth_data: Option<Value>) -> Result<Vec<u8>, Error> {
+pub fn rpc_dto2(tx: String, key: Key, mut payload: Vec<u8>, route: Route, auth_token: Option<String>, auth_data: Option<Value>) -> Result<(Uuid, Vec<u8>), Error> {
     let correlation_id = Uuid::new_v4();
 
     let msg_meta = MsgMeta {
@@ -809,10 +677,10 @@ pub fn rpc_dto2(tx: String, key: Key, mut payload: Vec<u8>, route: Route, auth_t
     buf.append(&mut msg_meta);
     buf.append(&mut payload);
 
-    Ok(buf)
+    Ok((correlation_id, buf))
 }
 
-pub fn rpc_dto_with_attachments2(tx: String, key: Key, mut payload: Vec<u8>, attachments: Vec<(String, Vec<u8>)>, route: Route, auth_token: Option<String>, auth_data: Option<Value>) -> Result<Vec<u8>, Error> {
+pub fn rpc_dto_with_attachments2(tx: String, key: Key, mut payload: Vec<u8>, attachments: Vec<(String, Vec<u8>)>, route: Route, auth_token: Option<String>, auth_data: Option<Value>) -> Result<(Uuid, Vec<u8>), Error> {
     let correlation_id = Uuid::new_v4();
     let mut attachments_meta = vec![];
     let mut attachments_payload = vec![];
@@ -846,68 +714,6 @@ pub fn rpc_dto_with_attachments2(tx: String, key: Key, mut payload: Vec<u8>, att
     buf.append(&mut msg_meta);
     buf.append(&mut payload);
     buf.append(&mut attachments_payload);
-
-    Ok(buf)
-}
-
-pub fn rpc_dto_with_later_attachments2(tx: String, key: Key, mut payload: Vec<u8>, attachments: Vec<(String, u64)>, route: Route, auth_token: Option<String>, auth_data: Option<Value>) -> Result<Vec<u8>, Error> {
-    let correlation_id = Uuid::new_v4();
-    let mut attachments_meta = vec![];
-
-    for (attachment_name,attachment_size) in attachments {
-        attachments_meta.push(Attachment {
-            name: attachment_name,
-            size: attachment_size
-        });                
-    }
-
-    let msg_meta = MsgMeta {
-        tx,        
-        key,
-        msg_type: MsgType::RpcRequest,
-        correlation_id,
-        route,
-        payload_size: payload.len() as u64,
-        auth_token,
-        auth_data,
-		attachments: attachments_meta
-    };
-
-    let mut msg_meta = serde_json::to_vec(&msg_meta)?;    
-
-    let mut buf = vec![];
-
-    buf.put_u32(msg_meta.len() as u32);
-
-    buf.append(&mut msg_meta);
-    buf.append(&mut payload);    
-
-    Ok(buf)
-}
-
-pub fn rpc_dto_with_correlation_id_2(tx: String, key: Key, mut payload: Vec<u8>, route: Route, auth_token: Option<String>, auth_data: Option<Value>) -> Result<(Uuid, Vec<u8>), Error> {
-    let correlation_id = Uuid::new_v4();
-
-    let msg_meta = MsgMeta {
-        tx,        
-        key,
-        msg_type: MsgType::RpcRequest,
-        correlation_id,
-        route,
-        payload_size: payload.len() as u64,
-        auth_token,
-        auth_data,
-		attachments: vec![]
-    };
-
-    let mut msg_meta = serde_json::to_vec(&msg_meta)?;        
-
-    let mut buf = vec![];
-
-    buf.put_u32(msg_meta.len() as u32);
-
-    buf.append(&mut msg_meta);
-    buf.append(&mut payload);
 
     Ok((correlation_id, buf))
 }

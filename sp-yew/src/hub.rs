@@ -8,7 +8,7 @@ use yew::agent::HandlerId;
 use yew::format::Nothing;
 use yew_services::console::ConsoleService;
 use yew_services::fetch::{self, FetchService, FetchTask};
-use sp_dto::{Key, Subscribes, Participator, MsgType, uuid::Uuid, MsgMeta, Route, RouteSpec, CmpSpec, rpc_dto_with_correlation_id, get_msg};
+use sp_dto::{Key, Subscribes, Participator, MsgType, uuid::Uuid, MsgMeta, Route, RouteSpec, CmpSpec, rpc_dto, get_msg};
 
 pub struct Worker {
     link: AgentLink<Worker>,
@@ -187,11 +187,11 @@ impl Agent for Worker {
             }
             Request::SetSubscribes(subscribes) => {
                 let subscribes = match subscribes {
-                    Subscribes::ByAddr(_, _, _) => {
-                        let (event_subscribes, _, _) = subscribes.traverse_to_keys();
+                    Subscribes::ByAddr(_, _) => {
+                        let (event_subscribes, _) = subscribes.traverse_to_keys();
                         event_subscribes
                     }
-                    Subscribes::ByKey(event_subscribes, _, _) => event_subscribes
+                    Subscribes::ByKey(event_subscribes, _) => event_subscribes
                 };
                 self.subscribes = subscribes;
                 ConsoleService::log("Subscribes set");
@@ -375,7 +375,7 @@ impl Hub {
         self.hub.send(Request::Auth(self.spec.addr.clone()));
     }
     pub fn set_subscribes(&mut self, subscribes: HashMap<Key, Vec<String>>) {
-        self.hub.send(Request::SetSubscribes(Subscribes::ByKey(subscribes, HashMap::new(), HashMap::new())));
+        self.hub.send(Request::SetSubscribes(Subscribes::ByKey(subscribes, HashMap::new())));
     }
     /// Sends rpc request to the server
     pub fn rpc(&mut self, key: Key, payload: Value) {
@@ -384,7 +384,7 @@ impl Hub {
             spec: RouteSpec::Simple,
             points: vec![Participator::Component(self.spec.addr.clone(), self.cfg.app_addr.clone(), self.cfg.client_addr.clone())]
         };
-        let (correlation_id, dto) = rpc_dto_with_correlation_id(self.spec.addr.clone(), key.to_owned(), payload, route, self.cfg.auth_token.clone(), self.cfg.auth_data.clone()).expect("failed to create rpc dto with correlation id on server rpc");
+        let (correlation_id, dto) = rpc_dto(self.spec.addr.clone(), key.to_owned(), payload, route, self.cfg.auth_token.clone(), self.cfg.auth_data.clone()).expect("failed to create rpc dto with correlation id on server rpc");
         let url = self.cfg.fetch_url.clone().expect("fetch host is empty on server rpc");
         self.hub.send(Request::Rpc(url, correlation_id, dto));
     }
@@ -395,7 +395,7 @@ impl Hub {
             spec: RouteSpec::Client(Participator::Component(client_addr, self.cfg.app_addr.clone(), self.cfg.client_addr.clone())),
             points: vec![Participator::Component(self.spec.addr.clone(), self.cfg.app_addr.clone(), self.cfg.client_addr.clone())]
         };
-        let (correlation_id, dto) = rpc_dto_with_correlation_id(self.spec.addr.clone(), key.to_owned(), payload, route, self.cfg.auth_token.clone(), self.cfg.auth_data.clone()).expect("failed to create rpc dto with correlation id on server rpc");
+        let (correlation_id, dto) = rpc_dto(self.spec.addr.clone(), key.to_owned(), payload, route, self.cfg.auth_token.clone(), self.cfg.auth_data.clone()).expect("failed to create rpc dto with correlation id on server rpc");
         let host = self.cfg.fetch_url.clone().expect("fetch host is empty on server rpc");
         self.hub.send(Request::Rpc(host, correlation_id, dto));
     }    
@@ -406,7 +406,7 @@ impl Hub {
             spec: RouteSpec::Simple,
             points: vec![Participator::Component(self.spec.addr.clone(), self.cfg.app_addr.clone(), self.cfg.client_addr.clone())]
         };
-        let (correlation_id, dto) = rpc_dto_with_correlation_id(self.spec.addr.clone(), key.to_owned(), payload, route, self.cfg.auth_token.clone(), self.cfg.auth_data.clone()).expect("failed to create rpc dto with correlation id on server rpc");
+        let (correlation_id, dto) = rpc_dto(self.spec.addr.clone(), key.to_owned(), payload, route, self.cfg.auth_token.clone(), self.cfg.auth_data.clone()).expect("failed to create rpc dto with correlation id on server rpc");
         let url = self.cfg.host.clone().expect("fetch host is empty on server rpc") + "/" + segment + "/";
         self.hub.send(Request::Rpc(url, correlation_id, dto));
     }

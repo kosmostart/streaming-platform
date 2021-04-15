@@ -16,7 +16,7 @@ fn cfg_add(rt: &Runtime) {
     let payload = json!({
     });
 
-    let dto = rpc_dto("Cli".to_owned(), Key::new("Auth", "Auth", "Auth"), payload, Route::new_cli("Cli"), None, None).unwrap();
+    let (_, dto) = rpc_dto("Cli".to_owned(), Key::new("Auth", "Auth", "Auth"), payload, Route::new_cli("Cli"), None, None).unwrap();
 
     let client = reqwest::Client::new();
     
@@ -36,7 +36,7 @@ fn cfg_add(rt: &Runtime) {
         "key" : "Dog"
     });
 
-    let dto = rpc_dto("Cli".to_owned(), Key::new("Add", "Cfg", "Cfg"), payload, Route::new_cli("Cli"), None, None).unwrap();
+    let (_, dto) = rpc_dto("Cli".to_owned(), Key::new("Add", "Cfg", "Cfg"), payload, Route::new_cli("Cli"), None, None).unwrap();
 
     let client = reqwest::Client::new();
     
@@ -59,7 +59,7 @@ fn cfg_get(rt: &Runtime) {
     let payload = json!({
     });
 
-    let dto = rpc_dto("Cli".to_owned(), Key::new("Auth", "Auth", "Auth"), payload, Route::new_cli("Cli"), None, None).unwrap();
+    let (_, dto) = rpc_dto("Cli".to_owned(), Key::new("Auth", "Auth", "Auth"), payload, Route::new_cli("Cli"), None, None).unwrap();
 
     let client = reqwest::Client::new();
     
@@ -79,7 +79,7 @@ fn cfg_get(rt: &Runtime) {
         "key" : "Dog"
     });
 
-    let dto = rpc_dto("Cli".to_owned(), Key::new("Get", "Cfg", "Cfg"), payload, Route::new_cli("Cli"), None, None).unwrap();
+    let (_, dto) = rpc_dto("Cli".to_owned(), Key::new("Get", "Cfg", "Cfg"), payload, Route::new_cli("Cli"), None, None).unwrap();
 
     let client = reqwest::Client::new();
     
@@ -102,7 +102,7 @@ fn deploy(rt: &Runtime) {
     let payload = json!({
     });
 
-    let dto = rpc_dto("Cli".to_owned(), Key::new("Auth", "Auth", "Auth"), payload, Route::new_cli("Cli"), None, None).unwrap();
+    let (_, dto) = rpc_dto("Cli".to_owned(), Key::new("Auth", "Auth", "Auth"), payload, Route::new_cli("Cli"), None, None).unwrap();
 
     let client = reqwest::Client::new();
     
@@ -127,7 +127,7 @@ fn deploy(rt: &Runtime) {
     let payload = json!({
     });
 
-    let dto = rpc_dto("Cli".to_owned(), Key::new("Deploy", "Deploy", "Deploy"), payload, Route::new_cli("Cli"), None, None).unwrap();
+    let (_, dto) = rpc_dto("Cli".to_owned(), Key::new("Deploy", "Deploy", "Deploy"), payload, Route::new_cli("Cli"), None, None).unwrap();
 
     let client = reqwest::Client::new();
     

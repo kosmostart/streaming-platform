@@ -49,20 +49,12 @@ pub async fn start_future(config: ServerConfig, subscribes: Subscribes) -> Resul
                     clients.insert(addr, client);
                 }
                 ServerMsg::Send(addr, frame) => {
-                    //info!("sending stream unit to client {}", addr);
                     match clients.get_mut(&addr) {
                         Some(client) => {
-                            //match client.tx.send(stream_unit).await {
                             match client.tx.send(frame) {
-                                Ok(()) => {}
-                                /*
-                                Err(_) => {
-                                    error!("error processing ServerMsg::Send, send failed");
-                                }
-                                */                                
-                                Err(frame) => panic!("ServerMsg::SendArray processing failed - send error, client {}", addr)
+                                Ok(()) => {}                             
+                                Err(frame) => panic!("ServerMsg::Send processing failed - send error, client {}", addr)
                             }
-                            //info!("sent unit to client {}", addr);
                         }
                         None => error!("No client {} for send frame, stream id {}, key hash {}", addr, frame.stream_id, frame.key_hash)
                     }
@@ -74,9 +66,9 @@ pub async fn start_future(config: ServerConfig, subscribes: Subscribes) -> Resul
         }
     });
 
-    let (event_subscribes, rpc_subscribes, rpc_response_subscribes) = match subscribes {
-        Subscribes::ByAddr(_, _, _) => subscribes.traverse_to_keys(),
-        Subscribes::ByKey(event_subscribes, rpc_subscribes, rpc_response_subscribes) => (event_subscribes, rpc_subscribes, rpc_response_subscribes)
+    let (event_subscribes, rpc_subscribes) = match subscribes {
+        Subscribes::ByAddr(_, _) => subscribes.traverse_to_keys(),
+        Subscribes::ByKey(event_subscribes, rpc_subscribes) => (event_subscribes, rpc_subscribes)
     };
 
     let mut client_states = HashMap::new();
@@ -84,7 +76,6 @@ pub async fn start_future(config: ServerConfig, subscribes: Subscribes) -> Resul
 
     let event_subscribes = to_hashed_subscribes(&mut key_hasher, event_subscribes);
     let rpc_subscribes = to_hashed_subscribes(&mut key_hasher, rpc_subscribes);
-    let rpc_response_subscribes = to_hashed_subscribes(&mut key_hasher, rpc_response_subscribes);
 
     info!("Started on {}", config.host);
 
@@ -110,13 +101,13 @@ pub async fn start_future(config: ServerConfig, subscribes: Subscribes) -> Resul
                         
                         if !client_state.has_writer {
                             client_state.has_writer = true;
+
                             let event_subscribes = event_subscribes.clone();
                             let rpc_subscribes = rpc_subscribes.clone();
-                            let rpc_response_subscribes = rpc_response_subscribes.clone();
 
                             tokio::spawn(async move {                                
-                                let res = process_write_tcp_stream(&mut stream, &mut state, addr.clone(), event_subscribes, rpc_subscribes, rpc_response_subscribes, client_net_addr, server_tx).await;
-                                error!("{} write process ended, {:?}", addr, res);
+                                let res = process_write_tcp_stream(&mut stream, &mut state, addr.clone(), event_subscribes, rpc_subscribes, client_net_addr, server_tx).await;
+                                error!("Write process ended for {}, {:?}", addr, res);
                             });
                         } else {
                             client_state.has_writer = false;
@@ -212,7 +203,7 @@ async fn auth_tcp_stream(tcp_stream: &mut TcpStream, state: &mut State, client_n
 }
 
 
-async fn process_read_tcp_stream(addr: String, mut tcp_stream: TcpStream, client_net_addr: SocketAddr, server_tx: UnboundedSender<ServerMsg>) -> Result<(), ProcessError> {  
+async fn process_read_tcp_stream(addr: String, mut tcp_stream: TcpStream, client_net_addr: SocketAddr, server_tx: UnboundedSender<ServerMsg>) -> Result<(), ProcessError> {
     let (client_tx, client_rx) = mpsc::unbounded_channel();
 
     server_tx.send(ServerMsg::AddClient(addr, client_net_addr, client_tx))?;    
@@ -220,51 +211,97 @@ async fn process_read_tcp_stream(addr: String, mut tcp_stream: TcpStream, client
     write_loop(client_rx, &mut tcp_stream).await
 }
 
-async fn process_write_tcp_stream(tcp_stream: &mut TcpStream, state: &mut State, addr: String, event_subscribes: HashMap<u64, Vec<String>>, rpc_subscribes: HashMap<u64, Vec<String>>, rpc_response_subscribes: HashMap<u64, Vec<String>>, _client_net_addr: SocketAddr, server_tx: UnboundedSender<ServerMsg>) -> Result<(), ProcessError> {
+async fn process_write_tcp_stream(tcp_stream: &mut TcpStream, state: &mut State, addr: String, event_subscribes: HashMap<u64, Vec<String>>, rpc_subscribes: HashMap<u64, Vec<String>>, _client_net_addr: SocketAddr, server_tx: UnboundedSender<ServerMsg>) -> Result<(), ProcessError> {
+    let mut rpc_requests = HashMap::new();
+
 	loop {
 		match state.read_frame() {
 			ReadFrameResult::NotEnoughBytesForFrame => {
-				state.read_from_tcp_stream(tcp_stream).await?
+				state.read_from_tcp_stream(tcp_stream).await?;
 			}
 			ReadFrameResult::NextStep => {}
 			ReadFrameResult::Frame(frame) => {
 				debug!("Main stream frame read, frame type {}, msg type {}, stream id {}", frame.frame_type, frame.msg_type, frame.stream_id);
 
-				let subscribes = match frame.get_msg_type()? {
-					MsgType::Event => &event_subscribes,
-					MsgType::RpcRequest => &rpc_subscribes,
-					MsgType::RpcResponse(_) => &rpc_response_subscribes
-				};
-				
-				match subscribes.get(&frame.key_hash) {
-					Some(targets) => {
-						match targets.len() {
-							0 => {
-								warn!("Subscribes empty for key hash {}, msg_type {:?}", frame.key_hash, frame.get_msg_type())
-							}
-							1 => {
-								let target = targets[0].clone();
+				match frame.get_msg_type()? {
+					MsgType::Event => {
+                        match event_subscribes.get(&frame.key_hash) {
+                            Some(targets) => {
+                                match targets.len() {
+                                    0 => {
+                                        warn!("Subscribes empty for key hash {}, msg_type {:?}", frame.key_hash, frame.get_msg_type())
+                                    }
+                                    1 => {
+                                        let target = targets[0].clone();
+        
+                                        debug!("Sending frame to {}", target);
+                                        server_tx.send(ServerMsg::Send(target, frame))?;
+                                    }
+                                    _ => {
+                                        let index = targets.len() - 1;
+        
+                                        for target in targets.iter().take(index) {     
+                                            debug!("Sending frame to {}", target);
+                                            server_tx.send(ServerMsg::Send(target.clone(), frame.clone()))?;
+                                        }
+        
+                                        let target = &targets[index];
+        
+                                        debug!("Sending frame to {}", target);
+                                        server_tx.send(ServerMsg::Send(target.clone(), frame))?;
+                                    }
+                                }
+                            }
+                            None => warn!("No subscribes found for key hash {}, msg_type {:?}", frame.key_hash, frame.get_msg_type())
+                        }
+                    }
+					MsgType::RpcRequest => {
+                        match rpc_subscribes.get(&frame.key_hash) {
+                            Some(targets) => {
+                                match targets.len() {
+                                    0 => {
+                                        warn!("Subscribes empty for key hash {}, msg_type {:?}", frame.key_hash, frame.get_msg_type())
+                                    }
+                                    1 => {
+                                        let target = targets[0].clone();
 
-								debug!("Sending frame to {}", target);
-								server_tx.send(ServerMsg::Send(target, frame))?;
-							}
-							_ => {
-								let index = targets.len() - 1;
+                                        rpc_requests.insert(frame.correlation_id_hash, addr.clone());
+        
+                                        debug!("Sending frame to {}", target);
+                                        server_tx.send(ServerMsg::Send(target, frame))?;
+                                    }
+                                    _ => {
+                                        let index = targets.len() - 1;
 
-								for target in targets.iter().take(index) {     
-									debug!("Sending frame to {}", target);
-									server_tx.send(ServerMsg::Send(target.clone(), frame.clone()))?;
-								}
-
-								let target = &targets[index];
-
-								debug!("Sending frame to {}", target);
-								server_tx.send(ServerMsg::Send(target.clone(), frame))?;
-							}
-						}
-					}
-					None => warn!("No subscribes found for key hash {}, msg_type {:?}", frame.key_hash, frame.get_msg_type())
-				}				
+                                        rpc_requests.insert(frame.correlation_id_hash, addr.clone());
+        
+                                        for target in targets.iter().take(index) {     
+                                            debug!("Sending frame to {}", target);
+                                            server_tx.send(ServerMsg::Send(target.clone(), frame.clone()))?;
+                                        }
+        
+                                        let target = &targets[index];
+        
+                                        debug!("Sending frame to {}", target);
+                                        server_tx.send(ServerMsg::Send(target.clone(), frame))?;
+                                    }
+                                }
+                            }
+                            None => warn!("No subscribes found for key hash {}, msg_type {:?}", frame.key_hash, frame.get_msg_type())
+                        }
+                    }
+					MsgType::RpcResponse(_) => {
+                        match rpc_requests.remove(&frame.correlation_id_hash) {
+                            Some(target) => {
+                                debug!("Sending frame to {}", target);
+                                server_tx.send(ServerMsg::Send(target, frame))?;
+                            }
+                            None => {
+                                error!("Rpc request not found, client {}, stream id {}, correlation id hash {}", addr, frame.stream_id, frame.correlation_id_hash);
+                            }
+                        }
+                    }
+				}
 			}
 		}
 	}

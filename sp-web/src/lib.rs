@@ -6,7 +6,7 @@ use serde_json::{Value, from_slice, json, to_vec};
 use warp::{Filter, http::{Response, header::SET_COOKIE}, hyper::body::Bytes};
 use streaming_platform::{MagicBall, tokio::{io::AsyncReadExt}};
 use streaming_platform::sp_dto::{uuid::Uuid, MsgMeta};
-use streaming_platform::{client::stream_mode, ClientMsg, FrameType, StreamCompletion, tokio::{self, sync::{mpsc::{self, UnboundedReceiver, UnboundedSender}, oneshot}}, sp_dto::{Key, Message, Participator, resp, rpc_dto_with_correlation_id_sizes, Route, RouteSpec}, RestreamMsg, StreamLayout, ProcessError};
+use streaming_platform::{client::stream_mode, ClientMsg, FrameType, StreamCompletion, tokio::{self, sync::{mpsc::{self, UnboundedReceiver, UnboundedSender}, oneshot}}, sp_dto::{Key, Message, Participator, resp, rpc_dto_with_sizes, Route, RouteSpec}, RestreamMsg, StreamLayout, ProcessError};
 use sp_auth::verify_auth_token;
 pub use streaming_platform;
 
@@ -720,7 +720,7 @@ pub async fn process_stream(config: HashMap<String, String>, mut mb: MagicBall, 
         loop {
             match restream_rx.recv().await.expect("restream channel dropped") {
                 RestreamMsg::StartHttp(payload, body_tx, completion_tx) => {
-                    let (correlation_id, dto, msg_meta_size, payload_size, attachments_sizes) = rpc_dto_with_correlation_id_sizes(
+                    let (correlation_id, dto, msg_meta_size, payload_size, attachments_sizes) = rpc_dto_with_sizes(
                         mb.addr.clone(),
                         "File".to_owned(), 
                         "Download".to_owned(), 

@@ -237,6 +237,7 @@ where
                                 route.points.push(Participator::Service(mb.addr.clone()));
 
                                 let key_hash = get_key_hash(key.clone());
+                                let correlation_id_hash = get_correlation_id_hash(&correlation_id);
 
                                 let (res, msg_meta_size, payload_size, attachments_sizes) = rpc_response_dto2_sizes(mb.addr.clone(),  key, correlation_id, payload, attachments, attachments_data, rpc_result, route, None, None).expect("failed to create rpc reply");
 
@@ -244,7 +245,7 @@ where
 
                                 let stream_id = mb.get_stream_id();
 
-                                mb.write_full_message(MsgType::RpcResponse(RpcResult::Ok).get_u8(), key_hash, stream_id, res, msg_meta_size, payload_size, attachments_sizes, true).await.expect("Failed to write rpc response");
+                                mb.write_full_message(MsgType::RpcResponse(RpcResult::Ok).get_u8(), key_hash, stream_id, correlation_id_hash, res, msg_meta_size, payload_size, attachments_sizes, true).await.expect("Failed to write rpc response");
                              
                                 debug!("Client {} write rpc response succeded", mb.addr);
                             });                            
@@ -294,11 +295,11 @@ async fn auth(addr: String, access_key: String, tcp_stream: &mut TcpStream) -> R
         points: vec![Participator::Service(addr.clone())]
     };  
 
-    let (dto, msg_meta_size, payload_size, attachments_size) = rpc_dto_with_sizes(addr.clone(), Key::simple("Auth"), json!({
+    let (correlation_id, dto, msg_meta_size, payload_size, attachments_size) = rpc_dto_with_sizes(addr.clone(), Key::simple("Auth"), json!({
         "access_key": access_key
     }), route, None, None).expect("Failed to create auth dto");
 
-    write_to_tcp_stream(tcp_stream, 0, 0, get_stream_id_onetime(&addr), dto, msg_meta_size, payload_size, attachments_size, true).await
+    write_to_tcp_stream(tcp_stream, 0, 0, get_stream_id_onetime(&addr), get_correlation_id_hash(&correlation_id), dto, msg_meta_size, payload_size, attachments_size, true).await
 }
 
 
@@ -347,7 +348,7 @@ async fn process_stream_mode(mut write_tcp_stream: TcpStream, mut read_tcp_strea
 	loop {
 		match state.read_frame() {
 			ReadFrameResult::NotEnoughBytesForFrame => {
-				state.read_from_tcp_stream(&mut read_tcp_stream).await?
+				state.read_from_tcp_stream(&mut read_tcp_stream).await?;
 			}
 			ReadFrameResult::NextStep => {}
 			ReadFrameResult::Frame(frame) => {
@@ -382,7 +383,7 @@ async fn process_full_message_mode(mut write_tcp_stream: TcpStream, mut read_tcp
 	loop {
 		match state.read_frame() {
 			ReadFrameResult::NotEnoughBytesForFrame => {
-				state.read_from_tcp_stream(&mut read_tcp_stream).await?
+				state.read_from_tcp_stream(&mut read_tcp_stream).await?;
 			}
 			ReadFrameResult::NextStep => {}
 			ReadFrameResult::Frame(frame) => {

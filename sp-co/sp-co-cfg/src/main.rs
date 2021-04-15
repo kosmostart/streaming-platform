@@ -43,7 +43,7 @@ pub async fn process_rpc(config: Value, mut mb: MagicBall, msg: Message<Value>, 
             })
         }
         "Get" => {
-            info!("Received Get, payload key {:?}", msg.payload["key"]);
+            info!("Received Get, payload {:#?}", msg.payload);
 
             if !msg.payload["key"].is_string() && !msg.payload["cfg_token"].is_string() {
                 return Err(Box::new(Error::CustomError("Empty key in payload".to_owned())));
@@ -75,6 +75,15 @@ pub fn main() {
     let root_path = "d:/src/sp-co-cfg-storage";
 
     let dc = Dc::new(user_id, root_path).expect("Failed to create dc");
+
+    let res = dc.create(json!({
+        "key": "Auth",
+        "payload": {
+            "host": "127.0.0.1:11002",
+            "addr": "Auth",
+            "access_key": ""
+        }
+    }));
 
     let config = json!({
         "host": "127.0.0.1:11002",

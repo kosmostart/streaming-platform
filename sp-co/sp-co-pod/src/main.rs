@@ -19,7 +19,12 @@ struct FileStreamLayout {
 fn main() {
     env_logger::init();
 
-    client::start_stream("127.0.0.1:11001", "Pod", process_stream, startup, None, None, None, ());
+    let config = json!({
+        "cfg_host": "127.0.0.1:11002",
+        "cfg_token": "Pod"
+    });
+
+    client::start_stream(config, process_stream, startup, None, None, None, ());
 }
 
 pub async fn startup(_config: Value, mut _mb: MagicBall, _startup_data: Option<Value>, _: ()) {

@@ -17,14 +17,14 @@ use crate::proto::*;
 /// restream_rx can be used for restreaming data somewhere else, for example returning data for incoming web request
 /// dependency is w/e clonable dependency needed when processing data.
 /// The protocol message format is in sp-dto crate.
-pub fn start_stream<T: 'static, R: 'static, D: 'static>(cfg_host: &str, cfg_token: &str, process_stream: ProcessStream<T, D>, startup: Startup<R, D>, startup_data: Option<Value>, restream_tx: Option<UnboundedSender<RestreamMsg>>, restream_rx: Option<UnboundedReceiver<RestreamMsg>>, dependency: D) 
+pub fn start_stream<T: 'static, R: 'static, D: 'static>(config: Value, process_stream: ProcessStream<T, D>, startup: Startup<R, D>, startup_data: Option<Value>, restream_tx: Option<UnboundedSender<RestreamMsg>>, restream_rx: Option<UnboundedReceiver<RestreamMsg>>, dependency: D) 
 where 
     T: Future<Output = ()> + Send,
     R: Future<Output = ()> + Send,
     D: Clone + Send + Sync
 {        
     let rt = Runtime::new().expect("Failed to create runtime");
-    rt.block_on(stream_mode(cfg_host, cfg_token, process_stream, startup, startup_data, restream_tx, restream_rx, dependency));
+    rt.block_on(stream_mode(config, process_stream, startup, startup_data, restream_tx, restream_rx, dependency));
 }
 
 /// Starts a message based client based on provided config. Creates new runtime and blocks.
@@ -34,7 +34,7 @@ where
 /// startup is executed on the start of this function.
 /// dependency is w/e clonable dependency needed when processing data.
 /// The protocol message format is in sp-dto crate.
-pub fn start_full_message<T: 'static, Q: 'static, R: 'static, D: 'static>(cfg_host: &str, cfg_token: &str, process_event: ProcessEvent<T, Value, D>, process_rpc: ProcessRpc<Q, Value, D>, startup: Startup<R, D>, startup_data: Option<Value>, dependency: D) 
+pub fn start_full_message<T: 'static, Q: 'static, R: 'static, D: 'static>(config: Value, process_event: ProcessEvent<T, Value, D>, process_rpc: ProcessRpc<Q, Value, D>, startup: Startup<R, D>, startup_data: Option<Value>, dependency: D) 
 where 
     T: Future<Output = Result<(), Box<dyn Error>>> + Send,
     Q: Future<Output = Result<Response<Value>, Box<dyn Error>>> + Send,
@@ -42,7 +42,7 @@ where
     D: Clone + Send + Sync
 {    
     let rt = Runtime::new().expect("Failed to create runtime");
-    rt.block_on(full_message_mode(cfg_host, cfg_token, process_event, process_rpc, startup, startup_data, dependency));
+    rt.block_on(full_message_mode(config, process_event, process_rpc, startup, startup_data, dependency));
 }
 
 /// Future for stream based client based on provided config.
@@ -54,19 +54,27 @@ where
 /// restream_rx can be used for restreaming data somewhere else, for example returning data for incoming web request
 /// dependency is w/e clonable dependency needed when processing data.
 /// The protocol message format is in sp-dto crate.
-pub async fn stream_mode<T: 'static, R: 'static, D: 'static>(cfg_host: &str, cfg_token: &str, process_stream: ProcessStream<T, D>, startup: Startup<R, D>, startup_data: Option<Value>, restream_tx: Option<UnboundedSender<RestreamMsg>>, restream_rx: Option<UnboundedReceiver<RestreamMsg>>, dependency: D)
+pub async fn stream_mode<T: 'static, R: 'static, D: 'static>(config: Value, process_stream: ProcessStream<T, D>, startup: Startup<R, D>, startup_data: Option<Value>, restream_tx: Option<UnboundedSender<RestreamMsg>>, restream_rx: Option<UnboundedReceiver<RestreamMsg>>, dependency: D)
 where 
     T: Future<Output = ()> + Send,
     R: Future<Output = ()> + Send,
     D: Clone + Send + Sync
 {
-    let (cfg_tx, mut cfg_rx) = mpsc::unbounded_channel();
-    tokio::spawn(cfg_mode(cfg_host.to_owned(), cfg_token.to_owned(), cfg_tx));
-    let config = cfg_rx.recv().await.expect("Failed to get config");
+    let target_config = match config["cfg_host"].as_str() {
+        Some(cfg_host) => {
+            let cfg_token = config["cfg_token"].as_str().expect("cfg_token not passed");
+            let (cfg_tx, mut cfg_rx) = mpsc::unbounded_channel();
 
-    let host = config["host"].as_str().expect("Failed to get host from config").to_owned();
-    let addr = config["addr"].as_str().expect("Failed to get addr from config").to_owned();
-    let access_key = config["access_key"].as_str().expect("Failed to get access key from config").to_owned();
+            tokio::spawn(cfg_mode(cfg_host.to_owned(), cfg_token.to_owned(), cfg_tx));
+
+            cfg_rx.recv().await.expect("Failed to get config")
+        }
+        None => config
+    };
+
+    let host = target_config["host"].as_str().expect("Failed to get host from config").to_owned();
+    let addr = target_config["addr"].as_str().expect("Failed to get addr from config").to_owned();
+    let access_key = target_config["access_key"].as_str().expect("Failed to get access key from config").to_owned();
 
     let (read_tx, read_rx) = mpsc::unbounded_channel();
     let (write_tx, write_rx) = mpsc::unbounded_channel();
@@ -103,8 +111,8 @@ where
     });
 
     let mb = MagicBall::new(addr.to_owned(), write_tx2, rpc_inbound_tx);
-    tokio::spawn(process_stream(config.clone(), mb.clone(), read_rx, restream_tx, restream_rx, dependency.clone()));
-    tokio::spawn(startup(config, mb, startup_data, dependency));
+    tokio::spawn(process_stream(target_config.clone(), mb.clone(), read_rx, restream_tx, restream_rx, dependency.clone()));
+    tokio::spawn(startup(target_config, mb, startup_data, dependency));
     connect_stream_future(host, addr.to_owned(), access_key.to_owned(), read_tx, write_rx).await;
 }
 
@@ -116,7 +124,7 @@ where
 /// restream_rx can be used for restreaming data somewhere else, for example returning data for incoming web request
 /// dependency is w/e clonable dependency needed when processing data.
 /// The protocol message format is in sp-dto crate.
-pub async fn full_message_mode<P: 'static, T: 'static, Q: 'static, R: 'static, D: 'static>(cfg_host: &str, cfg_token: &str, process_event: ProcessEvent<T, P, D>, process_rpc: ProcessRpc<Q, P, D>, startup: Startup<R, D>, startup_data: Option<Value>, dependency: D)
+pub async fn full_message_mode<P: 'static, T: 'static, Q: 'static, R: 'static, D: 'static>(config: Value, process_event: ProcessEvent<T, P, D>, process_rpc: ProcessRpc<Q, P, D>, startup: Startup<R, D>, startup_data: Option<Value>, dependency: D)
 where 
     T: Future<Output = Result<(), Box<dyn Error>>> + Send,
     Q: Future<Output = Result<Response<P>, Box<dyn Error>>> + Send,
@@ -124,13 +132,21 @@ where
     P: serde::Serialize, for<'de> P: serde::Deserialize<'de> + Send,
     D: Clone + Send + Sync
 {
-    let (cfg_tx, mut cfg_rx) = mpsc::unbounded_channel();
-    tokio::spawn(cfg_mode(cfg_host.to_owned(), cfg_token.to_owned(), cfg_tx));
-    let config = cfg_rx.recv().await.expect("Failed to get config");
+    let target_config = match config["cfg_host"].as_str() {
+        Some(cfg_host) => {
+            let cfg_token = config["cfg_token"].as_str().expect("cfg_token not passed");
+            let (cfg_tx, mut cfg_rx) = mpsc::unbounded_channel();
 
-    let host = config["host"].as_str().expect("Failed to get host from config").to_owned();
-    let addr = config["addr"].as_str().expect("Failed to get addr from config");
-    let access_key = config["access_key"].as_str().expect("Failed to get access key from config");
+            tokio::spawn(cfg_mode(cfg_host.to_owned(), cfg_token.to_owned(), cfg_tx));
+
+            cfg_rx.recv().await.expect("Failed to get config")
+        }
+        None => config
+    };
+
+    let host = target_config["host"].as_str().expect("Failed to get host from config").to_owned();
+    let addr = target_config["addr"].as_str().expect("Failed to get addr from config");
+    let access_key = target_config["access_key"].as_str().expect("Failed to get access key from config");
 
     let (read_tx, mut read_rx) = mpsc::unbounded_channel();
     let (write_tx, write_rx) = mpsc::unbounded_channel();
@@ -180,7 +196,7 @@ where
     tokio::spawn(async move {
         let mb = MagicBall::new(addr2, write_tx2, rpc_inbound_tx);        
 
-        tokio::spawn(startup(config.clone(), mb.clone(), startup_data, dependency.clone()));
+        tokio::spawn(startup(target_config.clone(), mb.clone(), startup_data, dependency.clone()));
 
         loop {                        
             let msg = match read_rx.recv().await {
@@ -191,7 +207,7 @@ where
                 }
             };
             let mut mb = mb.clone();
-            let config = config.clone();
+            let config = target_config.clone();
             let dependency = dependency.clone();
 
             match msg {

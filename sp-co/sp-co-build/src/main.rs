@@ -292,8 +292,13 @@ pub fn main() {
     env_logger::init();
 
     //flow::start_ui();
+
+    let config = json!({
+        "cfg_host": "127.0.0.1:11002",
+        "cfg_token": "Build"
+    });
  
-    client::start_full_message("127.0.0.1:11001", "Build", process_event, process_rpc, startup, None, ());
+    client::start_full_message(config, process_event, process_rpc, startup, None, ());
  }
  
 #[derive(Debug)]

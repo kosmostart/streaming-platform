@@ -91,17 +91,18 @@ where
             match msg {
                 RpcMsg::AddRpc(correlation_id, rpc_tx) => {
                     rpcs.insert(correlation_id, rpc_tx);
+
+                    info!("stream_mode: add rpc ok, correlation_id {}", correlation_id);
                 }                
                 RpcMsg::RpcDataRequest(correlation_id) => {
                     match rpcs.remove(&correlation_id) {
                         Some(rpc_tx) => {
                             match rpc_outbound_tx.send(RpcMsg::RpcDataResponse(correlation_id, rpc_tx)) {
                                 Ok(()) => {}
-                                Err(_) => panic!("rpc outbound tx send failed on rpc data request")
+                                Err(_) => panic!("stream_mode: Rpc outbound tx send failed on rpc data request")
                             }
                         }
-                        None => {                            
-                        }
+                        None => error!("stream_mode: not found rpc data for removal, correlation_id {}", correlation_id)
                     }
                 }
                 _=> {                    
@@ -173,18 +174,18 @@ where
                 RpcMsg::AddRpc(correlation_id, rpc_tx) => {
                     rpcs.insert(correlation_id, rpc_tx);
 
-                    info!("Add rpc ok {}", correlation_id);
+                    info!("full_message_mode: add rpc ok, correlation_id {}", correlation_id);
                 }                
                 RpcMsg::RpcDataRequest(correlation_id) => {
                     match rpcs.remove(&correlation_id) {
                         Some(rpc_tx) => {
                             match rpc_outbound_tx.send(RpcMsg::RpcDataResponse(correlation_id, rpc_tx)) {
                                 Ok(()) => {}
-                                Err(_) => panic!("Rpc outbound tx send failed on rpc data request")
+                                Err(_) => panic!("full_message_mode: rpc outbound tx send failed on rpc data request")
                             }
                             //info!("send rpc response ok {}", correlation_id);
                         }
-                        None => error!("Send rpc response not found {}", correlation_id)
+                        None => error!("full_message_mode: not found rpc data for removal, correlation_id {}", correlation_id)
                     }
                 }
                 _=> {                    
@@ -494,17 +495,18 @@ pub async fn cfg_mode(cfg_host: String, cfg_token: String, result_tx: UnboundedS
             match msg {
                 RpcMsg::AddRpc(correlation_id, rpc_tx) => {
                     rpcs.insert(correlation_id, rpc_tx);
+
+                    info!("cfg_mode: add rpc ok, correlation_id {}", correlation_id);
                 }                
                 RpcMsg::RpcDataRequest(correlation_id) => {
                     match rpcs.remove(&correlation_id) {
                         Some(rpc_tx) => {
                             match rpc_outbound_tx.send(RpcMsg::RpcDataResponse(correlation_id, rpc_tx)) {
                                 Ok(()) => {}
-                                Err(_) => panic!("Rpc outbound tx send failed on rpc data request")
+                                Err(_) => panic!("cfg_mode: Rpc outbound tx send failed on rpc data request")
                             }
                         }
-                        None => {                            
-                        }
+                        None => error!("cfg_mode: not found rpc data for removal, correlation_id {}", correlation_id)
                     }
                 }
                 _=> {                    

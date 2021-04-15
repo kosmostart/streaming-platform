@@ -285,8 +285,8 @@ async fn process_write_tcp_stream(tcp_stream: &mut TcpStream, state: &mut State,
                         }
                     }
 					MsgType::RpcResponse(_) => {
-                        //debug!("Sending frame to {}", target);
-                        //server_tx.send(ServerMsg::Send(target, frame))?;
+                        debug!("Sending frame to source, addr hash {}", frame.source_hash);
+                        server_tx.send(ServerMsg::Send(frame.source_hash, frame))?;
                     }
 				}
 			}

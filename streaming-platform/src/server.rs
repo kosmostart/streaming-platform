@@ -12,13 +12,12 @@ use sp_dto::{Key, MsgMeta, MsgType, Subscribes};
 use sp_cfg::ServerConfig;
 use crate::proto::*;
 
-fn to_hashed_subscribes(key_hasher: &mut SipHasher24, subscribes: HashMap<Key, Vec<String>>) -> HashMap<u64, Vec<String>> {
+fn to_hashed_subscribes(key_hasher: &mut SipHasher24, subscribes: HashMap<Key, Vec<String>>) -> HashMap<u64, Vec<u64>> {
     let mut res = HashMap::new();
     let mut buf = BytesMut::new();
 
-    for (key, value) in subscribes {
-        let key_hash = get_key_hash(key);
-        res.insert(key_hash, value);
+    for (key, addrs) in subscribes {
+        res.insert(get_key_hash(key), addrs.iter().map(|a| get_addr_hash(a)).collect());
     }
 
     res
@@ -42,25 +41,26 @@ pub async fn start_future(config: ServerConfig, subscribes: Subscribes) -> Resul
             let msg = server_rx.recv().await.expect("ServerMsg receive failed");
             match msg {
                 ServerMsg::AddClient(addr, net_addr, tx) => {
-                    let client = Client { 
+                    let client = Client {
+                        addr,
                         net_addr,
                         tx
                     };
-                    clients.insert(addr, client);
+                    clients.insert(get_addr_hash(&client.addr), client);
                 }
-                ServerMsg::Send(addr, frame) => {
-                    match clients.get_mut(&addr) {
+                ServerMsg::Send(addr_hash, frame) => {
+                    match clients.get_mut(&addr_hash) {
                         Some(client) => {
                             match client.tx.send(frame) {
                                 Ok(()) => {}                             
-                                Err(frame) => panic!("ServerMsg::Send processing failed - send error, client {}", addr)
+                                Err(frame) => panic!("ServerMsg::Send processing failed - send error, client addr hash {}", addr_hash)
                             }
                         }
-                        None => error!("No client {} for send frame, stream id {}, key hash {}", addr, frame.stream_id, frame.key_hash)
+                        None => error!("No client with addr hash {} for sending frame, stream id {}, key hash {}", addr_hash, frame.stream_id, frame.key_hash)
                     }
                 }                
-                ServerMsg::RemoveClient(addr) => {
-                    let _ = clients.remove(&addr);
+                ServerMsg::RemoveClient(addr_hash) => {
+                    let _ = clients.remove(&addr_hash);
                 }
             }     
         }
@@ -211,9 +211,7 @@ async fn process_read_tcp_stream(addr: String, mut tcp_stream: TcpStream, client
     write_loop(client_rx, &mut tcp_stream).await
 }
 
-async fn process_write_tcp_stream(tcp_stream: &mut TcpStream, state: &mut State, addr: String, event_subscribes: HashMap<u64, Vec<String>>, rpc_subscribes: HashMap<u64, Vec<String>>, _client_net_addr: SocketAddr, server_tx: UnboundedSender<ServerMsg>) -> Result<(), ProcessError> {
-    let mut rpc_requests = HashMap::new();
-
+async fn process_write_tcp_stream(tcp_stream: &mut TcpStream, state: &mut State, addr: String, event_subscribes: HashMap<u64, Vec<u64>>, rpc_subscribes: HashMap<u64, Vec<u64>>, _client_net_addr: SocketAddr, server_tx: UnboundedSender<ServerMsg>) -> Result<(), ProcessError> {
 	loop {
 		match state.read_frame() {
 			ReadFrameResult::NotEnoughBytesForFrame => {
@@ -264,16 +262,12 @@ async fn process_write_tcp_stream(tcp_stream: &mut TcpStream, state: &mut State,
                                     }
                                     1 => {
                                         let target = targets[0].clone();
-
-                                        rpc_requests.insert(frame.correlation_id_hash, addr.clone());
         
                                         debug!("Sending frame to {}", target);
                                         server_tx.send(ServerMsg::Send(target, frame))?;
                                     }
                                     _ => {
                                         let index = targets.len() - 1;
-
-                                        rpc_requests.insert(frame.correlation_id_hash, addr.clone());
         
                                         for target in targets.iter().take(index) {     
                                             debug!("Sending frame to {}", target);
@@ -291,15 +285,8 @@ async fn process_write_tcp_stream(tcp_stream: &mut TcpStream, state: &mut State,
                         }
                     }
 					MsgType::RpcResponse(_) => {
-                        match rpc_requests.remove(&frame.correlation_id_hash) {
-                            Some(target) => {
-                                debug!("Sending frame to {}", target);
-                                server_tx.send(ServerMsg::Send(target, frame))?;
-                            }
-                            None => {
-                                error!("Rpc request not found, client {}, stream id {}, correlation id hash {}", addr, frame.stream_id, frame.correlation_id_hash);
-                            }
-                        }
+                        //debug!("Sending frame to {}", target);
+                        //server_tx.send(ServerMsg::Send(target, frame))?;
                     }
 				}
 			}

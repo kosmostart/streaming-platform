@@ -66,11 +66,18 @@ pub struct Route {
 }
 
 impl Route {
-    pub fn new_cli(name: &str) -> Route {
+    pub fn new_cli(addr: &str) -> Route {
         Route {
-            source: Participator::Cli(name.to_owned()),
+            source: Participator::Cli(addr.to_owned()),
             spec: RouteSpec::Simple,
-            points: vec![Participator::Cli(name.to_owned())]
+            points: vec![Participator::Cli(addr.to_owned())]
+        }
+    }
+    pub fn get_source_addr(&self) -> &String {
+        match &self.source {
+            Participator::Service(addr) => addr,
+            Participator::Cli(addr) => addr,
+            Participator::Component(addr, _, _) => addr
         }
     }
 }

@@ -390,8 +390,10 @@ async fn process_stream_mode(complete_condition: CompleteCondition, mut write_tc
     //info!("auth {:?}", auth_payload);
 
     tokio::spawn(async move {
-        let res = write_loop(write_rx, &mut write_tcp_stream).await;
-        error!("{:?}", res);
+        match write_loop(write_rx, &mut write_tcp_stream).await {
+			Ok(()) => info!("Write loop ended"),
+			Err(e) => error!("Write loop ended with error, {:?}", e)
+		}        
     });	
 
     let mut state = State::new();
@@ -595,13 +597,8 @@ pub async fn cfg_mode(cfg_host: String, cfg_token: String, rpc_inbound_tx: Unbou
     match mb.send_rpc(Key::new("Get", "Cfg", "Cfg"), json!({
         "cfg_token": cfg_token
     })).await {
-        Ok(correlation_id) => {
-            info!("Sent cfg rpc, correlation id {}", correlation_id);
-        }
-        Err(e) => {
-            error!("Failed to send cfg rpc, {:?}", e);
-            panic!("Failed to send cfg rpc");
-        }
+        Ok(correlation_id) => info!("Sent cfg rpc, correlation id {}", correlation_id),
+        Err(e) => panic!("Failed to send cfg rpc, {:?}", e)
     }
 
     connect_stream_future(CompleteCondition::OnStreamEnd, cfg_host.to_owned(), addr, access_key.to_owned(), read_tx, write_rx).await;

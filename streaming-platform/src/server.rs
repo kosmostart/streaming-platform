@@ -106,9 +106,17 @@ pub async fn start_future(config: ServerConfig, subscribes: Subscribes) -> Resul
                             let rpc_subscribes = rpc_subscribes.clone();
 
                             tokio::spawn(async move {                                
-                                let res = process_write_tcp_stream(&mut stream, &mut state, addr.clone(), event_subscribes, rpc_subscribes, client_net_addr, server_tx).await;
-                                error!("Write process ended for {}, {:?}", addr, res);
+                                match process_write_tcp_stream(&mut stream, &mut state, addr.clone(), event_subscribes, rpc_subscribes, client_net_addr, server_tx).await {
+									Ok(()) => info!("Write process ended, client addr {}", addr),
+									Err(e) => {
+										match e {
+											ProcessError::StreamClosed => info!("Write process ended: stream closed, client addr {}", addr),
+											_ => error!("Write process ended with error, client addr {}, {:?}", addr, e)
+										}
+									}
+								}                        
                             });
+
                         } else {
                             client_state.has_writer = false;
 

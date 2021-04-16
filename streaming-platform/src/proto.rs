@@ -208,7 +208,7 @@ impl State {
 
         match bytes_read {
             0 => {
-                error!("Read 0 bytes");
+                warn!("Read 0 bytes");
                 Err(ProcessError::StreamClosed)
             }
             _ => {

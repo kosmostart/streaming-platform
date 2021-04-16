@@ -164,6 +164,11 @@ pub struct State {
 	frame_size: usize
 }
 
+pub enum CompleteCondition {
+	OnStreamEnd,
+	Never
+}
+
 pub enum FrameReadingStatus {
 	Header,
 	Payload
@@ -357,11 +362,11 @@ impl State {
 pub struct Client {
     pub addr: String,
     pub net_addr: SocketAddr,
-    pub tx: UnboundedSender<Frame>
+    pub tx: UnboundedSender<WriteMsg>
 }
 
 pub enum ServerMsg {
-    AddClient(String, SocketAddr, UnboundedSender<Frame>),
+    AddClient(String, SocketAddr, UnboundedSender<WriteMsg>),
     RemoveClient(u64),
     Send(u64, Frame)
 }
@@ -431,14 +436,27 @@ pub async fn write_frame(tcp_stream: &mut TcpStream, frame: Frame) -> Result<(),
     Ok(())
 }
 
-pub async fn write_loop(mut client_rx: UnboundedReceiver<Frame>, tcp_stream: &mut TcpStream) -> Result<(), ProcessError> {    
-    loop {       
+pub enum WriteMsg {
+	Frame(Frame),
+	Complete
+}
+
+pub async fn write_loop(mut client_rx: UnboundedReceiver<WriteMsg>, tcp_stream: &mut TcpStream) -> Result<(), ProcessError> {    
+    loop {
         match client_rx.recv().await {
-            Some(frame) => {
-                match write_frame(tcp_stream, frame).await {
-                    Ok(()) => {}
-                    Err(e) => error!("Error writing frame in write loop: {:?}", e)
-                }
+            Some(msg) => {
+				match msg {
+					WriteMsg::Frame(frame) => {
+						match write_frame(tcp_stream, frame).await {
+							Ok(()) => {}
+							Err(e) => error!("Error writing frame in write loop: {:?}", e)
+						}
+					}
+					WriteMsg::Complete => {
+						info!("Write loop completed");
+						return Ok(());
+					}
+				}                
             }
             None => return Err(ProcessError::WriteChannelDropped)
         }
@@ -475,9 +493,7 @@ pub async fn write_to_tcp_stream(tcp_stream: &mut TcpStream, msg_type: u8, key_h
 	bytes_send = 0;
 
     match payload_size {
-        0 => {
-            //self.write_tx.send(Frame::Empty(stream_id))?
-        }
+        0 => {}
         _ => {            
             let mut source = &data[msg_meta_offset..payload_offset];
 
@@ -508,9 +524,7 @@ pub async fn write_to_tcp_stream(tcp_stream: &mut TcpStream, msg_type: u8, key_h
 		bytes_send = 0;
 
         match attachment_size {
-            0 => {
-                //self.write_tx.send(Frame::Empty(stream_id))?
-            }
+            0 => {}
             _ => {
                 let mut source = &data[prev..attachment_offset];
 
@@ -547,7 +561,8 @@ pub async fn write_to_tcp_stream(tcp_stream: &mut TcpStream, msg_type: u8, key_h
 pub enum RpcMsg {
     AddRpc(Uuid, oneshot::Sender<(MsgMeta, Vec<u8>, Vec<u8>)>),    
     RpcDataRequest(Uuid),
-    RpcDataResponse(Uuid, oneshot::Sender<(MsgMeta, Vec<u8>, Vec<u8>)>)
+    RpcDataResponse(Uuid, oneshot::Sender<(MsgMeta, Vec<u8>, Vec<u8>)>),
+	Complete
 }
 
 #[derive(Clone)]
@@ -562,13 +577,13 @@ pub struct MagicBall {
 	key_hash: u64,
 	stream_id: u64,
     source_hash: u64,
-    write_tx: UnboundedSender<Frame>,
+    write_tx: UnboundedSender<WriteMsg>,
     rpc_inbound_tx: UnboundedSender<RpcMsg>
 }
 
 
 impl MagicBall {
-    pub fn new(addr: String, write_tx: UnboundedSender<Frame>, rpc_inbound_tx: UnboundedSender<RpcMsg>) -> MagicBall {
+    pub fn new(addr: String, write_tx: UnboundedSender<WriteMsg>, rpc_inbound_tx: UnboundedSender<RpcMsg>) -> MagicBall {
         let key_hasher = get_key_hasher();
         let mut key_hash_buf = BytesMut::new();
 
@@ -629,7 +644,7 @@ impl MagicBall {
 						false => FrameType::MsgMeta
 					};
 
-					self.write_tx.send(Frame::new(frame_type as u8, n as u16, msg_type, key_hash, stream_id, source_hash, Some(data_buf)))?;
+					self.write_tx.send(WriteMsg::Frame(Frame::new(frame_type as u8, n as u16, msg_type, key_hash, stream_id, source_hash, Some(data_buf))))?;
 				}
             }
         }
@@ -637,9 +652,7 @@ impl MagicBall {
 		bytes_send = 0;
 
         match payload_size {
-            0 => {
-                //self.write_tx.send(Frame::Empty(stream_id))?
-            }
+            0 => {}
             _ => {            
                 let mut source = &data[msg_meta_offset..payload_offset];
 
@@ -655,7 +668,7 @@ impl MagicBall {
 								false => FrameType::Payload
 							};
 
-							self.write_tx.send(Frame::new(frame_type as u8, n as u16, msg_type, key_hash, stream_id, source_hash, Some(data_buf)))?;
+							self.write_tx.send(WriteMsg::Frame(Frame::new(frame_type as u8, n as u16, msg_type, key_hash, stream_id, source_hash, Some(data_buf))))?;
 						}
                     }
                 }
@@ -670,9 +683,7 @@ impl MagicBall {
 			bytes_send = 0;
 
             match attachment_size {
-                0 => {
-                    //self.write_tx.send(Frame::Empty(stream_id))?
-                }
+                0 => {}
                 _ => {
                     let mut source = &data[prev..attachment_offset];
 
@@ -688,7 +699,7 @@ impl MagicBall {
 									false => FrameType::Attachment
 								};
 								
-								self.write_tx.send(Frame::new(frame_type as u8, n as u16, msg_type, key_hash, stream_id, source_hash, Some(data_buf)))?
+								self.write_tx.send(WriteMsg::Frame(Frame::new(frame_type as u8, n as u16, msg_type, key_hash, stream_id, source_hash, Some(data_buf))))?
 							}
                         }
                     }                    
@@ -699,7 +710,7 @@ impl MagicBall {
         }
 
 		if send_end_frame {
-			self.write_tx.send(Frame::new(FrameType::End as u8, 0, msg_type, key_hash, stream_id, source_hash, None))?;
+			self.write_tx.send(WriteMsg::Frame(Frame::new(FrameType::End as u8, 0, msg_type, key_hash, stream_id, source_hash, None)))?;
 		}
 
         Ok(())
@@ -877,20 +888,20 @@ impl MagicBall {
 			i = i + 1;
 		}
 
-        self.write_tx.send(Frame::new(self.frame_type, payload_size as u16, self.msg_type, self.key_hash, self.stream_id, self.source_hash, Some(buf)))?;
+        self.write_tx.send(WriteMsg::Frame(Frame::new(self.frame_type, payload_size as u16, self.msg_type, self.key_hash, self.stream_id, self.source_hash, Some(buf))))?;
 
 		Ok(())
 	}
     pub fn complete_msg_meta(&mut self) -> Result<(), ProcessError> {
-        self.write_tx.send(Frame::new(FrameType::MsgMetaEnd as u8, 0, self.msg_type, self.key_hash, self.stream_id, self.source_hash, None))?;
+        self.write_tx.send(WriteMsg::Frame(Frame::new(FrameType::MsgMetaEnd as u8, 0, self.msg_type, self.key_hash, self.stream_id, self.source_hash, None)))?;
 		Ok(())
 	}
     pub fn complete_payload(&mut self) -> Result<(), ProcessError> {
-        self.write_tx.send(Frame::new(FrameType::PayloadEnd as u8, 0, self.msg_type, self.key_hash, self.stream_id, self.source_hash, None))?;
+        self.write_tx.send(WriteMsg::Frame(Frame::new(FrameType::PayloadEnd as u8, 0, self.msg_type, self.key_hash, self.stream_id, self.source_hash, None)))?;
 		Ok(())
 	}
     pub fn complete_attachment(&mut self) -> Result<(), ProcessError> {
-        self.write_tx.send(Frame::new(FrameType::AttachmentEnd as u8, 0, self.msg_type, self.key_hash, self.stream_id, self.source_hash, None))?;
+        self.write_tx.send(WriteMsg::Frame(Frame::new(FrameType::AttachmentEnd as u8, 0, self.msg_type, self.key_hash, self.stream_id, self.source_hash, None)))?;
 		Ok(())
 	}
     /// This function will be waiting for rpc response, please note (in async function).
@@ -900,19 +911,19 @@ impl MagicBall {
         self.source_hash = get_addr_hash(&self.addr);
         self.rpc_inbound_tx.send(RpcMsg::AddRpc(correlation_id, rpc_tx))?;
 
-        self.write_tx.send(Frame::new(FrameType::End as u8, 0, self.msg_type, self.key_hash, self.stream_id, self.source_hash, None))?;
+        self.write_tx.send(WriteMsg::Frame(Frame::new(FrameType::End as u8, 0, self.msg_type, self.key_hash, self.stream_id, self.source_hash, None)))?;
 
         let (msg_meta, payload, attachments_data) = timeout(Duration::from_millis(RPC_TIMEOUT_MS_AMOUNT), rpc_rx).await??;
         let payload: T = from_slice(&payload)?;
 
         Ok(Message {
-            meta: msg_meta, 
+            meta: msg_meta,
             payload, 
             attachments_data
         })
 	}
 	pub fn complete_stream(&mut self) -> Result<(), ProcessError> {
-        self.write_tx.send(Frame::new(FrameType::End as u8, 0, self.msg_type, self.key_hash, self.stream_id, self.source_hash, None))?;
+        self.write_tx.send(WriteMsg::Frame(Frame::new(FrameType::End as u8, 0, self.msg_type, self.key_hash, self.stream_id, self.source_hash, None)))?;
 		Ok(())
 	}
     pub async fn rpc<T, R>(&mut self, key: Key, payload: T) -> Result<Message<R>, ProcessError> where T: serde::Serialize, T: Debug, for<'de> R: serde::Deserialize<'de>, R: Debug {
@@ -1253,7 +1264,7 @@ pub enum ProcessError {
     StreamLayoutNotFound,
     StreamClosed,    
     WriteChannelDropped,        
-    SendFrameError,
+    SendWriteMsgError,
     SendServerMsgError,
     SendRpcMsgError,
     OneshotRecvError(oneshot::error::RecvError),
@@ -1285,9 +1296,9 @@ impl From<serde_json::Error> for ProcessError {
 	}
 }
 
-impl From<SendError<Frame>> for ProcessError {
-	fn from(_: SendError<Frame>) -> ProcessError {
-		ProcessError::SendFrameError
+impl From<SendError<WriteMsg>> for ProcessError {
+	fn from(_: SendError<WriteMsg>) -> ProcessError {
+		ProcessError::SendWriteMsgError
 	}
 }
 

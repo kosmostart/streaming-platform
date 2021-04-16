@@ -51,9 +51,9 @@ pub async fn start_future(config: ServerConfig, subscribes: Subscribes) -> Resul
                 ServerMsg::Send(addr_hash, frame) => {
                     match clients.get_mut(&addr_hash) {
                         Some(client) => {
-                            match client.tx.send(frame) {
+                            match client.tx.send(WriteMsg::Frame(frame)) {
                                 Ok(()) => {}                             
-                                Err(frame) => panic!("ServerMsg::Send processing failed - send error, client addr hash {}", addr_hash)
+                                Err(msg) => panic!("ServerMsg::Send processing failed - send error, client addr hash {}", addr_hash)
                             }
                         }
                         None => error!("No client with addr hash {} for sending frame, stream id {}, key hash {}", addr_hash, frame.stream_id, frame.key_hash)

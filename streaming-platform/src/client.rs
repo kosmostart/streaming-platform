@@ -365,7 +365,7 @@ async fn connect_stream_future(complete_condition: CompleteCondition, host: Stri
 
     let res = process_stream_mode(complete_condition, write_stream, read_stream, read_tx, write_rx).await;
 
-    info!("{:?}", res);
+    info!("Connections closed, {:?}", res);
 }
 
 async fn connect_full_message_future(host: &str, addr: String, access_key: String, read_tx: UnboundedSender<ClientMsg>, write_rx: UnboundedReceiver<WriteMsg>) {    
@@ -439,51 +439,18 @@ async fn process_stream_mode(complete_condition: CompleteCondition, mut write_tc
 						}
 		
 						match frame_type {
-							6 => {
-								info!("Read loop completed");
-								return Ok(());
-							}
+							6 => break,								//
 							_ => {}
 						}
 					}
 				}
 			}
+
+			info!("Read loop completed");
 		}
 	}
 
-	loop {
-		match state.read_frame() {
-			ReadFrameResult::NotEnoughBytesForFrame => {
-				state.read_from_tcp_stream(&mut read_tcp_stream).await?;
-			}
-			ReadFrameResult::NextStep => {}
-			ReadFrameResult::Frame(frame) => {
-				debug!("Stream frame read, frame type {}, msg type {}, stream id {}", frame.frame_type, frame.msg_type, frame.stream_id);
-
-				let frame_type = frame.frame_type;
-
-				match read_tx.send(ClientMsg::Frame(frame)) {
-					Ok(()) => {}
-					Err(_) => {                        
-						panic!("Client message send with read_tx in stream mode failed");
-					}
-				}
-
-				match complete_condition {
-					CompleteCondition::OnStreamEnd => {
-						match frame_type {
-							6 => {
-								info!("Read loop completed");
-								return Ok(());
-							}
-							_ => {}
-						}
-					}
-					CompleteCondition::Never => {}
-				}
-			}
-		}
-	}
+	Ok(())
 }
 
 async fn process_full_message_mode(mut write_tcp_stream: TcpStream, mut read_tcp_stream: TcpStream, read_tx: UnboundedSender<ClientMsg>, write_rx: UnboundedReceiver<WriteMsg>) -> Result<(), ProcessError> {    

@@ -452,15 +452,15 @@ pub async fn write_loop(mut client_rx: UnboundedReceiver<WriteMsg>, tcp_stream: 
 							Err(e) => error!("Error writing frame in write loop: {:?}", e)
 						}
 					}
-					WriteMsg::Complete => {
-						info!("Write loop completed");
-						return Ok(());
-					}
+					WriteMsg::Complete => break
 				}                
             }
             None => return Err(ProcessError::WriteChannelDropped)
         }
     }
+
+	info!("Write loop completed");
+	Ok(())
 }
 
 // Use this only for single message or parts of it

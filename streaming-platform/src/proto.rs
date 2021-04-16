@@ -1325,7 +1325,7 @@ fn main() {
 }
 
 async fn f(data: &[String]) {
-    println!("{:?}", data);
+    info!("{:?}", data);
 }
 
 async fn start<F>(prm: F) 

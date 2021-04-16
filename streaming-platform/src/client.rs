@@ -2,7 +2,7 @@ use std::{collections::HashMap, hash::Hash};
 use std::future::Future;
 use std::error::Error;
 use log::*;
-use tokio::runtime::Runtime;
+use tokio::{io::AsyncWriteExt, runtime::Runtime};
 use tokio::net::TcpStream;
 use tokio::sync::{mpsc::{self, UnboundedSender, UnboundedReceiver}};
 use serde_json::{json, Value, from_slice, to_vec};
@@ -352,13 +352,13 @@ async fn process_stream_mode(mut write_tcp_stream: TcpStream, mut read_tcp_strea
     //let (auth_msg_meta, auth_payload, auth_attachments) = read_full(&mut socket_read).await?;
     //let auth_payload: Value = from_slice(&auth_payload)?;    
 
-    //println!("auth {:?}", auth_msg_meta);
-    //println!("auth {:?}", auth_payload);
+    //info!("auth {:?}", auth_msg_meta);
+    //info!("auth {:?}", auth_payload);
 
     tokio::spawn(async move {
         let res = write_loop(write_rx, &mut write_tcp_stream).await;
         error!("{:?}", res);
-    });
+    });	
 
     let mut state = State::new();
 
@@ -386,8 +386,8 @@ async fn process_full_message_mode(mut write_tcp_stream: TcpStream, mut read_tcp
     //let (auth_msg_meta, auth_payload, auth_attachments) = read_full(&mut socket_read).await?;
     //let auth_payload: Value = from_slice(&auth_payload)?;    
 
-    //println!("auth {:?}", auth_msg_meta);
-    //println!("auth {:?}", auth_payload);
+    //info!("auth {:?}", auth_msg_meta);
+    //info!("auth {:?}", auth_payload);
             
     let mut stream_layouts: HashMap<u64, StreamLayout> = HashMap::new();
     let mut state = State::new();

@@ -31,13 +31,12 @@ pub async fn startup(_config: Value, mut _mb: MagicBall, _startup_data: Option<V
 }
 
 pub async fn process_stream(config: Value, mut mb: MagicBall, mut rx: UnboundedReceiver<ClientMsg>, _: Option<UnboundedSender<RestreamMsg>>, _: Option<UnboundedReceiver<RestreamMsg>>, _: ()) {
-    let dirs: Vec<sp_cfg::Dir> = vec![];
     let mut stream_layouts = HashMap::new();
 
     loop {        
         let client_msg = rx.recv().await.expect("connection issues acquired");
         let stream_id = client_msg.get_stream_id();
-        match process_client_msg(&mut mb, &mut stream_layouts, &dirs, client_msg).await {
+        match process_client_msg(&mut mb, &mut stream_layouts, client_msg).await {
             Ok(()) => {}
             Err(e) => {
                 error!("Process client msg error, {:?}", e);
@@ -78,7 +77,7 @@ pub async fn process_stream(config: Value, mut mb: MagicBall, mut rx: UnboundedR
     }
 }
 
-async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64, FileStreamLayout>, dirs: &Vec<sp_cfg::Dir>, client_msg: ClientMsg) -> Result<(), Error> {
+async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64, FileStreamLayout>, client_msg: ClientMsg) -> Result<(), Error> {
     match client_msg {
 		ClientMsg::Frame(frame) => {
 			match frame.get_frame_type() {

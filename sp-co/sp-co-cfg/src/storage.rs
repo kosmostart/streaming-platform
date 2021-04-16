@@ -259,7 +259,7 @@ mod tests {
         let _ = env_logger::try_init();
 
         let user_id = 1; 
-        let root_path = "d:/src/cfg-storage";
+        let root_path = "d:/src/test-storage";
 
         let dc = Dc::new(user_id, root_path)?;
 

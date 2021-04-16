@@ -55,7 +55,7 @@ pub async fn process_rpc(config: Value, mut mb: MagicBall, msg: Message<Value>, 
             };
 
             match dc.find(|a| a["key"] == key && a["deactivated_at"].is_null())? {
-                Some((_, payload)) => payload,
+                Some((_, mut payload)) => payload["payload"].take(),
                 None => json!({})
             }
         }
@@ -72,7 +72,7 @@ pub fn main() {
     env_logger::init();
 
     let user_id = 1;
-    let root_path = "d:/src/sp-co-cfg-storage";
+    let root_path = "c:/src/sp-co-cfg-storage";
 
     let dc = Dc::new(user_id, root_path).expect("Failed to create dc");
 

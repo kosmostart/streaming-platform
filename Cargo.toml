@@ -8,7 +8,6 @@ members = [
 	"sp-cfg",
 	"sp-web",
 	"sp-yew",
-	"sp-manager",
 	"sp-co/sp-build-core",
 	"sp-co/sp-co-hub",
 	"sp-co/sp-co-build",
@@ -18,5 +17,5 @@ members = [
 	"sp-co/sp-co-cfg",
 	"sp-co/sp-co-cli",
 	"distribution/sp-public-host",
-	#"distribution/spup"
+	#"distribution/sp-up"
 ]

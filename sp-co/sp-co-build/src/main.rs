@@ -251,7 +251,7 @@ pub async fn process_rpc(config: Value, mut mb: MagicBall, msg: Message<Value>, 
     resp(res)
 }
 
-pub async fn startup(config: Value, mut mb: MagicBall, startup_data: Option<Value>, _: ()) {
+pub async fn startup(initial_config: Value, target_config: Value, mut mb: MagicBall, startup_data: Option<Value>, _: ()) {
 }
 
 async fn deploy_unit(mut mb: MagicBall, path: &str, deploy_unit_name: &str, run_config: Option<RunConfig>) -> Result<Message<Value>, Error> {

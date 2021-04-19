@@ -50,7 +50,7 @@ pub async fn process_rpc(config: Value, mut mb: MagicBall, msg: Message<Value>, 
     resp(res)
 }
 
-pub async fn startup(config: Value, mut mb: MagicBall, startup_data: Option<Value>, _: ()) {
+pub async fn startup(initial_config: Value, target_config: Value, mut mb: MagicBall, startup_data: Option<Value>, _: ()) {
 }
 
 pub fn main() {

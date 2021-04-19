@@ -11,7 +11,7 @@ fn main() {
 
 fn cfg_add(rt: &Runtime) {
     let auth_url = "http://127.0.0.1:12345/authorize";
-    let hub_url = "http://127.0.0.1:12345/hub";	
+    let hub_url = "http://127.0.0.1:12345/hub";
 
     let payload = json!({
     });

@@ -65,7 +65,7 @@ pub async fn process_rpc(config: Value, mut mb: MagicBall, msg: Message<Value>, 
     resp(res)
 }
 
-pub async fn startup(config: Value, mut mb: MagicBall, startup_data: Option<Value>, _: Dc) {
+pub async fn startup(initial_config: Value, target_config: Value, mut mb: MagicBall, startup_data: Option<Value>, _: Dc) {
 }
 
 pub fn main() {
@@ -76,11 +76,34 @@ pub fn main() {
 
     let dc = Dc::new(user_id, root_path).expect("Failed to create dc");
 
-    let res = dc.create(json!({
+    let _ = dc.create(json!({
         "key": "Auth",
         "payload": {
             "host": "127.0.0.1:11002",
             "addr": "Auth",
+            "access_key": ""
+        }
+    }));
+
+	let _ = dc.create(json!({
+        "key": "Web",
+        "payload": {
+            "host": "127.0.0.1:11002",
+            "addr": "Web",
+			"stream_cfg_token": "WebStream",
+            "access_key": "",			
+			"listen_addr": "127.0.0.1:12345",
+			//"cert_path".to_owned(), "".to_owned());
+			//"key_path".to_owned(), "".to_owned());
+			"auth_token_key": "This is key omg"
+        }
+    }));
+
+	let _ = dc.create(json!({
+        "key": "WebStream",
+        "payload": {
+            "host": "127.0.0.1:11002",
+            "addr": "WebStream",
             "access_key": ""
         }
     }));

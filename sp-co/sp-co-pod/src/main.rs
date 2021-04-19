@@ -27,7 +27,7 @@ fn main() {
     client::start_stream(config, process_stream, startup, None, None, None, ());
 }
 
-pub async fn startup(_config: Value, mut _mb: MagicBall, _startup_data: Option<Value>, _: ()) {
+pub async fn startup(_initial_config: Value, _target_config: Value, mut _mb: MagicBall, _startup_data: Option<Value>, _: ()) {
 }
 
 pub async fn process_stream(config: Value, mut mb: MagicBall, mut rx: UnboundedReceiver<ClientMsg>, _: Option<UnboundedSender<RestreamMsg>>, _: Option<UnboundedReceiver<RestreamMsg>>, _: ()) {

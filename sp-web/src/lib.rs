@@ -61,27 +61,27 @@ pub async fn process_rpc(_config: Value, mut _mb: MagicBall, _msg: Message<Value
     resp(json!({}))    
 }
 
-pub async fn startup2(config: Value, mb: MagicBall, startup_data: Option<Value>, _: ()) {	
+pub async fn startup2(initial_config: Value, target_config: Value, mb: MagicBall, startup_data: Option<Value>, _: ()) {	
 }
 
-pub async fn startup(config: Value, mb: MagicBall, startup_data: Option<Value>, _: ()) {
+pub async fn startup(initial_config: Value, target_config: Value, mb: MagicBall, startup_data: Option<Value>, _: ()) {
 	let (mut restream_tx, mut restream_rx) = mpsc::unbounded_channel();
     let mut restream_tx2 = restream_tx.clone();
     
     let web_stream_config = json!({
-        "cfg_host": config["cfg_host"],
-        "cfg_token": "WebStream"
-    });
+        "cfg_host": initial_config["cfg_host"],
+        "cfg_token": target_config["stream_cfg_token"]
+    });	
 
     tokio::spawn(async move {
         stream_mode(web_stream_config, process_stream, startup2, None, Some(restream_tx2), Some(restream_rx), ()).await;
     });
 	
-    let listen_addr = config["listen_addr"].as_str().expect("Missing listen_addr config value");
-    let cert_path = config["cert_path"].as_str();
-    let key_path = config["key_path"].as_str();
+    let listen_addr = target_config["listen_addr"].as_str().expect("Missing listen_addr config value");
+    let cert_path = target_config["cert_path"].as_str();
+    let key_path = target_config["key_path"].as_str();
 
-    let aca_origin = config["aca_origin"].as_str().map(|x| x.to_owned());
+    let aca_origin = target_config["aca_origin"].as_str().map(|x| x.to_owned());
     let aca_origin2 = aca_origin.clone();
     let aca_origin3 = aca_origin.clone();
 	let aca_origin4 = aca_origin.clone();
@@ -90,7 +90,7 @@ pub async fn startup(config: Value, mb: MagicBall, startup_data: Option<Value>, 
 
     let listen_addr = listen_addr.parse::<SocketAddr>().expect("Incorrect listen addr passed");
 
-    let auth_token_key = config["auth_token_key"].as_str().map(|x| x.to_owned()).expect("Missing auth_token_key config value");
+    let auth_token_key = target_config["auth_token_key"].as_str().map(|x| x.to_owned()).expect("Missing auth_token_key config value");
     let auth_token_key1 = auth_token_key.clone();
     let auth_token_key2 = auth_token_key.clone();
     let auth_token_key3 = auth_token_key.clone();
@@ -128,7 +128,7 @@ pub async fn startup(config: Value, mb: MagicBall, startup_data: Option<Value>, 
         None => {}
     };
 
-    let deploy_path = match config["deploy_path"].as_str() {
+    let deploy_path = match target_config["deploy_path"].as_str() {
         Some(path) => path.to_owned(),
         None => current_dir().expect("failed to get current dir").to_str().expect("failed to get current dir str (for deploy path)").to_owned()
     };

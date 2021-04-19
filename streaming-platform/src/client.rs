@@ -60,6 +60,7 @@ where
     R: Future<Output = ()> + Send,
     D: Clone + Send + Sync
 {
+	let initial_config = config.clone();
     let target_config = match config["cfg_host"].as_str() {
         Some(cfg_host) => {
             let cfg_token = config["cfg_token"].as_str().expect("cfg_token not passed");
@@ -131,7 +132,7 @@ where
 
     let mb = MagicBall::new(addr.to_owned(), write_tx, rpc_inbound_tx);
     tokio::spawn(process_stream(target_config.clone(), mb.clone(), read_rx, restream_tx, restream_rx, dependency.clone()));
-    tokio::spawn(startup(target_config, mb, startup_data, dependency));
+    tokio::spawn(startup(initial_config, target_config, mb, startup_data, dependency));
     connect_stream_future(CompleteCondition::Never, host, addr.to_owned(), access_key.to_owned(), read_tx, write_rx).await;
 }
 
@@ -151,6 +152,7 @@ where
     P: serde::Serialize, for<'de> P: serde::Deserialize<'de> + Send,
     D: Clone + Send + Sync
 {
+	let initial_config = config.clone();
     let target_config = match config["cfg_host"].as_str() {
         Some(cfg_host) => {
             let cfg_token = config["cfg_token"].as_str().expect("cfg_token not passed");
@@ -226,12 +228,12 @@ where
         }
 
 		info!("Rpc loop completed");
-    });    
+    });
 
     tokio::spawn(async move {
         let mb = MagicBall::new(addr2, write_tx, rpc_inbound_tx);        
 
-        tokio::spawn(startup(target_config.clone(), mb.clone(), startup_data, dependency.clone()));
+        tokio::spawn(startup(initial_config, target_config.clone(), mb.clone(), startup_data, dependency.clone()));
 
         loop {                        
             let msg = match read_rx.recv().await {
@@ -756,8 +758,7 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
 								Some(msg_meta) => {
 									match msg_meta.key.action.as_ref() {
 										"Get" => {							
-											let payload: Value = from_slice(&stream_layout.layout.payload)?;
-                                            info!("{:#?}", payload);
+											let payload: Value = from_slice(&stream_layout.layout.payload)?;                                            
 											stream_layout.payload = Some(payload);
 										}
 										_ => {}

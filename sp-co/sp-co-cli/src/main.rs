@@ -20,6 +20,7 @@ fn main() -> Result<(), Error> {
     println!("get all");
     println!("get");
     println!("load file");
+    println!("deploy");
     println!("");
 
     println!("Enter command:");
@@ -189,6 +190,11 @@ fn main() -> Result<(), Error> {
                 }
             }
         }
+        "deploy" => {
+            let payload = json!({});
+            
+            deploy(&rt, payload);
+        }
         _ => {}
     }
 
@@ -312,14 +318,14 @@ fn cfg_get(rt: &Runtime, payload: Value) {
     println!("{:#?}", msg);
 }
 
-fn deploy(rt: &Runtime) {
+fn deploy(rt: &Runtime, payload: Value) {
     let auth_url = "http://127.0.0.1:12345/authorize";
     let hub_url = "http://127.0.0.1:12345/hub";	
 
-    let payload = json!({
+    let auth_payload = json!({
     });
 
-    let (_, dto) = rpc_dto("Cli".to_owned(), Key::new("Auth", "Auth", "Auth"), payload, Route::new_cli("Cli"), None, None).unwrap();
+    let (_, dto) = rpc_dto("Cli".to_owned(), Key::new("Auth", "Auth", "Auth"), auth_payload, Route::new_cli("Cli"), None, None).unwrap();
 
     let client = reqwest::Client::new();
     
@@ -340,9 +346,6 @@ fn deploy(rt: &Runtime) {
 		let res = q(qq).await;
 		println!("{:?}", res);
 	});
-
-    let payload = json!({
-    });
 
     let (_, dto) = rpc_dto("Cli".to_owned(), Key::new("Deploy", "Deploy", "Deploy"), payload, Route::new_cli("Cli"), None, None).unwrap();
 

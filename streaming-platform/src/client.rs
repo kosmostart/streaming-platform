@@ -289,7 +289,7 @@ where
 
                                 route.points.push(Participator::Service(mb.addr.clone()));
 
-                                let key_hash = get_key_hash(key.clone());
+                                let key_hash = get_key_hash(&key);
                                 let source_hash = match &route.spec {
                                     RouteSpec::Simple => {
                                         info!("Rpc response for source addr: {}", route.get_source_addr());

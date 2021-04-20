@@ -17,7 +17,7 @@ fn to_hashed_subscribes(key_hasher: &mut SipHasher24, subscribes: HashMap<Key, V
     let mut buf = BytesMut::new();
 
     for (key, addrs) in subscribes {
-        res.insert(get_key_hash(key), addrs.iter().map(|a| get_addr_hash(a)).collect());
+        res.insert(get_key_hash(&key), addrs.iter().map(|a| get_addr_hash(a)).collect());
     }
 
     res

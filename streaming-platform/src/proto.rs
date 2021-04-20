@@ -49,14 +49,14 @@ pub fn get_stream_id_hasher() -> SipHasher24 {
     SipHasher24::new_with_keys(0, 0)
 }
 
-pub fn get_key_hash(key: Key) -> u64 {	
+pub fn get_key_hash(key: &Key) -> u64 {	
 	let mut hasher = get_key_hasher();
 
-    hasher.write(&(key.service + &key.action + &key.domain).as_bytes());
+    hasher.write(&(key.service.clone() + &key.action + &key.domain).as_bytes());
 
     let res = hasher.finish();
 
-    debug!("Created hash for key, hash {}", res);
+    debug!("Created hash {} for key {:?}", res, key);
 
     res
 }
@@ -68,7 +68,7 @@ pub fn get_addr_hash(addr: &str) -> u64 {
 
     let res = hasher.finish();
 
-    debug!("Created hash for addr {}, hash {}", addr, res);
+    debug!("Created hash {} for addr {}", res, addr);
 
     res
 }
@@ -722,7 +722,7 @@ impl MagicBall {
 
         let (correlation_id, dto, msg_meta_size, payload_size, attachments_sizes) = event_dto_with_sizes(self.addr.clone(), key.clone(), payload, route, self.auth_token.clone(), self.auth_data.clone())?;
 
-        self.key_hash = get_key_hash(key);
+        self.key_hash = get_key_hash(&key);
         self.stream_id = self.get_stream_id();
         self.source_hash = get_addr_hash(&self.addr);
 
@@ -741,7 +741,7 @@ impl MagicBall {
 
 		self.frame_type = FrameType::Attachment as u8;
 		self.msg_type = MsgType::RpcRequest.get_u8();
-        self.key_hash = get_key_hash(key);
+        self.key_hash = get_key_hash(&key);
         self.stream_id = self.get_stream_id();
         self.source_hash = get_addr_hash(&self.addr);
 
@@ -756,7 +756,7 @@ impl MagicBall {
 
         let (correlation_id, dto, msg_meta_size, payload_size, attachments_sizes) = event_dto_with_sizes(self.addr.clone(), key.clone(), payload, route, self.auth_token.clone(), self.auth_data.clone())?;
 
-        self.key_hash = get_key_hash(key);
+        self.key_hash = get_key_hash(&key);
         self.stream_id = self.get_stream_id();
         self.source_hash = get_addr_hash(&self.addr);
 
@@ -775,7 +775,7 @@ impl MagicBall {
 
 		self.frame_type = FrameType::Attachment as u8;
 		self.msg_type = MsgType::Event.get_u8();
-        self.key_hash = get_key_hash(key);
+        self.key_hash = get_key_hash(&key);
         self.stream_id = self.get_stream_id();
         self.source_hash = get_addr_hash(&self.addr);
 
@@ -794,7 +794,7 @@ impl MagicBall {
 
 		self.frame_type = FrameType::Attachment as u8;
 		self.msg_type = MsgType::RpcRequest.get_u8();
-        self.key_hash = get_key_hash(key);
+        self.key_hash = get_key_hash(&key);
         self.stream_id = self.get_stream_id();
         self.source_hash = get_addr_hash(&self.addr);
 
@@ -813,7 +813,7 @@ impl MagicBall {
 
 		self.frame_type = FrameType::Attachment as u8;
 		self.msg_type = MsgType::RpcResponse(rpc_result).get_u8();
-        self.key_hash = get_key_hash(msg_meta.key);
+        self.key_hash = get_key_hash(&msg_meta.key);
         self.stream_id = self.get_stream_id();
 
         self.write_full_message(self.msg_type, self.key_hash, self.stream_id, self.source_hash, dto, msg_meta_size, payload_size, attachments_sizes, false).await?;
@@ -829,7 +829,7 @@ impl MagicBall {
 
 		self.frame_type = FrameType::Attachment as u8;
 		self.msg_type = MsgType::RpcResponse(rpc_result).get_u8();
-        self.key_hash = get_key_hash(msg_meta.key);
+        self.key_hash = get_key_hash(&msg_meta.key);
         self.stream_id = self.get_stream_id();;
 
         self.write_full_message(self.msg_type, self.key_hash, self.stream_id, self.source_hash, dto, msg_meta_size, payload_size, attachments_sizes, false).await?;
@@ -847,7 +847,7 @@ impl MagicBall {
 
 		self.frame_type = FrameType::Attachment as u8;
 		self.msg_type = MsgType::RpcResponse(rpc_result).get_u8();
-        self.key_hash = get_key_hash(msg_meta.key);
+        self.key_hash = get_key_hash(&msg_meta.key);
         self.stream_id = self.get_stream_id();
 
         self.write_full_message(self.msg_type, self.key_hash, self.stream_id, self.source_hash, dto, msg_meta_size, payload_size, attachments_sizes, true).await?;
@@ -865,7 +865,7 @@ impl MagicBall {
 
 		self.frame_type = FrameType::Attachment as u8;
 		self.msg_type = MsgType::RpcResponse(rpc_result).get_u8();
-        self.key_hash = get_key_hash(msg_meta.key);
+        self.key_hash = get_key_hash(&msg_meta.key);
         self.stream_id = self.get_stream_id();
 
         self.write_full_message(self.msg_type, self.key_hash, self.stream_id, self.source_hash, dto, msg_meta_size, payload_size, attachments_sizes, true).await?;
@@ -938,7 +938,7 @@ impl MagicBall {
         
         self.rpc_inbound_tx.send(RpcMsg::AddRpc(correlation_id, rpc_tx))?;
 
-        self.key_hash = get_key_hash(key);
+        self.key_hash = get_key_hash(&key);
         self.stream_id = self.get_stream_id();
         self.source_hash = get_addr_hash(&self.addr);
 
@@ -963,7 +963,7 @@ impl MagicBall {
         
         self.rpc_inbound_tx.send(RpcMsg::AddRpc(correlation_id, rpc_tx))?;
 
-        self.key_hash = get_key_hash(key);
+        self.key_hash = get_key_hash(&key);
         self.stream_id = self.get_stream_id();
         self.source_hash = get_addr_hash(&self.addr);
 
@@ -1011,7 +1011,7 @@ impl MagicBall {
         buf.append(&mut msg_meta_vec);
         buf.append(&mut payload_with_attachments);
 
-        self.key_hash = get_key_hash(msg_meta.key);
+        self.key_hash = get_key_hash(&msg_meta.key);
         self.stream_id = self.get_stream_id();
         self.source_hash = get_addr_hash(&msg_meta.tx);
 
@@ -1057,7 +1057,7 @@ impl MagicBall {
         buf.append(&mut msg_meta_vec);
         buf.append(&mut payload_with_attachments);
 
-        self.key_hash = get_key_hash(msg_meta.key);
+        self.key_hash = get_key_hash(&msg_meta.key);
         self.stream_id = self.get_stream_id();
         self.source_hash = get_addr_hash(&msg_meta.tx);
 
@@ -1106,7 +1106,7 @@ impl MagicBall {
 
         debug!("proxy_rpc write attempt");
 
-        self.key_hash = get_key_hash(msg_meta.key);
+        self.key_hash = get_key_hash(&msg_meta.key);
         self.stream_id = self.get_stream_id();
         self.source_hash = get_addr_hash(&msg_meta.tx);
 
@@ -1172,7 +1172,7 @@ impl MagicBall {
 
         debug!("proxy_rpc_with_auth_data write attempt");
 
-        self.key_hash = get_key_hash(msg_meta.key);
+        self.key_hash = get_key_hash(&msg_meta.key);
         self.stream_id = self.get_stream_id();
         self.source_hash = get_addr_hash(&msg_meta.tx);
 
@@ -1233,7 +1233,7 @@ impl MagicBall {
 
         debug!("proxy_rpc_with_payload write attempt");
 
-        self.key_hash = get_key_hash(msg_meta.key);
+        self.key_hash = get_key_hash(&msg_meta.key);
         self.stream_id = self.get_stream_id();
         self.source_hash = get_addr_hash(&msg_meta.tx);
 

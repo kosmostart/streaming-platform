@@ -73,6 +73,13 @@ impl Route {
             points: vec![Participator::Cli(addr.to_owned())]
         }
     }
+    pub fn new_cli_with_service_client(addr: &str, service_addr: &str) -> Route {
+        Route {
+            source: Participator::Cli(addr.to_owned()),
+            spec: RouteSpec::Client(Participator::Service(service_addr.to_owned())),
+            points: vec![Participator::Cli(addr.to_owned())]
+        }
+    }
     pub fn get_source_addr(&self) -> &String {
         match &self.source {
             Participator::Service(addr) => addr,

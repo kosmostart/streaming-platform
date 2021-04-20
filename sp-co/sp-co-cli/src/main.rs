@@ -56,16 +56,22 @@ fn main() -> Result<(), Error> {
 
             match data {
                 Value::Array(cfg_list) => {
-                    for cfg_unit in cfg_list {
+                    for cfg_unit in cfg_list.iter() {
                         if !cfg_unit["key"].is_string() {
                             return Err(Error::custom("Empty key in one of provided json values"));
                         }
+                    }
+
+                    for cfg_unit in cfg_list {
+                        cfg_add(&rt, cfg_unit);
                     }
                 }
                 Value::Object(_) => {
                     if !data["key"].is_string() {
                         return Err(Error::custom("Empty key in provided json value"));
                     }
+
+                    cfg_add(&rt, data);
                 }
                 _ => {
                     return Err(Error::custom("Provided json value in file is not an array and not an object"));
@@ -78,14 +84,14 @@ fn main() -> Result<(), Error> {
     Ok(())
 }
 
-fn cfg_add(rt: &Runtime) {
+fn cfg_add(rt: &Runtime, payload: Value) {
     let auth_url = "http://127.0.0.1:12345/authorize";
     let hub_url = "http://127.0.0.1:12345/hub";
 
-    let payload = json!({
+    let auth_payload = json!({
     });
 
-    let (_, dto) = rpc_dto("Cli".to_owned(), Key::new("Auth", "Auth", "Auth"), payload, Route::new_cli("Cli"), None, None).unwrap();
+    let (_, dto) = rpc_dto("Cli".to_owned(), Key::new("Auth", "Auth", "Auth"), auth_payload, Route::new_cli_with_service_client("Cli", "Web"), None, None).unwrap();
 
     let client = reqwest::Client::new();
     
@@ -101,11 +107,7 @@ fn cfg_add(rt: &Runtime) {
 
 	let qq = split[0].to_owned();
 
-    let payload = json!({
-        "key" : "Dog"
-    });
-
-    let (_, dto) = rpc_dto("Cli".to_owned(), Key::new("Add", "Cfg", "Cfg"), payload, Route::new_cli("Cli"), None, None).unwrap();
+    let (_, dto) = rpc_dto("Cli".to_owned(), Key::new("Add", "Cfg", "Cfg"), payload, Route::new_cli_with_service_client("Cli", "Web"), None, None).unwrap();
 
     let client = reqwest::Client::new();
     
@@ -128,7 +130,7 @@ fn cfg_get(rt: &Runtime) {
     let payload = json!({
     });
 
-    let (_, dto) = rpc_dto("Cli".to_owned(), Key::new("Auth", "Auth", "Auth"), payload, Route::new_cli("Cli"), None, None).unwrap();
+    let (_, dto) = rpc_dto("Cli".to_owned(), Key::new("Auth", "Auth", "Auth"), payload, Route::new_cli_with_service_client("Cli", "Web"), None, None).unwrap();
 
     let client = reqwest::Client::new();
     
@@ -148,7 +150,7 @@ fn cfg_get(rt: &Runtime) {
         "key" : "Dog"
     });
 
-    let (_, dto) = rpc_dto("Cli".to_owned(), Key::new("Get", "Cfg", "Cfg"), payload, Route::new_cli("Cli"), None, None).unwrap();
+    let (_, dto) = rpc_dto("Cli".to_owned(), Key::new("Get", "Cfg", "Cfg"), payload, Route::new_cli_with_service_client("Cli", "Web"), None, None).unwrap();
 
     let client = reqwest::Client::new();
     

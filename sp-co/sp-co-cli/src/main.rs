@@ -13,6 +13,7 @@ fn main() -> Result<(), Error> {
     //cfg_add(&rt);
     //cfg_get(&rt);
 
+    println!("");
     println!("Available commands:");
     println!("");
     println!("add");
@@ -32,7 +33,105 @@ fn main() -> Result<(), Error> {
 
     match cmd {
         "add" => {
-            println!("It is add");
+            buf.clear();
+
+            println!("Enter value:");
+            println!("");
+
+            let mut payload = None;
+
+            loop {
+                let _ = std::io::stdin().read_line(&mut buf)?;
+                let line = buf.lines().last().ok_or(Error::None)?;
+
+                match line {
+                    "done" => {
+                        
+                        loop {
+                            match buf.pop() {
+                                Some(char) => {
+                                    if char == '}' {
+                                        buf.push('}');
+                                        break;
+                                    }
+                                }
+                                None => break
+                            }                            
+                        }
+
+                        match from_str::<Value>(&buf) {
+                            Ok(value) => {
+                                match value.is_object() {
+                                    true => {
+                                        println!("");
+                                        println!("Received value:");
+                                        println!("");
+                                        println!("{:#?}", value);
+                                        println!("");
+                                
+                                        payload = Some(value);
+
+                                        println!("Proceed?");
+                                        println!("");
+                                        println!("Enter yes or enter any character to restart value input");
+
+                                        buf.clear();
+
+                                        let _ = std::io::stdin().read_line(&mut buf)?;
+                                        let line = buf.lines().nth(0).ok_or(Error::None)?;
+
+                                        match line {
+                                            "yes" => {
+                                                buf.clear();
+                                                break;
+                                            }
+                                            _ => {
+                                                buf.clear();
+                                                payload = None;
+
+                                                println!("");
+                                                println!("Previous input cleared");
+                                                println!("");
+                                                println!("Enter value:");
+                                                println!("");
+                                            }
+                                        }
+                                    }
+                                    false => {
+                                        println!("");
+                                        println!("Provided value is not an object");
+                                        println!("");
+                                        println!("Previous input cleared");
+                                        println!("");
+
+                                        buf.clear();
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                println!("");
+                                println!("Incorrect value provided:");
+                                println!("");
+                                println!("{:?}", e);
+                                println!("");
+                                println!("Previous input cleared");
+                                println!("");
+
+                                buf.clear();
+                            }
+                        }    
+                    }
+                    "clear" =>  {
+                        buf.clear();
+                        println!("");
+                        println!("Previous input cleared");
+                        println!("");
+                    }
+                    _ => {}
+                }
+            }
+
+            cfg_add(&rt, payload.ok_or(Error::None)?);
         }
         "get all" => {
             cfg_get_all(&rt);
@@ -70,7 +169,7 @@ fn main() -> Result<(), Error> {
                 Value::Array(cfg_list) => {
                     for cfg_unit in cfg_list.iter() {
                         if !cfg_unit["key"].is_string() {
-                            return Err(Error::custom("Empty key in one of provided json values"));
+                            return Err(Error::custom("Empty key in one of provided values"));
                         }
                     }
 
@@ -80,13 +179,13 @@ fn main() -> Result<(), Error> {
                 }
                 Value::Object(_) => {
                     if !data["key"].is_string() {
-                        return Err(Error::custom("Empty key in provided json value"));
+                        return Err(Error::custom("Empty key in provided value"));
                     }
 
                     cfg_add(&rt, data);
                 }
                 _ => {
-                    return Err(Error::custom("Provided json value in file is not an array and not an object"));
+                    return Err(Error::custom("Provided value in file is not an array nor an object"));
                 }
             }
         }

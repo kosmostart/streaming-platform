@@ -1,0 +1,42 @@
+{
+    "key": "DeployHello",
+    "payload": {
+        "build_configs": [
+            {
+                "build_name": "Hello",
+                "build_cmd": "cargo",
+                "args": [
+                    "build",
+                    "--release",
+                    "--manifest-path",
+                    "d:/src/cfg-if/Cargo.toml"
+                ],
+                "pull_config": {
+                    "repository_path": "d:/src/cfg-if",
+                    "remote_name": "origin",
+                    "remote_branch": "master"
+                }
+            }
+        ],
+        "deploy_unit_config": {
+            "result_file_tag": "hello",
+            "files": [
+                {
+                    "path": "d:/src/cfg-if/target/release/libcfg_if.rlib"
+                }
+            ]
+        },
+        "run_config": {
+            "run_units": [
+                {
+                    "name": "hello.exe",
+                    "path": "d:/src/hello/target/debug/hello.exe",
+                    "config": {
+                        "arg1": "value1",
+                        "arg2": "value2"
+                    }
+                }
+            ]
+        }
+    }
+}

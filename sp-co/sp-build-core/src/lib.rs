@@ -10,20 +10,42 @@ use serde_json::Value;
 use serde_derive::{Serialize, Deserialize};
 use lz4::{Decoder, EncoderBuilder};
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DeployConfig {
+    pub build_configs: Vec<BuildConfig>,
+    pub deploy_unit_config: DeployUnitConfig,
+    pub run_config: Option<RunConfig>
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BuildConfig {
+    pub build_name: String,
+    pub build_cmd: String,
+    pub args: Option<Vec<String>>,
+    pub pull_config: Option<PullConfig>
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PullConfig {
+    pub repository_path: String,
+    pub remote_name: String,
+    pub remote_branch: String
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct DeployUnitConfig {
     pub result_file_tag: String,
     pub dirs: Option<Vec<TargetDir>>,
     pub files: Option<Vec<TargetFile>>
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct TargetDir {
     pub arch_name: String,
     pub path: String
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct TargetFile {
     pub path: String
 }

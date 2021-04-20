@@ -3,7 +3,7 @@ use std::io::Read;
 use serde_json::{json, Value, from_value, to_vec};
 use log::*;
 use streaming_platform::{MAX_FRAME_PAYLOAD_SIZE, tokio::{self, fs::File, io::AsyncReadExt}, client, MagicBall, sp_dto::{Key, MsgMeta, Message, Response, resp}};
-use sp_build_core::{pack, DeployUnitConfig, TargetFile, RunConfig, RunUnit};
+use sp_build_core::{pack, DeployConfig, DeployUnitConfig, TargetFile, RunConfig, RunUnit};
 
 mod flow;
 mod repository {
@@ -19,31 +19,20 @@ pub async fn process_event(config: Value, mut mb: MagicBall, msg: Message<Value>
     Ok(())
 }
 
-pub struct DeployConfig {
-    pub build_configs: Vec<BuildConfig>,
-    pub deploy_unit_config: DeployUnitConfig,
-    pub run_config: Option<RunConfig>
-}
-
-pub struct BuildConfig {
-    pub build_name: String,
-    pub build_cmd: String,
-    pub args: Option<Vec<String>>,
-    pub pull_config: Option<PullConfig>
-}
-
-pub struct PullConfig {
-    pub repository_path: String,
-    pub remote_name: String,
-    pub remote_branch: String
-}
-
 pub async fn process_rpc(config: Value, mut mb: MagicBall, msg: Message<Value>, _: ()) -> Result<Response<Value>, Box<dyn std::error::Error>> {   
     info!("{:#?}", msg);
 
     let res = match msg.meta.key.action.as_ref() {
         "Deploy" => {
             tokio::spawn(async move {
+                let msg = mb.rpc(Key::new("Get", "Cfg", "Cfg"), json!({
+                    "key": "DeployHello"
+                })).await.unwrap();
+
+                let deploy_config: DeployConfig = from_value(msg.payload).expect("Failed to deserialize build config");
+
+                /* 
+
                 let pull_config = PullConfig {
                     repository_path: "d:/src/cfg-if".to_owned(),
                     remote_name: "origin".to_owned(),
@@ -94,6 +83,8 @@ pub async fn process_rpc(config: Value, mut mb: MagicBall, msg: Message<Value>, 
                     deploy_unit_config,
                     run_config: None
                 };
+
+                */
 
 				mb.start_event_stream(Key::new("DeployStream", "Deploy", "Deploy"), json!({})).await.unwrap();
 

@@ -186,7 +186,7 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
 										"DeployUnit" => {							
 											let payload: Value = from_slice(&stream_layout.layout.payload)?;
                                             info!("{:#?}", payload);
-											let path = String::new() + payload["file_name"].as_str().ok_or(Error::None)?;
+											let path = String::new() + payload["deploy_unit_name"].as_str().ok_or(Error::None)?;
                                             info!("Creating file {}", path);
 											stream_layout.file = Some(File::create(path).await?);
 											stream_layout.payload = Some(payload);
@@ -205,7 +205,7 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
                                 Some(payload) => {
                                     let stream_layout = stream_layouts.get_mut(&frame.stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
 
-                                    let file = stream_layout.file.as_mut().ok_or(Error::None)?;
+                                    let file = stream_layout.file.as_mut().ok_or(Error::None).unwrap();
 							        file.write_all(&payload[..frame.payload_size as usize]).await?;
                                 }
                                 None => {}                                

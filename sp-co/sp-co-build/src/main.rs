@@ -31,61 +31,6 @@ pub async fn process_rpc(config: Value, mut mb: MagicBall, msg: Message<Value>, 
 
                 let deploy_config: DeployConfig = from_value(msg.payload).expect("Failed to deserialize build config");
 
-                /* 
-
-                let pull_config = PullConfig {
-                    repository_path: "d:/src/cfg-if".to_owned(),
-                    remote_name: "origin".to_owned(),
-                    remote_branch: "master".to_owned()
-                };
-
-                let build_config = BuildConfig {
-                    build_name: "Hello".to_owned(),
-                    build_cmd: "cargo".to_owned(),
-                    args: Some(vec![
-                        "build".to_owned(),
-                        "--release".to_owned(),
-                        "--manifest-path".to_owned(),
-                        "d:/src/cfg-if/Cargo.toml".to_owned()
-                    ]),
-                    pull_config: Some(pull_config)
-                };
-
-                let deploy_unit_config = DeployUnitConfig {
-                    result_file_tag: "hello".to_owned(),
-                    dirs: None,
-                    files: Some(vec![
-                        TargetFile {
-                            path: "d:/src/cfg-if/target/release/libcfg_if.rlib".to_owned()
-                        }
-                    ])
-                };
-
-                let mut hello_cfg = json!({
-                    "arg1": "value1",
-                    "arg2": "value2"
-                });
-
-                let run_config = RunConfig {
-                    run_units: vec![
-                        RunUnit {
-                            name: "hello.exe".to_owned(),
-                            path: "d:/src/hello/target/debug/hello.exe".to_owned(),
-                            config: Some(hello_cfg)
-                        }
-                    ]
-                };
-
-                let deploy_config = DeployConfig {
-                    build_configs: vec![
-                        build_config
-                    ],
-                    deploy_unit_config,
-                    run_config: None
-                };
-
-                */
-
 				mb.start_event_stream(Key::new("DeployStream", "Deploy", "Deploy"), json!({})).await.unwrap();
 
                 let mut build_success = false;
@@ -181,19 +126,9 @@ pub async fn process_rpc(config: Value, mut mb: MagicBall, msg: Message<Value>, 
 
                 match build_success {
                     true => {
-                        let deploy_unit_config = DeployUnitConfig {
-                            result_file_tag: "hello".to_owned(),
-                            dirs: None,
-                            files: Some(vec![
-                                TargetFile {
-                                    path: "d:/src/cfg-if/target/release/libcfg_if.rlib".to_owned()
-                                }
-                            ])
-                        };
-
                         let mut pack_result_msg;
 
-                        match pack(deploy_unit_config) {
+                        match pack(deploy_config.deploy_unit_config) {
                             Ok(deploy_unit_path) => {
                                 pack_result_msg = "Pack result is Ok, path to deploy unit is ".to_owned() + &deploy_unit_path;
                                 info!("{}", pack_result_msg);

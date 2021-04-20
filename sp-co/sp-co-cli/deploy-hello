@@ -9,7 +9,7 @@
                     "build",
                     "--release",
                     "--manifest-path",
-                    "d:/src/cfg-if/Cargo.toml"
+                    "d:/src/hello/Cargo.toml"
                 ],
                 "pull_config": {
                     "repository_path": "d:/src/cfg-if",
@@ -22,7 +22,7 @@
             "result_file_tag": "hello",
             "files": [
                 {
-                    "path": "d:/src/cfg-if/target/release/libcfg_if.rlib"
+                    "path": "d:/src/hello/target/release/hello.exe"
                 }
             ]
         },
@@ -30,7 +30,7 @@
             "run_units": [
                 {
                     "name": "hello.exe",
-                    "path": "d:/src/hello/target/debug/hello.exe",
+                    "path": "d:/src/streaming-platform/sp-co/sp-co-pod/hello.exe",
                     "config": {
                         "arg1": "value1",
                         "arg2": "value2"

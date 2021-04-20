@@ -6,6 +6,7 @@ use std::io::BufReader;
 use std::io::prelude::*;
 use rand::{Rng, thread_rng};
 use chrono::Utc;
+use serde_json::Value;
 use serde_derive::{Serialize, Deserialize};
 use lz4::{Decoder, EncoderBuilder};
 
@@ -36,7 +37,7 @@ pub struct RunConfig {
 pub struct RunUnit {
     pub name: String,
     pub path: String,
-    pub config: Option<HashMap<String, String>>
+    pub config: Option<Value>
 }
 
 pub fn pack(config: DeployUnitConfig) -> Result<String, Error> {

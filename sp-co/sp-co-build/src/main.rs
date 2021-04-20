@@ -72,10 +72,10 @@ pub async fn process_rpc(config: Value, mut mb: MagicBall, msg: Message<Value>, 
                     ])
                 };
 
-                let mut hello_cfg = HashMap::new();
-
-                hello_cfg.insert("arg1".to_owned(), "value1".to_owned());
-                hello_cfg.insert("arg2".to_owned(), "value2".to_owned());
+                let mut hello_cfg = json!({
+                    "arg1": "value1",
+                    "arg2": "value2"
+                });
 
                 let run_config = RunConfig {
                     run_units: vec![

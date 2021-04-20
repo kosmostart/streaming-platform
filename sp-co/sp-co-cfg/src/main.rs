@@ -27,7 +27,7 @@ pub async fn process_rpc(config: Value, mut mb: MagicBall, msg: Message<Value>, 
                 return Err(Box::new(Error::custom("Empty key in payload")));
             }
 
-            let active = dc.filter(|a| a["deactivated_at"].is_null())?;
+            let active = dc.filter(|a| a["key"] == msg.payload["key"] && a["deactivated_at"].is_null())?;
 
             for (id, mut payload) in active {
                 payload["deactivated_at"] = json!(Utc::now().naive_utc());
@@ -42,6 +42,14 @@ pub async fn process_rpc(config: Value, mut mb: MagicBall, msg: Message<Value>, 
             json!({
             })
         }
+        "GetAll" => {
+            info!("Received GetAll");
+            let data = dc.get_all()?;
+
+            json!({
+                "data": data
+            })
+        }
         "Get" => {
             info!("Received Get, payload {:#?}", msg.payload);
 
@@ -53,6 +61,8 @@ pub async fn process_rpc(config: Value, mut mb: MagicBall, msg: Message<Value>, 
                 Some(key) => key,
                 None => msg.payload["cfg_token"].as_str().ok_or(Error::None)?
             };
+
+            info!("Search for key {}", key);
 
             match dc.find(|a| a["key"] == key && a["deactivated_at"].is_null())? {
                 Some((_, mut payload)) => payload["payload"].take(),
@@ -72,7 +82,7 @@ pub fn main() {
     env_logger::init();
 
     let user_id = 1;
-    let root_path = "c:/src/sp-co-cfg-storage";
+    let root_path = "d:/src/sp-co-cfg-storage";
 
     let dc = Dc::new(user_id, root_path).expect("Failed to create dc");
 

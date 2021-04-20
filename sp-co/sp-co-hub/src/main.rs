@@ -29,6 +29,7 @@ fn main() {
 
     rpc_subscribes.insert("Cfg".to_owned(), vec![
         Key::new("Add", "Cfg", "Cfg"),
+        Key::new("GetAll", "Cfg", "Cfg"),
         Key::new("Get", "Cfg", "Cfg")
     ]);
 

@@ -15,6 +15,8 @@ fn main() -> Result<(), Error> {
 
     println!("Available commands:");
     println!("");
+    println!("add");
+    println!("get all");
     println!("get");
     println!("load file");
     println!("");
@@ -31,6 +33,9 @@ fn main() -> Result<(), Error> {
     match cmd {
         "add" => {
             println!("It is add");
+        }
+        "get all" => {
+            cfg_get_all(&rt);
         }
         "get" => {
             println!("Enter key:");
@@ -115,6 +120,45 @@ fn cfg_add(rt: &Runtime, payload: Value) {
 	let qq = split[0].to_owned();
 
     let (_, dto) = rpc_dto("Cli".to_owned(), Key::new("Add", "Cfg", "Cfg"), payload, Route::new_cli_with_service_client("Cli", "Web"), None, None).unwrap();
+
+    let client = reqwest::Client::new();
+    
+    let res = rt.block_on(client.post(hub_url)
+        .body(dto)
+        .header("cookie", split[0])
+        .send()).unwrap();
+
+    let data = rt.block_on(res.bytes()).unwrap();
+
+    let msg: (_, Value, _) = get_msg(&data).unwrap();
+
+    println!("{:#?}", msg);
+}
+
+fn cfg_get_all(rt: &Runtime) {
+    let auth_url = "http://127.0.0.1:12345/authorize";
+    let hub_url = "http://127.0.0.1:12345/hub";	
+
+    let auth_payload = json!({
+    });
+
+    let (_, dto) = rpc_dto("Cli".to_owned(), Key::new("Auth", "Auth", "Auth"), auth_payload, Route::new_cli_with_service_client("Cli", "Web"), None, None).unwrap();
+
+    let client = reqwest::Client::new();
+    
+    let res = rt.block_on(client.post(auth_url)
+        .body(dto)
+        .send()).unwrap();
+
+    println!("{:#?}", res);
+
+    let split: Vec<&str> = res.headers().get("set-cookie").unwrap().to_str().unwrap().split(";").collect();
+
+    println!("{}", split[0]);
+
+	let qq = split[0].to_owned();
+
+    let (_, dto) = rpc_dto("Cli".to_owned(), Key::new("GetAll", "Cfg", "Cfg"), json!({}), Route::new_cli_with_service_client("Cli", "Web"), None, None).unwrap();
 
     let client = reqwest::Client::new();
     

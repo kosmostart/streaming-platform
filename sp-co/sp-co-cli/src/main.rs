@@ -1,12 +1,81 @@
-use serde_json::{Value, json};
+use std::io::BufReader;
+use std::io::prelude::*;
+use serde_json::{Value, json, from_str};
 use tokio::runtime::Runtime;
 use sp_dto::{Key, Route, rpc_dto, get_msg};
+use error::Error;
 
-fn main() {
+mod error;
+
+fn main() -> Result<(), Error> {
     let rt = Runtime::new().expect("failed to create runtime");
 
     //cfg_add(&rt);
-    cfg_get(&rt);
+    //cfg_get(&rt);
+
+    println!("Available commands:");
+    println!("");
+    println!("get");
+    println!("load file");
+    println!("");
+
+    println!("Enter command:");
+    println!("");
+
+    let mut buf = String::new();
+    let _ = std::io::stdin().read_line(&mut buf)?;
+    let cmd = buf.lines().nth(0).ok_or(Error::None)?;
+
+    println!("");
+
+    match cmd {
+        "add" => {
+            println!("It is add");
+        }
+        "get" => {
+            cfg_get(&rt);
+        }
+        "load file" => {
+            println!("Enter path to file:");
+            println!("");
+
+            buf.clear();
+            let _ = std::io::stdin().read_line(&mut buf)?;
+            let path = buf.lines().nth(0).ok_or(Error::None)?;
+
+            println!("{}", path);
+
+            let file = std::fs::File::open(path)?;
+    
+            let mut buf_reader = BufReader::new(file);
+            buf.clear();
+        
+            buf_reader.read_to_string(&mut buf)?;
+
+            let data: Value = from_str(&buf)?;
+
+            match data {
+                Value::Array(cfg_list) => {
+                    for cfg_unit in cfg_list {
+                        if !cfg_unit["key"].is_string() {
+                            return Err(Error::custom("Empty key in one of provided json values"));
+                        }
+                    }
+                }
+                Value::Object(_) => {
+                    if !data["key"].is_string() {
+                        return Err(Error::custom("Empty key in provided json value"));
+                    }
+                }
+                _ => {
+                    return Err(Error::custom("Provided json value in file is not an array and not an object"));
+                }
+            }
+        }
+        _ => {}
+    }
+
+    Ok(())
 }
 
 fn cfg_add(rt: &Runtime) {

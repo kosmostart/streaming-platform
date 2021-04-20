@@ -24,7 +24,7 @@ pub async fn process_rpc(config: Value, mut mb: MagicBall, msg: Message<Value>, 
             info!("Received Add, payload key {:?}", msg.payload["key"]);
 
             if !msg.payload["key"].is_string() {
-                return Err(Box::new(Error::CustomError("Empty key in payload".to_owned())));
+                return Err(Box::new(Error::custom("Empty key in payload")));
             }
 
             let active = dc.filter(|a| a["deactivated_at"].is_null())?;
@@ -46,7 +46,7 @@ pub async fn process_rpc(config: Value, mut mb: MagicBall, msg: Message<Value>, 
             info!("Received Get, payload {:#?}", msg.payload);
 
             if !msg.payload["key"].is_string() && !msg.payload["cfg_token"].is_string() {
-                return Err(Box::new(Error::CustomError("Empty key in payload".to_owned())));
+                return Err(Box::new(Error::custom("Empty key in payload")));
             }
 
             let key = match msg.payload["key"].as_str() {

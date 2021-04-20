@@ -33,7 +33,16 @@ fn main() -> Result<(), Error> {
             println!("It is add");
         }
         "get" => {
-            cfg_get(&rt);
+            println!("Enter key:");
+            println!("");
+
+            buf.clear();
+            let _ = std::io::stdin().read_line(&mut buf)?;
+            let key = buf.lines().nth(0).ok_or(Error::None)?;
+
+            cfg_get(&rt, json!({
+                "key": key
+            }));
         }
         "load file" => {
             println!("Enter path to file:");
@@ -42,8 +51,6 @@ fn main() -> Result<(), Error> {
             buf.clear();
             let _ = std::io::stdin().read_line(&mut buf)?;
             let path = buf.lines().nth(0).ok_or(Error::None)?;
-
-            println!("{}", path);
 
             let file = std::fs::File::open(path)?;
     
@@ -123,14 +130,14 @@ fn cfg_add(rt: &Runtime, payload: Value) {
     println!("{:#?}", msg);
 }
 
-fn cfg_get(rt: &Runtime) {
+fn cfg_get(rt: &Runtime, payload: Value) {
     let auth_url = "http://127.0.0.1:12345/authorize";
     let hub_url = "http://127.0.0.1:12345/hub";	
 
-    let payload = json!({
+    let auth_payload = json!({
     });
 
-    let (_, dto) = rpc_dto("Cli".to_owned(), Key::new("Auth", "Auth", "Auth"), payload, Route::new_cli_with_service_client("Cli", "Web"), None, None).unwrap();
+    let (_, dto) = rpc_dto("Cli".to_owned(), Key::new("Auth", "Auth", "Auth"), auth_payload, Route::new_cli_with_service_client("Cli", "Web"), None, None).unwrap();
 
     let client = reqwest::Client::new();
     
@@ -145,10 +152,6 @@ fn cfg_get(rt: &Runtime) {
     println!("{}", split[0]);
 
 	let qq = split[0].to_owned();
-
-    let payload = json!({
-        "key" : "Dog"
-    });
 
     let (_, dto) = rpc_dto("Cli".to_owned(), Key::new("Get", "Cfg", "Cfg"), payload, Route::new_cli_with_service_client("Cli", "Web"), None, None).unwrap();
 

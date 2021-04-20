@@ -298,7 +298,7 @@ where
                                     RouteSpec::Client(participator) => {
                                         match participator {
                                             Participator::Service(service_addr) => {
-                                                info!("Rpc response for client spec source addr: {}, client addr: {}", route.get_source_addr(), service_addr);
+                                                info!("Rpc response for client spec, source addr: {}, client addr: {}", route.get_source_addr(), service_addr);
                                                 get_addr_hash(&service_addr)
                                             }
                                             _ => {

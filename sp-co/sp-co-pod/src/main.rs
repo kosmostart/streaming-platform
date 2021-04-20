@@ -83,7 +83,9 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
 			match frame.get_frame_type() {
 				Ok(frame_type) => {
 					match frame_type {
-						FrameType::MsgMeta => {						
+						FrameType::MsgMeta => {	
+                            debug!("MsgMeta frame");
+
 							match stream_layouts.get_mut(&frame.stream_id) {
 								Some(stream_layout) => {
                                     match frame.payload {
@@ -200,7 +202,7 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
 							}
 						}
 						FrameType::Attachment => {
-                            info!("Attachment frame");
+                            debug!("Attachment frame");
                             match frame.payload {
                                 Some(payload) => {
                                     let stream_layout = stream_layouts.get_mut(&frame.stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;

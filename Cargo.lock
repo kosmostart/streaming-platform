@@ -1676,6 +1676,7 @@ name = "sp-build-core"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "log",
  "lz4",
  "rand 0.8.3",
  "serde",

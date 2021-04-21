@@ -4,6 +4,7 @@ use std::io::{self, Error};
 use std::path::Path;
 use std::io::BufReader;
 use std::io::prelude::*;
+use log::*;
 use rand::{Rng, thread_rng};
 use chrono::Utc;
 use serde_json::Value;
@@ -58,12 +59,13 @@ pub struct RunConfig {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RunUnit {
     pub name: String,
-    pub path: String,
+	pub path: Option<String>,
     pub config: Option<Value>
 }
 
 pub fn pack(config: DeployUnitConfig) -> Result<String, Error> {
-    println!("{:#?}", config);
+	info!("Packing with config:");
+    info!("{:#?}", config);
 
     let from = config.result_file_tag.clone() + ".tmp";
 
@@ -120,26 +122,26 @@ pub fn pack(config: DeployUnitConfig) -> Result<String, Error> {
     Ok(to)
 }
 
-pub fn unpack(save_path: String, file_name: String) -> Result<(), Error> {
+pub fn unpack(save_path: String, file_name: String) -> Result<String, Error> {
     let from = save_path.clone() + "/" + &file_name;
     let to = save_path.clone() + "/" + &file_name + ".tmp";
     let dt = Utc::now().format("%Y-%m-%d-%H-%M-%S").to_string();
-    let target = save_path.clone() + "/deploy-" + &file_name + "-" + &dt;
+    let target_path = save_path.clone() + "/deploy-" + &file_name + "-" + &dt;
 
     decompress(&from, &to).unwrap();
 
     {
         let mut ar = tar::Archive::new(File::open(&to).unwrap());
 
-        ar.unpack(&target).unwrap();
+        ar.unpack(&target_path).unwrap();
     }
 
     remove_file(&to)
         .expect("failed to remove temporary file");
 
-    println!("unpack {} ok, path is {}", file_name, save_path);
+    info!("Unpack ok, target path is {}, file name is {}", target_path, file_name);
 
-    Ok(())
+    Ok(target_path)
 }
 
 fn compress(from: &str, to: &str) -> Result<(), Error> {    

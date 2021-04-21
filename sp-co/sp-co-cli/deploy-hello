@@ -9,10 +9,10 @@
                     "build",
                     "--release",
                     "--manifest-path",
-                    "d:/src/hello/Cargo.toml"
+                    "c:/src/hello/Cargo.toml"
                 ],
                 "pull_config": {
-                    "repository_path": "d:/src/cfg-if",
+                    "repository_path": "c:/src/cfg-if",
                     "remote_name": "origin",
                     "remote_branch": "master"
                 }
@@ -22,15 +22,14 @@
             "result_file_tag": "hello",
             "files": [
                 {
-                    "path": "d:/src/hello/target/release/hello.exe"
+                    "path": "c:/src/hello/target/release/hello.exe"
                 }
             ]
         },
         "run_config": {
             "run_units": [
                 {
-                    "name": "hello.exe",
-                    "path": "d:/src/streaming-platform/sp-co/sp-co-pod/hello.exe",
+                    "name": "hello.exe",                    
                     "config": {
                         "arg1": "value1",
                         "arg2": "value2"

@@ -82,41 +82,47 @@ pub fn main() {
     env_logger::init();
 
     let user_id = 1;
-    let root_path = "d:/src/sp-co-cfg-storage";
+    let root_path = "c:/src/sp-co-cfg-storage";
 
     let dc = Dc::new(user_id, root_path).expect("Failed to create dc");
 
-    let _ = dc.create(json!({
-        "key": "Auth",
-        "payload": {
-            "host": "127.0.0.1:11002",
-            "addr": "Auth",
-            "access_key": ""
-        }
-    }));
+	if dc.find(|a| a["key"].as_str() == Some("Auth")).unwrap().is_none() {
+		let _ = dc.create(json!({
+			"key": "Auth",
+			"payload": {
+				"host": "127.0.0.1:11002",
+				"addr": "Auth",
+				"access_key": ""
+			}
+		}));
+	}
 
-	let _ = dc.create(json!({
-        "key": "Web",
-        "payload": {
-            "host": "127.0.0.1:11002",
-            "addr": "Web",
-			"stream_cfg_token": "WebStream",
-            "access_key": "",			
-			"listen_addr": "127.0.0.1:12345",
-			//"cert_path".to_owned(), "".to_owned());
-			//"key_path".to_owned(), "".to_owned());
-			"auth_token_key": "This is key omg"
-        }
-    }));
+	if dc.find(|a| a["key"].as_str() == Some("Web")).unwrap().is_none() {
+		let _ = dc.create(json!({
+			"key": "Web",
+			"payload": {
+				"host": "127.0.0.1:11002",
+				"addr": "Web",
+				"stream_cfg_token": "WebStream",
+				"access_key": "",			
+				"listen_addr": "127.0.0.1:12345",
+				//"cert_path".to_owned(), "".to_owned());
+				//"key_path".to_owned(), "".to_owned());
+				"auth_token_key": "This is key omg"
+			}
+		}));
+	}
 
-	let _ = dc.create(json!({
-        "key": "WebStream",
-        "payload": {
-            "host": "127.0.0.1:11002",
-            "addr": "WebStream",
-            "access_key": ""
-        }
-    }));
+	if dc.find(|a| a["key"].as_str() == Some("WebStream")).unwrap().is_none() {
+		let _ = dc.create(json!({
+			"key": "WebStream",
+			"payload": {
+				"host": "127.0.0.1:11002",
+				"addr": "WebStream",
+				"access_key": ""
+			}
+		}));
+	}	
 
     let config = json!({
         "host": "127.0.0.1:11002",

@@ -8,6 +8,7 @@ edition = "2018"
 
 [dependencies]
 
+log = "*"
 rand = "0.8"
 chrono = "*"
 serde = "*"

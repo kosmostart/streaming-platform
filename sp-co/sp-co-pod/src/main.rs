@@ -245,8 +245,8 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
                                                     let mut run_result_msg = vec![];
 
                                                     match unpack(".".to_owned(), deploy_unit_name.to_owned()) {
-                                                        Ok(()) => {
-                                                            unpack_result_msg = "Unpack result is Ok".to_owned();
+                                                        Ok(target_path) => {
+                                                            unpack_result_msg = "Unpack result is Ok, target path is ".to_owned() + &target_path;
                                                             info!("{}", unpack_result_msg);
 
                                                             let run_config: Option<RunConfig> = from_value(payload["run_config"].take())?;
@@ -254,33 +254,41 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
                                                             match run_config {
                                                                 Some(run_config) => {
                                                                     run_config_msg = Some(format!("Run config passed, run units amount is {}", run_config.run_units.len()));
+																	info!("{:?}", run_config_msg);
 
                                                                     for run_unit in run_config.run_units {
                                                                         fix_running(&run_unit.name);
 
-                                                                        info!("Starting {}", run_unit.name);
+																		let file_path = match run_unit.path {
+																			Some(path) => target_path.clone() + "/" + &path + "/" + &run_unit.name,
+																			None => target_path.clone() + "/" + &run_unit.name
+																		};
+
+                                                                        info!("Starting {}, file path is {}", run_unit.name, file_path);
 
                                                                         let mut run_result;
 
                                                                         let res = match run_unit.config {
                                                                             Some(config) => {
                                                                                 match to_string(&config) {
-                                                                                    Ok(config) => std::process::Command::new(run_unit.path.clone() + "/" + &run_unit.name)
+                                                                                    Ok(config) => std::process::Command::new(&file_path)
                                                                                         .arg(config)
                                                                                         .spawn(),
                                                                                     Err(e) => Err(std::io::Error::new(std::io::ErrorKind::Other, format!("Config serialization to JSON string failed, {:?}", e)))
                                                                                 }
                                                                             },
-                                                                            None => std::process::Command::new(run_unit.path.clone() + "/" + &run_unit.name)                                    
+                                                                            None => std::process::Command::new(&file_path)
                                                                                 .spawn()
                                                                         };
 
                                                                         match res {
                                                                             Ok(instance) => {
-                                                                                run_result = format!("Started process {} with id {}, path {}", run_unit.name, instance.id(), run_unit.path);
+                                                                                run_result = format!("Started process {} with id {}, file path {}", run_unit.name, instance.id(), file_path);
+																				info!("{}", run_result);
                                                                             }
                                                                             Err(e) => {
-                                                                                run_result = format!("Failed to start process {}, {:?}, path {}", run_unit.name, e, run_unit.path);
+                                                                                run_result = format!("Failed to start process {}, {:?}, path {}", run_unit.name, e, file_path);
+																				error!("{}", run_result);
                                                                             }
                                                                         }
 
@@ -289,6 +297,7 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
                                                                 }
                                                                 None => {
                                                                     run_config_msg = Some("Run config not passed".to_owned());
+																	info!("{:?}", run_config_msg);
                                                                 }
                                                             }
                                                         }

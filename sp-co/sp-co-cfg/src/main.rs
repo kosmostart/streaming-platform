@@ -21,13 +21,17 @@ pub async fn process_rpc(config: Value, mut mb: MagicBall, msg: Message<Value>, 
 
     let res = match msg.meta.key.action.as_ref() {
         "Add" => {
-            info!("Received Add, payload key {:?}", msg.payload["key"]);
+            info!("Received Add, payload {:#?}", msg.payload);
+
+			if !msg.payload["domain"].is_string() {
+                return Err(Box::new(Error::custom("Empty domain in payload")));
+            }
 
             if !msg.payload["key"].is_string() {
                 return Err(Box::new(Error::custom("Empty key in payload")));
-            }
+            }			
 
-            let active = dc.filter(|a| a["key"] == msg.payload["key"] && a["deactivated_at"].is_null())?;
+            let active = dc.filter(|a| a["domain"] == msg.payload["domain"] && a["key"] == msg.payload["key"] && a["deactivated_at"].is_null())?;
 
             for (id, mut payload) in active {
                 payload["deactivated_at"] = json!(Utc::now().naive_utc());
@@ -35,6 +39,7 @@ pub async fn process_rpc(config: Value, mut mb: MagicBall, msg: Message<Value>, 
             }
 
             let _ = dc.create(json!({
+				"domain": msg.payload["domain"],
                 "key": msg.payload["key"],
                 "payload": msg.payload["payload"]
             }))?;
@@ -53,6 +58,10 @@ pub async fn process_rpc(config: Value, mut mb: MagicBall, msg: Message<Value>, 
         "Get" => {
             info!("Received Get, payload {:#?}", msg.payload);
 
+			if !msg.payload["domain"].is_string() {
+                return Err(Box::new(Error::custom("Empty domain in payload")));
+            }
+
             if !msg.payload["key"].is_string() && !msg.payload["cfg_token"].is_string() {
                 return Err(Box::new(Error::custom("Empty key in payload")));
             }
@@ -64,7 +73,7 @@ pub async fn process_rpc(config: Value, mut mb: MagicBall, msg: Message<Value>, 
 
             info!("Search for key {}", key);
 
-            match dc.find(|a| a["key"] == key && a["deactivated_at"].is_null())? {
+            match dc.find(|a| a["domain"] == msg.payload["domain"] && a["key"] == key && a["deactivated_at"].is_null())? {
                 Some((_, mut payload)) => payload["payload"].take(),
                 None => json!({})
             }
@@ -86,7 +95,7 @@ pub fn main() {
 
     let dc = Dc::new(user_id, root_path).expect("Failed to create dc");
 
-	if dc.find(|a| a["key"].as_str() == Some("Auth")).unwrap().is_none() {
+	if dc.find(|a| a["domain"].as_str() == Some("Cfg") && a["key"].as_str() == Some("Auth")).unwrap().is_none() {
 		let _ = dc.create(json!({
 			"key": "Auth",
 			"payload": {
@@ -97,7 +106,7 @@ pub fn main() {
 		}));
 	}
 
-	if dc.find(|a| a["key"].as_str() == Some("Web")).unwrap().is_none() {
+	if dc.find(|a| a["domain"].as_str() == Some("Cfg") && a["key"].as_str() == Some("Web")).unwrap().is_none() {
 		let _ = dc.create(json!({
 			"key": "Web",
 			"payload": {
@@ -113,7 +122,7 @@ pub fn main() {
 		}));
 	}
 
-	if dc.find(|a| a["key"].as_str() == Some("WebStream")).unwrap().is_none() {
+	if dc.find(|a| a["domain"].as_str() == Some("Cfg") && a["key"].as_str() == Some("WebStream")).unwrap().is_none() {
 		let _ = dc.create(json!({
 			"key": "WebStream",
 			"payload": {

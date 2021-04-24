@@ -68,8 +68,9 @@ pub async fn startup(initial_config: Value, target_config: Value, mb: MagicBall,
 	let (mut restream_tx, mut restream_rx) = mpsc::unbounded_channel();
     let mut restream_tx2 = restream_tx.clone();
     
-    let web_stream_config = json!({
+    let web_stream_config = json!({		
         "cfg_host": initial_config["cfg_host"],
+		"cfg_domain": initial_config["cfg_domain"],
         "cfg_token": target_config["stream_cfg_token"]
     });	
 

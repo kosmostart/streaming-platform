@@ -63,6 +63,7 @@ where
 	let initial_config = config.clone();
     let target_config = match config["cfg_host"].as_str() {
         Some(cfg_host) => {
+			let cfg_domain = config["cfg_domain"].as_str().expect("cfg_domain not passed");
             let cfg_token = config["cfg_token"].as_str().expect("cfg_token not passed");
             let (cfg_tx, mut cfg_rx) = mpsc::unbounded_channel();
 			let (rpc_inbound_tx, mut rpc_inbound_rx) = mpsc::unbounded_channel();
@@ -71,7 +72,7 @@ where
 			let rpc_completion_tx = rpc_inbound_tx.clone();
 			let completion_tx = write_tx.clone();
 
-            tokio::spawn(cfg_mode(cfg_host.to_owned(), cfg_token.to_owned(), rpc_inbound_tx, rpc_inbound_rx, write_tx, write_rx, cfg_tx));
+            tokio::spawn(cfg_mode(cfg_host.to_owned(), cfg_domain.to_owned(), cfg_token.to_owned(), rpc_inbound_tx, rpc_inbound_rx, write_tx, write_rx, cfg_tx));
 
             let res = cfg_rx.recv().await.expect("Failed to get config");
 			
@@ -155,6 +156,7 @@ where
 	let initial_config = config.clone();
     let target_config = match config["cfg_host"].as_str() {
         Some(cfg_host) => {
+			let cfg_domain = config["cfg_domain"].as_str().expect("cfg_domain not passed");
             let cfg_token = config["cfg_token"].as_str().expect("cfg_token not passed");
             let (cfg_tx, mut cfg_rx) = mpsc::unbounded_channel();
 			let (rpc_inbound_tx, mut rpc_inbound_rx) = mpsc::unbounded_channel();
@@ -163,7 +165,7 @@ where
             let rpc_completion_tx = rpc_inbound_tx.clone();
 			let completion_tx = write_tx.clone();
 
-            tokio::spawn(cfg_mode(cfg_host.to_owned(), cfg_token.to_owned(), rpc_inbound_tx, rpc_inbound_rx, write_tx, write_rx, cfg_tx));
+            tokio::spawn(cfg_mode(cfg_host.to_owned(), cfg_domain.to_owned(), cfg_token.to_owned(), rpc_inbound_tx, rpc_inbound_rx, write_tx, write_rx, cfg_tx));
 
             let res = cfg_rx.recv().await.expect("Failed to get config");
 			
@@ -571,7 +573,7 @@ struct CfgStreamLayout {
     payload: Option<Value>
 }
 
-pub async fn cfg_mode(cfg_host: String, cfg_token: String, rpc_inbound_tx: UnboundedSender<RpcMsg>, mut rpc_inbound_rx: UnboundedReceiver<RpcMsg>, write_tx: UnboundedSender<WriteMsg>, write_rx: UnboundedReceiver<WriteMsg>, result_tx: UnboundedSender<Value>) {
+pub async fn cfg_mode(cfg_host: String, cfg_domain: String, cfg_token: String, rpc_inbound_tx: UnboundedSender<RpcMsg>, mut rpc_inbound_rx: UnboundedReceiver<RpcMsg>, write_tx: UnboundedSender<WriteMsg>, write_rx: UnboundedReceiver<WriteMsg>, result_tx: UnboundedSender<Value>) {
     let (read_tx, read_rx) = mpsc::unbounded_channel();        
     let (rpc_outbound_tx, mut _rpc_outbound_rx) = mpsc::unbounded_channel();
 
@@ -614,6 +616,7 @@ pub async fn cfg_mode(cfg_host: String, cfg_token: String, rpc_inbound_tx: Unbou
     tokio::spawn(process_cfg_stream(mb.clone(), read_rx, result_tx));
 
     match mb.send_rpc(Key::new("Get", "Cfg", "Cfg"), json!({
+		"domain": cfg_domain,
         "cfg_token": cfg_token
     })).await {
         Ok(correlation_id) => info!("Sent cfg rpc, correlation id {}", correlation_id),

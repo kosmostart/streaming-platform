@@ -97,7 +97,8 @@ pub fn main() {
 
 	if dc.find(|a| a["domain"].as_str() == Some("Cfg") && a["key"].as_str() == Some("Auth")).unwrap().is_none() {
 		let _ = dc.create(json!({
-			"key": "Auth",
+			"domain": "Cfg",
+			"key": "Auth",			
 			"payload": {
 				"host": "127.0.0.1:11002",
 				"addr": "Auth",
@@ -108,7 +109,8 @@ pub fn main() {
 
 	if dc.find(|a| a["domain"].as_str() == Some("Cfg") && a["key"].as_str() == Some("Web")).unwrap().is_none() {
 		let _ = dc.create(json!({
-			"key": "Web",
+			"domain": "Cfg",
+			"key": "Web",			
 			"payload": {
 				"host": "127.0.0.1:11002",
 				"addr": "Web",
@@ -124,7 +126,8 @@ pub fn main() {
 
 	if dc.find(|a| a["domain"].as_str() == Some("Cfg") && a["key"].as_str() == Some("WebStream")).unwrap().is_none() {
 		let _ = dc.create(json!({
-			"key": "WebStream",
+			"domain": "Cfg",
+			"key": "WebStream",			
 			"payload": {
 				"host": "127.0.0.1:11002",
 				"addr": "WebStream",

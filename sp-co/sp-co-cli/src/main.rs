@@ -138,14 +138,22 @@ fn main() -> Result<(), Error> {
             cfg_get_all(&rt);
         }
         "get" => {
+			println!("Enter domain:");
+            println!("");
+
+            buf.clear();
+            let _ = std::io::stdin().read_line(&mut buf)?;
+            let domain = buf.lines().nth(0).ok_or(Error::None)?.to_owned();
+
             println!("Enter key:");
             println!("");
 
             buf.clear();
             let _ = std::io::stdin().read_line(&mut buf)?;
-            let key = buf.lines().nth(0).ok_or(Error::None)?;
+            let key = buf.lines().nth(0).ok_or(Error::None)?;			
 
             cfg_get(&rt, json!({
+				"domain": domain,
                 "key": key
             }));
         }
@@ -169,6 +177,10 @@ fn main() -> Result<(), Error> {
             match data {
                 Value::Array(cfg_list) => {
                     for cfg_unit in cfg_list.iter() {
+						if !cfg_unit["domain"].is_string() {
+                            return Err(Error::custom("Empty domain in one of provided values"));
+                        }
+
                         if !cfg_unit["key"].is_string() {
                             return Err(Error::custom("Empty key in one of provided values"));
                         }
@@ -179,6 +191,10 @@ fn main() -> Result<(), Error> {
                     }
                 }
                 Value::Object(_) => {
+					if !data["domain"].is_string() {
+						return Err(Error::custom("Empty domain in one of provided values"));
+					}
+
                     if !data["key"].is_string() {
                         return Err(Error::custom("Empty key in provided value"));
                     }

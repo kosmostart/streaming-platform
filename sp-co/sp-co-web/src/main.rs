@@ -18,6 +18,7 @@ pub fn main() {
 
     let config = json!({
         "cfg_host": "127.0.0.1:11002",
+		"domain": "Cfg",
         "cfg_token": "Web"
     });
  

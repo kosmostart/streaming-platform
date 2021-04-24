@@ -63,7 +63,7 @@ where
 	let initial_config = config.clone();
     let target_config = match config["cfg_host"].as_str() {
         Some(cfg_host) => {
-			let cfg_domain = config["cfg_domain"].as_str().expect("cfg_domain not passed");
+			let cfg_domain = config["domain"].as_str().expect("Cfg service domain not passed");
             let cfg_token = config["cfg_token"].as_str().expect("cfg_token not passed");
             let (cfg_tx, mut cfg_rx) = mpsc::unbounded_channel();
 			let (rpc_inbound_tx, mut rpc_inbound_rx) = mpsc::unbounded_channel();
@@ -156,7 +156,7 @@ where
 	let initial_config = config.clone();
     let target_config = match config["cfg_host"].as_str() {
         Some(cfg_host) => {
-			let cfg_domain = config["cfg_domain"].as_str().expect("cfg_domain not passed");
+			let cfg_domain = config["domain"].as_str().expect("Cfg service domain not passed");
             let cfg_token = config["cfg_token"].as_str().expect("cfg_token not passed");
             let (cfg_tx, mut cfg_rx) = mpsc::unbounded_channel();
 			let (rpc_inbound_tx, mut rpc_inbound_rx) = mpsc::unbounded_channel();

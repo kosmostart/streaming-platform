@@ -12,6 +12,8 @@ enum AuthResult {
 }
 
 pub async fn go(aca_origin: Option<String>, body: warp::hyper::body::Bytes, mut mb: MagicBall) -> Result<Response<Vec<u8>>, warp::Rejection> {
+	info!("Received authorize request");
+
     let res = match get_msg_meta_and_payload::<Value>(&body) {
         Ok((msg_meta, payload)) =>
 

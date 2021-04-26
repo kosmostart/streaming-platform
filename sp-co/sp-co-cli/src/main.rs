@@ -218,6 +218,8 @@ fn main() -> Result<(), Error> {
 }
 
 fn cfg_add(rt: &Runtime, payload: Value) {
+	println!("Starting add for key {:?} {:?}", payload["domain"].as_str(), payload["key"].as_str());
+
     let auth_url = "http://127.0.0.1:12345/authorize";
     let hub_url = "http://127.0.0.1:12345/hub";
 

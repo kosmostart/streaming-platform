@@ -268,9 +268,28 @@ where
                         MsgType::RpcRequest => {                        
                             debug!("Client got rpc request {}", msg_meta.display());
 
-                            tokio::spawn(async move {                                
+                            tokio::spawn(async move {
+								let source_hash = match &msg_meta.route.spec {
+                                    RouteSpec::Simple => {
+                                        info!("Rpc response for tx: {}", msg_meta.tx);
+                                        get_addr_hash(&msg_meta.tx)
+                                    }
+                                    RouteSpec::Client(participator) => {
+                                        match participator {
+                                            Participator::Service(service_addr) => {
+                                                info!("Rpc response for client spec, source addr: {}, client addr: {}", msg_meta.route.get_source_addr(), service_addr);
+                                                get_addr_hash(&service_addr)
+                                            }
+                                            _ => {
+                                                info!("Rpc response for tx: {}, client spec is present but client is not service", msg_meta.route.get_source_addr());
+                                                get_addr_hash(&msg_meta.tx)
+                                            }
+                                        }
+                                    }
+                                };
+
                                 let mut route = msg_meta.route.clone();
-                                let correlation_id = msg_meta.correlation_id;                                
+                                let correlation_id = msg_meta.correlation_id;
                                 let key = msg_meta.key.clone();
                                 let payload: P = from_slice(&payload).expect("failed to deserialize rpc request payload");
 
@@ -291,25 +310,7 @@ where
 
                                 route.points.push(Participator::Service(mb.addr.clone()));
 
-                                let key_hash = get_key_hash(&key);
-                                let source_hash = match &route.spec {
-                                    RouteSpec::Simple => {
-                                        info!("Rpc response for source addr: {}", route.get_source_addr());
-                                        get_addr_hash(route.get_source_addr())
-                                    }
-                                    RouteSpec::Client(participator) => {
-                                        match participator {
-                                            Participator::Service(service_addr) => {
-                                                info!("Rpc response for client spec, source addr: {}, client addr: {}", route.get_source_addr(), service_addr);
-                                                get_addr_hash(&service_addr)
-                                            }
-                                            _ => {
-                                                info!("Rpc response for source addr: {}, client spec is present but client is not service", route.get_source_addr());
-                                                get_addr_hash(route.get_source_addr())
-                                            }
-                                        }
-                                    }
-                                };
+                                let key_hash = get_key_hash(&key);                                
 
                                 let (res, msg_meta_size, payload_size, attachments_sizes) = rpc_response_dto2_sizes(mb.addr.clone(),  key, correlation_id, payload, attachments, attachments_data, rpc_result, route, None, None).expect("failed to create rpc reply");
 

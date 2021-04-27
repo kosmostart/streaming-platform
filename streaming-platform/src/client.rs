@@ -269,29 +269,11 @@ where
                             debug!("Client got rpc request {}", msg_meta.display());
 
                             tokio::spawn(async move {
-								let source_hash = match &msg_meta.route.spec {
-                                    RouteSpec::Simple => {
-                                        info!("Rpc response for tx: {}", msg_meta.tx);
-                                        get_addr_hash(&msg_meta.tx)
-                                    }
-                                    RouteSpec::Client(participator) => {
-                                        match participator {
-                                            Participator::Service(service_addr) => {
-                                                info!("Rpc response for client spec, source addr: {}, client addr: {}", msg_meta.route.get_source_addr(), service_addr);
-                                                get_addr_hash(&service_addr)
-                                            }
-                                            _ => {
-                                                info!("Rpc response for tx: {}, client spec is present but client is not service", msg_meta.route.get_source_addr());
-                                                get_addr_hash(&msg_meta.tx)
-                                            }
-                                        }
-                                    }
-                                };
-
                                 let mut route = msg_meta.route.clone();
                                 let correlation_id = msg_meta.correlation_id;
                                 let key = msg_meta.key.clone();
                                 let payload: P = from_slice(&payload).expect("failed to deserialize rpc request payload");
+								let source_hash = get_addr_hash(&msg_meta.tx);
 
                                 let (payload, attachments, attachments_data, rpc_result) = match process_rpc(config.clone(), mb.clone(), Message {meta: msg_meta, payload, attachments_data}, dependency).await {
                                     Ok(res) => {

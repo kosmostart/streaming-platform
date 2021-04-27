@@ -17,13 +17,13 @@ fn main() -> Result<(), Error> {
     println!("Available commands:");
     println!("");
     println!("add");
-    println!("get all");
+    println!("get domain");
     println!("get");
     println!("load file");
     println!("deploy");
     println!("");
 
-    println!("Enter command:");
+    println!("Ok friends, enter command");
     println!("");
 
     let mut buf = String::new();
@@ -134,8 +134,15 @@ fn main() -> Result<(), Error> {
 
             cfg_add(&rt, payload.ok_or(Error::None)?);
         }
-        "get all" => {
-            cfg_get_all(&rt);
+        "get domain" => {
+			println!("Enter domain:");
+            println!("");
+
+            buf.clear();
+            let _ = std::io::stdin().read_line(&mut buf)?;
+            let domain = buf.lines().nth(0).ok_or(Error::None)?.to_owned();
+
+            cfg_get_domain(&rt, &domain);
         }
         "get" => {
 			println!("Enter domain:");
@@ -258,7 +265,7 @@ fn cfg_add(rt: &Runtime, payload: Value) {
     println!("{:#?}", msg);
 }
 
-fn cfg_get_all(rt: &Runtime) {
+fn cfg_get_domain(rt: &Runtime, domain: &str) {
     let auth_url = "http://127.0.0.1:12345/authorize";
     let hub_url = "http://127.0.0.1:12345/hub";	
 
@@ -281,7 +288,9 @@ fn cfg_get_all(rt: &Runtime) {
 
 	let qq = split[0].to_owned();
 
-    let (_, dto) = rpc_dto("Cli".to_owned(), Key::new("GetAll", "Cfg", "Cfg"), json!({}), Route::new_cli_with_service_client("Cli", "Web"), None, None).unwrap();
+    let (_, dto) = rpc_dto("Cli".to_owned(), Key::new("GetDomain", "Cfg", "Cfg"), json!({
+		"domain": domain
+	}), Route::new_cli_with_service_client("Cli", "Web"), None, None).unwrap();
 
     let client = reqwest::Client::new();
     

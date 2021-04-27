@@ -47,9 +47,14 @@ pub async fn process_rpc(config: Value, mut mb: MagicBall, msg: Message<Value>, 
             json!({
             })
         }
-        "GetAll" => {
-            info!("Received GetAll");
-            let data = dc.get_all()?;
+        "GetDomain" => {
+            info!("Received GetDomain, payload {:#?}", msg.payload);
+
+			if !msg.payload["domain"].is_string() {
+                return Err(Box::new(Error::custom("Empty domain in payload")));
+            }
+
+            let data = dc.filter(|a| a["domain"] == msg.payload["domain"])?;
 
             json!({
                 "data": data
@@ -134,7 +139,7 @@ pub fn main() {
 				"access_key": ""
 			}
 		}));
-	}	
+	}
 
     let config = json!({
         "host": "127.0.0.1:11002",

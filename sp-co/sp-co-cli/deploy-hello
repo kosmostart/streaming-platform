@@ -1,4 +1,5 @@
 {
+	"domain": "Build",
     "key": "DeployHello",
     "payload": {
         "build_configs": [

@@ -8,7 +8,7 @@ type HmacSha = Hmac<Sha3_256>;
 
 pub fn create_auth_token(auth_token_key: &[u8], payload: &Value) -> Result<Vec<u8>, serde_json::Error> {
     // Create HMAC-SHA3 256 instance which implements `Mac` trait
-    let mut mac = HmacSha::new_varkey(auth_token_key).expect("HMAC can take key of any size");
+    let mut mac = HmacSha::new_from_slice(auth_token_key).expect("HMAC can take key of any size");
     mac.update(&to_vec(payload)?);
     
     let result = mac.finalize();
@@ -31,7 +31,7 @@ pub fn verify_auth_token(auth_token_key: &[u8], auth_token: &str) -> Result<Valu
     let payload = decode(split[1])?;
 
     //To verify the message:
-    let mut mac = HmacSha::new_varkey(auth_token_key).expect("HMAC can take key of any size");
+    let mut mac = HmacSha::new_from_slice(auth_token_key).expect("HMAC can take key of any size");
 
     mac.update(&payload);
 

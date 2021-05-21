@@ -9,8 +9,9 @@ pub async fn go(aca_origin: Option<String>, auth_token_key: String, cookie_heade
     let res = match check_auth_token(auth_token_key.as_bytes(), cookie_header) {
         Some(auth_data) => {
             match get_msg_meta(&body) {                
-                Ok(msg_meta) =>
-                
+                Ok(msg_meta) => {
+					info!("{} hub: {:?}, {:?}, {:?}", mb.addr, msg_meta.msg_type, msg_meta.key, msg_meta.route.source);
+
                     match msg_meta.msg_type {
                         MsgType::RpcRequest =>
                             match mb.proxy_rpc_with_auth_data(mb.addr.clone(), auth_data, body.to_vec()).await {
@@ -32,7 +33,8 @@ pub async fn go(aca_origin: Option<String>, auth_token_key: String, cookie_heade
                                     None
                                 }
                             }                        
-                    }                
+                    }
+				}    
                 Err(err) => {
                     error!("{:?}", err);
                     None

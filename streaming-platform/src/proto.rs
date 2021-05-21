@@ -56,7 +56,7 @@ pub fn get_key_hash(key: &Key) -> u64 {
 
     let res = hasher.finish();
 
-    debug!("Created hash {} for key {:?}", res, key);
+    info!("Created hash {} for key {:?}", res, key);
 
     res
 }
@@ -68,15 +68,14 @@ pub fn get_addr_hash(addr: &str) -> u64 {
 
     let res = hasher.finish();
 
-    debug!("Created hash {} for addr {}", res, addr);
+    info!("Created hash {} for addr {}", res, addr);
 
     res
 }
 
 pub fn get_stream_id_onetime(addr: &str) -> u64 {
     let mut buf = BytesMut::new();
-    buf.put(addr.as_bytes());
-    //buf.put_u32(get_counter_value());
+    buf.put(addr.as_bytes());    
     buf.extend_from_slice(Uuid::new_v4().to_string().as_bytes());
     let mut hasher = get_stream_id_hasher();
     hasher.write(&buf);

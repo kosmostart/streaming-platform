@@ -52,7 +52,18 @@ pub fn get_stream_id_hasher() -> SipHasher24 {
 pub fn get_key_hash(key: &Key) -> u64 {	
 	let mut hasher = get_key_hasher();
 
-    hasher.write(&(key.service.clone() + &key.action + &key.domain).as_bytes());
+    hasher.write(key.service.as_bytes());
+    hasher.write(key.action.as_bytes());
+    hasher.write(key.domain.as_bytes());
+
+    match &key.sources {
+        Some(sources) => {
+            for source in sources {
+                hasher.write(source.as_bytes());
+            }
+        }
+        None => {}
+    }
 
     let res = hasher.finish();
 

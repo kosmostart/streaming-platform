@@ -142,7 +142,8 @@ pub enum ResponseRaw {
 pub struct Key {    
     pub action: String,
     pub service: String,
-    pub domain: String
+    pub domain: String,
+    pub sources: Option<Vec<String>>
 }
 
 /// Parameters are as follows: event_subscribes, rpc_subscribes, rpc_response_subscribes
@@ -198,14 +199,24 @@ impl Key {
         Key {
             action: action.to_owned(),
             service: service.to_owned(),
-            domain: domain.to_owned()
+            domain: domain.to_owned(),
+            sources: None
+        }
+    }
+    pub fn new_with_sources(action: &str, service: &str, domain: &str, sources: Option<Vec<String>>) -> Key {
+        Key {
+            action: action.to_owned(),
+            service: service.to_owned(),
+            domain: domain.to_owned(),
+            sources
         }
     }
     pub fn simple(action: &str) -> Key {
         Key {
             action: action.to_owned(),
             service: "".to_owned(),
-            domain: "".to_owned()
+            domain: "".to_owned(),
+            sources: None
         }
     }
 }

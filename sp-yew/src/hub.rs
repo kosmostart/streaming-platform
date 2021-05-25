@@ -471,67 +471,6 @@ impl Hub {
             payload
         ));
     }
-    /// Sends message marked as event to component with addr held inside tx variable of component spec (which is stored in a hub struct).
-    pub fn send_event_tx(&mut self, key: Key, payload: Value) {
-        self.hub.send(Request::Msg(
-            MsgMeta {
-                tx: self.spec.addr.clone(),                
-                key,
-                msg_type: MsgType::Event,
-                correlation_id: Uuid::new_v4(),
-                route: Route {
-                    source: Participator::Component(self.spec.addr.clone(), self.cfg.app_addr.clone(), self.cfg.client_addr.clone()),
-                    spec: RouteSpec::Simple,
-                    points: vec![Participator::Component(self.spec.addr.clone(), self.cfg.app_addr.clone(), self.cfg.client_addr.clone())]
-                },
-                payload_size: 0,
-                auth_token: self.cfg.auth_token.clone(),
-                auth_data: self.cfg.auth_data.clone(),
-                attachments: vec![]
-            }, 
-            payload
-        ));
-    }
-    /// Sends message marked as rpc request to component with addr held inside tx variable of component spec (which is stored in a hub struct).
-    pub fn send_rpc_tx(&mut self, key: Key, payload: Value) {
-        self.hub.send(Request::Msg(
-            MsgMeta {
-                tx: self.spec.addr.clone(),                
-                key,
-                msg_type: MsgType::RpcRequest,
-                correlation_id: Uuid::new_v4(),
-                route: Route {
-                    source: Participator::Component(self.spec.addr.clone(), self.cfg.app_addr.clone(), self.cfg.client_addr.clone()),
-                    spec: RouteSpec::Simple,
-                    points: vec![Participator::Component(self.spec.addr.clone(), self.cfg.app_addr.clone(), self.cfg.client_addr.clone())]
-                },
-                payload_size: 0,
-                auth_token: self.cfg.auth_token.clone(),
-                auth_data: self.cfg.auth_data.clone(),
-                attachments: vec![]
-            },
-            payload
-        ));
-    }
-    /// Forwards current message to component with addr held inside tx variable of component spec (which is stored in a hub struct).
-    pub fn proxy_msg_tx(&mut self, mut msg_meta: MsgMeta, payload: Value) {
-        msg_meta.route.points.push(Participator::Component(self.spec.addr.clone(), self.cfg.app_addr.clone(), self.cfg.client_addr.clone()));
-        self.hub.send(Request::Msg(
-            MsgMeta {
-                tx: self.spec.addr.clone(),                
-                key: msg_meta.key,
-                msg_type: msg_meta.msg_type,
-                correlation_id: msg_meta.correlation_id,
-                route: msg_meta.route,
-                payload_size: 0,
-                auth_token: self.cfg.auth_token.clone(),
-                auth_data: self.cfg.auth_data.clone(),
-                attachments: vec![]
-            },
-            payload
-        ));
-    }
-
     /// Function for making request without using protocol described in sp-dto crate. Simple wrapper around fetch API.
     pub fn rpc_post_string(&mut self, payload: String) {
         let url = self.cfg.fetch_url.clone().expect("fetch host is empty on server rpc");

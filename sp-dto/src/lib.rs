@@ -227,6 +227,22 @@ impl Key {
             sources: None
         }
     }
+	pub fn simple_with_sources(action: &str, sources: Vec<&str>) -> Key {
+        Key {
+            action: action.to_owned(),
+            service: "".to_owned(),
+            domain: "".to_owned(),
+            sources: {
+				let mut res = vec![];
+
+				for source in sources {
+					res.push(source.to_owned())
+				}
+
+				Some(res)
+			}
+        }
+    }
 }
 
 /// Message meta data. Message passing protocol is build around this structure.

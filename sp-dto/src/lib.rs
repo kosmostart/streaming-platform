@@ -143,7 +143,8 @@ pub struct Key {
     pub action: String,
     pub service: String,
     pub domain: String,
-    pub sources: Option<Vec<String>>
+	pub source: Option<String>,
+    pub tags: Option<Vec<String>>
 }
 
 /// Parameters are as follows: event_subscribes, rpc_subscribes, rpc_response_subscribes
@@ -200,18 +201,29 @@ impl Key {
             action: action.to_owned(),
             service: service.to_owned(),
             domain: domain.to_owned(),
-            sources: None
+			source: None,
+            tags: None
         }
     }
-    pub fn new_with_sources(action: &str, service: &str, domain: &str, sources: Vec<&str>) -> Key {
+	pub fn new_with_source(action: &str, service: &str, domain: &str, source: &str) -> Key {
         Key {
             action: action.to_owned(),
             service: service.to_owned(),
             domain: domain.to_owned(),
-            sources: {
+			source: Some(source.to_owned()),
+            tags: None
+        }
+    }
+    pub fn new_with_tags(action: &str, service: &str, domain: &str, tags: Vec<&str>) -> Key {
+        Key {
+            action: action.to_owned(),
+            service: service.to_owned(),
+            domain: domain.to_owned(),
+			source: None,
+            tags: {
 				let mut res = vec![];
 
-				for source in sources {
+				for source in tags {
 					res.push(source.to_owned())
 				}
 
@@ -224,18 +236,29 @@ impl Key {
             action: action.to_owned(),
             service: "".to_owned(),
             domain: "".to_owned(),
-            sources: None
+			source: None,
+            tags: None
         }
     }
-	pub fn simple_with_sources(action: &str, sources: Vec<&str>) -> Key {
+	pub fn simple_with_source(action: &str, source: &str) -> Key {
         Key {
             action: action.to_owned(),
             service: "".to_owned(),
             domain: "".to_owned(),
-            sources: {
+			source: Some(source.to_owned()),
+            tags: None
+        }
+    }
+	pub fn simple_with_tags(action: &str, tags: Vec<&str>) -> Key {
+        Key {
+            action: action.to_owned(),
+            service: "".to_owned(),
+            domain: "".to_owned(),
+			source: None,
+            tags: {
 				let mut res = vec![];
 
-				for source in sources {
+				for source in tags {
 					res.push(source.to_owned())
 				}
 

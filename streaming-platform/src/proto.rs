@@ -56,10 +56,17 @@ pub fn get_key_hash(key: &Key) -> u64 {
     hasher.write(key.action.as_bytes());
     hasher.write(key.domain.as_bytes());
 
-    match &key.sources {
-        Some(sources) => {
-            for source in sources {
-                hasher.write(source.as_bytes());
+	match &key.source {
+        Some(source) => {
+            hasher.write(source.as_bytes());
+        }
+        None => {}
+    }
+
+    match &key.tags {
+        Some(tags) => {
+            for tag in tags {
+                hasher.write(tag.as_bytes());
             }
         }
         None => {}

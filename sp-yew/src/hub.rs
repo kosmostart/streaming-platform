@@ -195,6 +195,10 @@ impl Agent for Worker {
                 };
                 self.subscribes = subscribes;
                 ConsoleService::log("Subscribes set");
+				for (key, targets) in self.subscribes.iter() {
+					ConsoleService::log(&format!("{:?}", key));
+					ConsoleService::log(&format!("{:#?}", targets));
+				}
             }
             Request::Msg(msg_meta, payload) => {
                 match self.subscribes.get(&msg_meta.key) {

@@ -203,12 +203,20 @@ impl Key {
             sources: None
         }
     }
-    pub fn new_with_sources(action: &str, service: &str, domain: &str, sources: Option<Vec<String>>) -> Key {
+    pub fn new_with_sources(action: &str, service: &str, domain: &str, sources: Option<Vec<&str>>) -> Key {
         Key {
             action: action.to_owned(),
             service: service.to_owned(),
             domain: domain.to_owned(),
-            sources
+            sources: sources.map(|sources| {
+				let mut res = vec![];
+
+				for source in sources {
+					res.push(source.to_owned())
+				}
+
+				res
+			})
         }
     }
     pub fn simple(action: &str) -> Key {

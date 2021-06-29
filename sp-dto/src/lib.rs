@@ -288,7 +288,7 @@ pub struct MsgMeta {
     /// Authorization data.
     pub auth_data: Option<Value>,
     /// Attachments to message
-	pub attachments: Vec<Attachment>
+	pub attachments: Vec<AttachmentMeta>
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -320,7 +320,7 @@ pub enum RpcResult {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Attachment {
+pub struct AttachmentMeta {
 	pub name: String,
     pub size: u64
 }
@@ -603,7 +603,7 @@ pub fn rpc_dto_with_attachments<T>(tx: String, key: Key, payload: T, attachments
     let mut attachments_payload = vec![];
 
     for (attachment_name, mut attachment_payload) in attachments {
-        attachments_meta.push(Attachment {
+        attachments_meta.push(AttachmentMeta {
             name: attachment_name,
             size: attachment_payload.len() as u64
         });        
@@ -666,7 +666,7 @@ pub fn rpc_response_dto_sizes<T>(tx: String, key: Key, correlation_id: Uuid, pay
     let mut payload = serde_json::to_vec(&payload)?;
     let mut attachments_meta = vec![];
     for (attachment_name,attachment_size) in attachments {
-        attachments_meta.push(Attachment {
+        attachments_meta.push(AttachmentMeta {
             name: attachment_name,
             size: attachment_size
         });                
@@ -697,7 +697,7 @@ pub fn rpc_response_dto_sizes<T>(tx: String, key: Key, correlation_id: Uuid, pay
 pub fn rpc_response_dto2_sizes(tx: String, key: Key, correlation_id: Uuid, mut payload: Vec<u8>, attachments: Vec<(String, u64)>, mut attachments_data: Vec<u8>, result: RpcResult, route: Route, auth_token: Option<String>, auth_data: Option<Value>) -> Result<(Vec<u8>, u64, u64, Vec<u64>), Error> {
     let mut attachments_meta = vec![];
     for (attachment_name,attachment_size) in attachments {
-        attachments_meta.push(Attachment {
+        attachments_meta.push(AttachmentMeta {
             name: attachment_name,
             size: attachment_size
         });                
@@ -740,7 +740,7 @@ pub fn rpc_dto2(tx: String, key: Key, mut payload: Vec<u8>, route: Route, auth_t
 		attachments: vec![]
     };
 
-    let mut msg_meta = serde_json::to_vec(&msg_meta)?;    
+    let mut msg_meta = serde_json::to_vec(&msg_meta)?;
 
     let mut buf = vec![];
 
@@ -758,7 +758,7 @@ pub fn rpc_dto_with_attachments2(tx: String, key: Key, mut payload: Vec<u8>, att
     let mut attachments_payload = vec![];
 
     for (attachment_name, mut attachment_payload) in attachments {
-        attachments_meta.push(Attachment {
+        attachments_meta.push(AttachmentMeta {
             name: attachment_name,
             size: attachment_payload.len() as u64
         });        
@@ -797,7 +797,7 @@ pub fn get_msg_meta(data: &[u8]) -> Result<MsgMeta, Error> {
     serde_json::from_slice::<MsgMeta>(&data[4..len + 4])
 }
 
-pub fn get_msg<T>(data: &[u8]) -> Result<(Message<T>), Error> where T: Debug, T: serde::Serialize, for<'de> T: serde::Deserialize<'de> {
+pub fn get_msg<T>(data: &[u8]) -> Result<Message<T>, Error> where T: Debug, T: serde::Serialize, for<'de> T: serde::Deserialize<'de> {
     let mut buf = Cursor::new(data);    
     let len = buf.get_u32();
     let msg_meta_offset = (len + 4) as usize;
@@ -819,17 +819,6 @@ pub fn get_msg<T>(data: &[u8]) -> Result<(Message<T>), Error> where T: Debug, T:
             attachments_data: Some(data[payload_offset ..].to_owned())
         }
     })
-
-    /*
-    let mut attachments = vec![];
-    let mut attachment_offset = payload_offset;
-
-    for attachment in &msg_meta.attachments {
-        let attachment_start = attachment_offset;
-        attachment_offset = attachment_offset + attachment.size as usize;
-        attachments.push((attachment.name.clone(), (&data[attachment_start..attachment_offset]).to_owned()))
-    }
-    */
 }
 
 pub fn get_msg_meta_and_payload<T>(data: &[u8]) -> Result<(MsgMeta, T), Error> where T: Debug, T: serde::Serialize, for<'de> T: serde::Deserialize<'de> {
@@ -856,25 +845,4 @@ pub fn get_payload<T>(msg_meta: &MsgMeta, data: &[u8]) -> Result<T, Error> where
     let payload = serde_json::from_slice::<T>(&data[msg_meta_offset..payload_offset])?;    
 
     Ok(payload)
-}
-
-pub fn get_payload_with_attachments<T>(msg_meta: &MsgMeta, data: &[u8]) -> Result<(T, Vec<(String, Vec<u8>)>), Error> where T: Debug, T: serde::Serialize, for<'de> T: serde::Deserialize<'de> {
-    let mut buf = Cursor::new(data);    
-    let len = buf.get_u32();
-    let msg_meta_offset = (len + 4) as usize;
-
-    let payload_offset = msg_meta_offset + msg_meta.payload_size as usize;
-
-    let payload = serde_json::from_slice::<T>(&data[msg_meta_offset..payload_offset])?;
-
-    let mut attachments = vec![];
-    let mut attachment_offset = payload_offset;
-
-    for attachment in &msg_meta.attachments {
-        let attachment_start = attachment_offset;
-        attachment_offset = attachment_offset + attachment.size as usize;
-        attachments.push((attachment.name.clone(), (&data[attachment_start..attachment_offset]).to_owned()))
-    }
-
-    Ok((payload, attachments))
 }

@@ -7,7 +7,7 @@ members = [
 	"sp-auth",
 	"sp-cfg",
 	"sp-web",
-	"sp-yew",
+	#"sp-yew",
 	"sp-co/sp-build-core",
 	"sp-co/sp-co-hub",
 	"sp-co/sp-co-build",

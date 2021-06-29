@@ -94,7 +94,7 @@ impl Route {
 pub struct Message<T> {
     pub meta: MsgMeta,
     pub payload: T,
-    pub attachments_data: Vec<u8>
+    pub attachments_data: Option<Vec<u8>>
 }
 
 /// The message itself with payload as raw bytes
@@ -102,7 +102,7 @@ pub struct Message<T> {
 pub struct MessageRaw {
     pub meta: MsgMeta,
     pub payload: Vec<u8>,
-    pub attachments_data: Vec<u8>
+    pub attachments_data: Option<Vec<u8>>
 }
 
 /// Enum used for returning from processing rpc functions in full message mode
@@ -797,7 +797,7 @@ pub fn get_msg_meta(data: &[u8]) -> Result<MsgMeta, Error> {
     serde_json::from_slice::<MsgMeta>(&data[4..len + 4])
 }
 
-pub fn get_msg<T>(data: &[u8]) -> Result<(MsgMeta, T, Vec<(String, Vec<u8>)>), Error> where T: Debug, T: serde::Serialize, for<'de> T: serde::Deserialize<'de> {
+pub fn get_msg<T>(data: &[u8]) -> Result<(Message<T>), Error> where T: Debug, T: serde::Serialize, for<'de> T: serde::Deserialize<'de> {
     let mut buf = Cursor::new(data);    
     let len = buf.get_u32();
     let msg_meta_offset = (len + 4) as usize;
@@ -805,9 +805,22 @@ pub fn get_msg<T>(data: &[u8]) -> Result<(MsgMeta, T, Vec<(String, Vec<u8>)>), E
     let msg_meta = serde_json::from_slice::<MsgMeta>(&data[4..msg_meta_offset as usize])?;
 
     let payload_offset = msg_meta_offset + msg_meta.payload_size as usize;
-
     let payload = serde_json::from_slice::<T>(&data[msg_meta_offset..payload_offset])?;
 
+    Ok(match len > payload_offset as u32 {
+        true => Message {
+            meta: msg_meta,
+            payload,
+            attachments_data: None
+        },
+        false => Message {
+            meta: msg_meta,
+            payload,
+            attachments_data: Some(data[payload_offset ..].to_owned())
+        }
+    })
+
+    /*
     let mut attachments = vec![];
     let mut attachment_offset = payload_offset;
 
@@ -816,8 +829,7 @@ pub fn get_msg<T>(data: &[u8]) -> Result<(MsgMeta, T, Vec<(String, Vec<u8>)>), E
         attachment_offset = attachment_offset + attachment.size as usize;
         attachments.push((attachment.name.clone(), (&data[attachment_start..attachment_offset]).to_owned()))
     }
-
-    Ok((msg_meta, payload, attachments))
+    */
 }
 
 pub fn get_msg_meta_and_payload<T>(data: &[u8]) -> Result<(MsgMeta, T), Error> where T: Debug, T: serde::Serialize, for<'de> T: serde::Deserialize<'de> {

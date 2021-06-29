@@ -402,7 +402,7 @@ pub enum ClientMsg {
     /// This is sent in Stream mode
     Frame(Frame),
     /// This is sent in FullMessage mode
-    Message(u64, MsgMeta, Vec<u8>, Vec<u8>)
+    Message(u64, MsgMeta, Vec<u8>, Option<Vec<u8>>)
 }
 
 impl ClientMsg {
@@ -574,9 +574,9 @@ pub async fn write_to_tcp_stream(tcp_stream: &mut TcpStream, msg_type: u8, key_h
 
 // Used for RPC implementation
 pub enum RpcMsg {
-    AddRpc(Uuid, oneshot::Sender<(MsgMeta, Vec<u8>, Vec<u8>)>),    
+    AddRpc(Uuid, oneshot::Sender<(MsgMeta, Vec<u8>, Option<Vec<u8>>)>),    
     RpcDataRequest(Uuid),
-    RpcDataResponse(Uuid, oneshot::Sender<(MsgMeta, Vec<u8>, Vec<u8>)>),
+    RpcDataResponse(Uuid, oneshot::Sender<(MsgMeta, Vec<u8>, Option<Vec<u8>>)>),
 	Complete
 }
 
@@ -1139,7 +1139,12 @@ impl MagicBall {
         buf.put_u32(msg_meta_buf.len() as u32);
         buf.append(&mut msg_meta_buf);
         buf.append(&mut payload);
-        buf.append(&mut attachments_data);
+        match attachments_data {
+            Some(mut attachments_data) => {
+                buf.append(&mut attachments_data);
+            }
+            None => {}
+        }
         
         Ok((msg_meta, buf))
     }
@@ -1205,11 +1210,16 @@ impl MagicBall {
         buf.put_u32(msg_meta_buf.len() as u32);
         buf.append(&mut msg_meta_buf);
         buf.append(&mut payload);
-        buf.append(&mut attachments_data);
+        match attachments_data {
+            Some(mut attachments_data) => {
+                buf.append(&mut attachments_data);
+            }
+            None => {}
+        }
         
         Ok((msg_meta, buf))
     }
-    pub async fn proxy_rpc_with_payload<T>(&mut self, tx: String, mut data: Vec<u8>) -> Result<(MsgMeta, T, Vec<u8>), ProcessError> where for<'de> T: serde::Deserialize<'de>, T: Debug {
+    pub async fn proxy_rpc_with_payload<T>(&mut self, tx: String, mut data: Vec<u8>) -> Result<Message<T>, ProcessError> where for<'de> T: serde::Deserialize<'de>, T: Debug {
         let (res, len) = {
             let mut buf = std::io::Cursor::new(&data);
             let len = buf.get_u32() as usize;
@@ -1262,7 +1272,11 @@ impl MagicBall {
 
         let payload: T = from_slice(&payload)?;
         
-        Ok((msg_meta, payload, attachments_data))
+        Ok(Message {
+            meta: msg_meta,
+            payload,
+            attachments_data
+        })
     }
 }
 

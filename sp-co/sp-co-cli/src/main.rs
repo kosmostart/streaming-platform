@@ -260,7 +260,7 @@ fn cfg_add(rt: &Runtime, payload: Value) {
 
     let data = rt.block_on(res.bytes()).unwrap();
 
-    let msg: (_, Value, _) = get_msg(&data).unwrap();
+    let msg = get_msg::<Value>(&data).unwrap();
 
     println!("{:#?}", msg);
 }
@@ -301,7 +301,7 @@ fn cfg_get_domain(rt: &Runtime, domain: &str) {
 
     let data = rt.block_on(res.bytes()).unwrap();
 
-    let msg: (_, Value, _) = get_msg(&data).unwrap();
+    let msg = get_msg::<Value>(&data).unwrap();
 
     println!("{:#?}", msg);
 }
@@ -340,7 +340,7 @@ fn cfg_get(rt: &Runtime, payload: Value) {
 
     let data = rt.block_on(res.bytes()).unwrap();
 
-    let msg: (_, Value, _) = get_msg(&data).unwrap();
+    let msg = get_msg::<Value>(&data).unwrap();
 
     println!("{:#?}", msg);
 }
@@ -385,7 +385,7 @@ fn deploy(rt: &Runtime, payload: Value) {
 
     let data = rt.block_on(res.bytes()).unwrap();
 
-    let msg: (_, Value, _) = get_msg(&data).unwrap();
+    let msg = get_msg::<Value>(&data).unwrap();
 
     println!("{:#?}", msg);	
 

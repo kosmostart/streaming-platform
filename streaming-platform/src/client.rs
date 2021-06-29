@@ -532,7 +532,10 @@ async fn process_full_message_mode(mut write_tcp_stream: TcpStream, mut read_tcp
 
 								let msg_meta = from_slice(&stream_layout.msg_meta)?;
 		
-								match read_tx.send(ClientMsg::Message(frame.stream_id, msg_meta, stream_layout.payload, stream_layout.attachments_data)) {
+								match read_tx.send(ClientMsg::Message(frame.stream_id, msg_meta, stream_layout.payload, match stream_layout.attachments_data.is_empty() {
+                                    true => Some(stream_layout.attachments_data),
+                                    false => None
+                                })) {
 									Ok(()) => {}
 									Err(_) => {
 										panic!("Client message send with read_tx in full message mode failed")

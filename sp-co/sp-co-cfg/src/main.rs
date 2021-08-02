@@ -6,7 +6,7 @@ use streaming_platform::{client, MagicBall, sp_dto::{MsgMeta, Message, Response,
 use crate::error::Error;
 use storage::Dc;
 
-mod sd;
+mod ser_de;
 mod storage;
 mod error;
 

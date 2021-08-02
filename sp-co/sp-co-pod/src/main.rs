@@ -385,7 +385,7 @@ fn fix_running(name: &str) {
     system.refresh_all();
     let mut running = vec![];
 
-    for (id, process) in system.get_processes() {
+    for (id, process) in system.processes() {
         //info!("{}:{} status: {:?}", pid, proc_.name(), proc_.status());
 
         running.push((*id as usize, process.name().to_owned()));

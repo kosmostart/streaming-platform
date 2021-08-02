@@ -7,7 +7,6 @@ pub enum Error {
 	CustomError(String),
 	Io(std::io::Error),
 	Chrono(chrono::format::ParseError),
-	SdDeserializationFailed(rkyv::Unreachable),
 	SerdeJson(serde_json::Error),
 	Sled(sled::Error),
 	SledTransaction(sled::transaction::TransactionError<()>),
@@ -57,12 +56,6 @@ impl From<std::io::Error> for Error {
 impl From<chrono::format::ParseError> for Error {
 	fn from(e: chrono::format::ParseError) -> Error {
 		Error::Chrono(e)
-	}
-}
-
-impl From<rkyv::Unreachable> for Error {
-	fn from(e: rkyv::Unreachable) -> Error {
-		Error::SdDeserializationFailed(e)
 	}
 }
 

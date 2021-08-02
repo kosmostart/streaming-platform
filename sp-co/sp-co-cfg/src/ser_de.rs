@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use serde_json::json;
-use rkyv::{AlignedVec, Archive, Deserialize, Fallible, Serialize, archived_root, de::{deserializers::AllocDeserializer, Deserializer}, ser::{serializers::AlignedSerializer, Serializer}};
+use rkyv::{AlignedVec, Archive, Deserialize, Fallible, Infallible, Serialize, archived_root, ser::{serializers::{AllocSerializer, CompositeSerializerError, AllocScratch, AllocScratchError, SharedSerializeMapError}, Serializer}};
 use crate::error::Error;
 
 pub const POSITION_LEN: usize = 8;
@@ -15,8 +15,8 @@ pub enum Value {
     Object(#[omit_bounds] HashMap<String, Value>)
 }
 
-impl Serialize<AlignedSerializer<AlignedVec>> for Value {
-    fn serialize(&self, serializer: &mut AlignedSerializer<AlignedVec>) -> Result<Self::Resolver, <AlignedSerializer<AlignedVec> as Fallible>::Error> {
+impl Serialize<AllocSerializer<1024>> for Value {
+    fn serialize(&self, serializer: &mut AllocSerializer<1024>) -> Result<Self::Resolver, CompositeSerializerError<std::convert::Infallible, AllocScratchError, SharedSerializeMapError>> {
         Ok(match self {
             Value::Null => ValueResolver::Null,
             Value::Bool(b) => ValueResolver::Bool(b.serialize(serializer)?),
@@ -28,7 +28,7 @@ impl Serialize<AlignedSerializer<AlignedVec>> for Value {
     }
 }
 
-impl<D: Deserializer> Deserialize<Value, D> for ArchivedValue {
+impl<D: Fallible + ?Sized> Deserialize<Value, D> for ArchivedValue {
     fn deserialize(&self, deserializer: &mut D) -> Result<Value, D::Error> {
         Ok(match self {
             ArchivedValue::Null => Value::Null,
@@ -49,11 +49,11 @@ pub enum Number {
 }
 
 pub fn serialize(value: &Value) -> Result<AlignedVec, Error> {
-    let mut serializer = AlignedSerializer::new(AlignedVec::new());
+    let mut serializer = AllocSerializer::<1024>::default();
 
     let _ = serializer.serialize_value(value).expect("failed to serialize value");
 
-    let res = serializer.into_inner();
+    let res = serializer.into_serializer().into_inner();
 
     Ok(res)
 }
@@ -61,9 +61,7 @@ pub fn serialize(value: &Value) -> Result<AlignedVec, Error> {
 pub fn deserialize(buf: &[u8]) -> Result<Value, Error> {
     let archived = unsafe { archived_root::<Value>(buf) };
 
-    let mut deserializer = AllocDeserializer;
-
-    let res = archived.deserialize(&mut deserializer).expect("failed to deserialize value");
+    let res = archived.deserialize(&mut Infallible).expect("failed to deserialize value");
 
     Ok(res)
 }
@@ -140,40 +138,4 @@ pub fn convert_value2(input: Value) -> serde_json::Value {
             serde_json::Value::Object(res)
         }
     }
-}
-
-
-#[test]
-fn full_test() -> Result<(), Error> {
-    use log::*;
-    use serde_json::json;
-
-    let _ = env_logger::try_init();
-
-    let value = convert_value(json!({
-        "id": 123,
-        "name": "Dog",
-        "payload": json!({
-            "asd": "qwe",
-            "qwe": 1,
-            "dog": vec![
-                json!({
-                    "hi": "dde8de8"
-                }),
-                json!({
-                    "hi2": "asda"
-                })
-            ]
-        })
-    }));
-
-    info!("{:#?}", value);
-
-    let buf = serialize(&value)?;
-
-    let deserialized: Value = deserialize(&buf)?;
-
-    info!("{:#?}", deserialized);
-
-    Ok(())
 }

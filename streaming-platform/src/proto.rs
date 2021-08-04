@@ -12,7 +12,7 @@ use byteorder::ByteOrder;
 use serde_json::{from_slice, Value, to_vec};
 use siphasher::sip::SipHasher24;
 use tokio::net::TcpStream;
-use tokio::sync::{mpsc::{UnboundedSender, UnboundedReceiver, error::{SendError, TrySendError}}, oneshot};
+use tokio::sync::{mpsc::{unbounded_channel, UnboundedSender, UnboundedReceiver, error::{SendError, TrySendError}}, oneshot};
 //use tokio::time::{timeout, error::Elapsed};
 use tokio::time::timeout;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -593,7 +593,8 @@ pub struct MagicBall {
 	stream_id: u64,
     source_hash: u64,
     write_tx: UnboundedSender<WriteMsg>,
-    rpc_inbound_tx: UnboundedSender<RpcMsg>
+    rpc_inbound_tx: UnboundedSender<RpcMsg>,
+    pub emittable_tx: Option<UnboundedSender<Frame>>
 }
 
 
@@ -622,9 +623,18 @@ impl MagicBall {
 			stream_id: 0,
             source_hash: 0,
             write_tx,
-            rpc_inbound_tx
+            rpc_inbound_tx,
+            emittable_tx: None
         }
     }
+
+    pub fn start_frame_emit(&mut self) -> UnboundedReceiver<Frame> {
+        let (tx, rx) = unbounded_channel();
+        self.emittable_tx = Some(tx);
+
+        rx
+    }
+    
     /// This function generates new stream id
     pub fn get_stream_id(&mut self) -> u64 {
         self.hash_buf.truncate(self.addr_bytes_len);

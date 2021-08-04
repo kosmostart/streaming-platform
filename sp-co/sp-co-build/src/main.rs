@@ -226,7 +226,7 @@ pub fn main() {
         "cfg_token": "Build"
     });
  
-    client::start_full_message(config, process_event, process_rpc, startup, None, ());
+    client::start_full_message(config, process_event, process_rpc, startup, None, (), None);
  }
  
 #[derive(Debug)]

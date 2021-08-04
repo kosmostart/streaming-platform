@@ -62,5 +62,5 @@ pub fn main() {
         "cfg_token": "Auth"
     });
  
-    client::start_full_message(config, process_event, process_rpc, startup, None, ());
+    client::start_full_message(config, process_event, process_rpc, startup, None, (), None);
  }

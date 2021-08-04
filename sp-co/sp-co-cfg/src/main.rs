@@ -147,5 +147,5 @@ pub fn main() {
         "access_key": ""
     });
  
-    client::start_full_message(config, process_event, process_rpc, startup, None, dc);
+    client::start_full_message(config, process_event, process_rpc, startup, None, dc, None);
  }

@@ -34,7 +34,7 @@ where
 /// startup is executed on the start of this function.
 /// dependency is w/e clonable dependency needed when processing data.
 /// The protocol message format is in sp-dto crate.
-pub fn start_full_message<T: 'static, Q: 'static, R: 'static, D: 'static>(config: Value, process_event: ProcessEvent<T, Value, D>, process_rpc: ProcessRpc<Q, Value, D>, startup: Startup<R, D>, startup_data: Option<Value>, dependency: D) 
+pub fn start_full_message<T: 'static, Q: 'static, R: 'static, D: 'static>(config: Value, process_event: ProcessEvent<T, Value, D>, process_rpc: ProcessRpc<Q, Value, D>, startup: Startup<R, D>, startup_data: Option<Value>, dependency: D, emittable_keys: Option<Vec<Key>>) 
 where 
     T: Future<Output = Result<(), Box<dyn Error>>> + Send,
     Q: Future<Output = Result<Response<Value>, Box<dyn Error>>> + Send,
@@ -42,7 +42,7 @@ where
     D: Clone + Send + Sync
 {    
     let rt = Runtime::new().expect("Failed to create runtime");
-    rt.block_on(full_message_mode(config, process_event, process_rpc, startup, startup_data, dependency));
+    rt.block_on(full_message_mode(config, process_event, process_rpc, startup, startup_data, dependency, emittable_keys));
 }
 
 /// Future for stream based client based on provided config.
@@ -145,7 +145,7 @@ where
 /// restream_rx can be used for restreaming data somewhere else, for example returning data for incoming web request
 /// dependency is w/e clonable dependency needed when processing data.
 /// The protocol message format is in sp-dto crate.
-pub async fn full_message_mode<P: 'static, T: 'static, Q: 'static, R: 'static, D: 'static>(config: Value, process_event: ProcessEvent<T, P, D>, process_rpc: ProcessRpc<Q, P, D>, startup: Startup<R, D>, startup_data: Option<Value>, dependency: D)
+pub async fn full_message_mode<P: 'static, T: 'static, Q: 'static, R: 'static, D: 'static>(config: Value, process_event: ProcessEvent<T, P, D>, process_rpc: ProcessRpc<Q, P, D>, startup: Startup<R, D>, startup_data: Option<Value>, dependency: D, emittable_keys: Option<Vec<Key>>)
 where 
     T: Future<Output = Result<(), Box<dyn Error>>> + Send,
     Q: Future<Output = Result<Response<P>, Box<dyn Error>>> + Send,
@@ -335,12 +335,28 @@ where
                         }
                     }
                 }
-                _ => {}
+                ClientMsg::Frame(frame) => {
+                    match mb.emittable_tx {
+                        Some(tx) => {
+                            match tx.send(frame) {
+                                Ok(()) => {
+                                    debug!("Emittable frame send succeeded");
+                                }
+                                Err(_) => {
+                                    error!("Error while sending emittable frame");
+                                }
+                            }
+                        }
+                        None => {
+                            warn!("Received emittalbe frame, but emittable tx is empty, frame will be lost.");
+                        }
+                    }
+                }
             }
-        }    
+        }
     });
 
-    connect_full_message_future(&host, addr3, access_key, read_tx, write_rx).await;
+    connect_full_message_future(&host, addr3, access_key, read_tx, write_rx, emittable_keys).await;
 }
 
 async fn auth(addr: String, access_key: String, tcp_stream: &mut TcpStream) -> Result<(), ProcessError> {
@@ -372,7 +388,7 @@ async fn connect_stream_future(complete_condition: CompleteCondition, host: Stri
     info!("Connections closed, {:?}", res);
 }
 
-async fn connect_full_message_future(host: &str, addr: String, access_key: String, read_tx: UnboundedSender<ClientMsg>, write_rx: UnboundedReceiver<WriteMsg>) {    
+async fn connect_full_message_future(host: &str, addr: String, access_key: String, read_tx: UnboundedSender<ClientMsg>, write_rx: UnboundedReceiver<WriteMsg>, emittable_keys: Option<Vec<Key>>) {    
     let mut write_stream = TcpStream::connect(host).await.expect("Connection to host failed");
     auth(addr.clone(), access_key.clone(), &mut write_stream).await.expect("Write stream authorization failed");
 
@@ -381,7 +397,7 @@ async fn connect_full_message_future(host: &str, addr: String, access_key: Strin
 
     info!("Connected in full message mode to {} as {}", host, addr);
 
-    let res = process_full_message_mode(write_stream, read_stream, read_tx, write_rx).await;
+    let res = process_full_message_mode(write_stream, read_stream, read_tx, write_rx, emittable_keys).await;
 
     info!("{:?}", res);
 }
@@ -445,7 +461,7 @@ async fn process_stream_mode(complete_condition: CompleteCondition, mut write_tc
 						}
 		
 						match frame_type {
-							6 => break,								//
+							6 => break,
 							_ => {}
 						}
 					}
@@ -459,7 +475,7 @@ async fn process_stream_mode(complete_condition: CompleteCondition, mut write_tc
 	Ok(())
 }
 
-async fn process_full_message_mode(mut write_tcp_stream: TcpStream, mut read_tcp_stream: TcpStream, read_tx: UnboundedSender<ClientMsg>, write_rx: UnboundedReceiver<WriteMsg>) -> Result<(), ProcessError> {    
+async fn process_full_message_mode(mut write_tcp_stream: TcpStream, mut read_tcp_stream: TcpStream, read_tx: UnboundedSender<ClientMsg>, write_rx: UnboundedReceiver<WriteMsg>, emittable_keys: Option<Vec<Key>>) -> Result<(), ProcessError> {    
     //let (auth_msg_meta, auth_payload, auth_attachments) = read_full(&mut socket_read).await?;
     //let auth_payload: Value = from_slice(&auth_payload)?;    
 
@@ -474,6 +490,16 @@ async fn process_full_message_mode(mut write_tcp_stream: TcpStream, mut read_tcp
         error!("{:?}", res);
     });
 
+    let emmittable_key_hashes = emittable_keys.map(|a| {
+        let mut res = vec![];
+
+        for key in a {
+            res.push(get_key_hash(&key));
+        }
+
+        res
+    });
+
 	loop {
 		match state.read_frame() {
 			ReadFrameResult::NotEnoughBytesForFrame => {
@@ -485,64 +511,142 @@ async fn process_full_message_mode(mut write_tcp_stream: TcpStream, mut read_tcp
 
 				match frame.get_frame_type() {
 					Ok(frame_type) => {
-						match frame_type {
-							FrameType::MsgMeta | FrameType::MsgMetaEnd => {
-								match stream_layouts.get_mut(&frame.stream_id) {
-									Some(stream_layout) => {
+
+                        match &emmittable_key_hashes {
+                            Some(emittable_key_hashes) => {
+                                match emittable_key_hashes.contains(&frame.key_hash) {
+                                    true => {
+                                        match read_tx.send(ClientMsg::Frame(frame)) {
+                                            Ok(()) => {}
+                                            Err(_) => {
+                                                panic!("Client message send with read_tx in full message mode failed")
+                                            }
+                                        }
+                                    }
+                                    false => {
+                                        match frame_type {
+                                            FrameType::MsgMeta | FrameType::MsgMetaEnd => {
+                                                match stream_layouts.get_mut(&frame.stream_id) {
+                                                    Some(stream_layout) => {
+                                                        match frame.payload {
+                                                            Some(payload) => {
+                                                                stream_layout.msg_meta.extend_from_slice(&payload[..frame.payload_size as usize]);
+                                                            }
+                                                            None => {}
+                                                        }
+                                                    }
+                                                    None => {
+                                                        stream_layouts.insert(frame.stream_id, StreamLayout {
+                                                            id: frame.stream_id,
+                                                            msg_meta: match frame.payload {
+                                                                Some(payload) => payload[..frame.payload_size as usize].to_vec(),
+                                                                None => vec![]
+                                                            },
+                                                            payload: vec![],
+                                                            attachments_data: vec![]
+                                                        });
+                                                    }
+                                                }
+                                            }
+                                            FrameType::Payload | FrameType::PayloadEnd => {
+                                                match frame.payload {
+                                                    Some(payload) => {
+                                                        let stream_layout = stream_layouts.get_mut(&frame.stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
+                                                        stream_layout.payload.extend_from_slice(&payload[..frame.payload_size as usize]);
+                                                    }
+                                                    None => {}
+                                                }
+                                            }
+                                            FrameType::Attachment | FrameType::AttachmentEnd => {
+                                                match frame.payload {
+                                                    Some(payload) => {
+                                                        let stream_layout = stream_layouts.get_mut(&frame.stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
+                                                        stream_layout.attachments_data.extend_from_slice(&payload[..frame.payload_size as usize]);
+                                                    }
+                                                    None => {}
+                                                }
+                                            }
+                                            FrameType::End => {
+                                                let stream_layout = stream_layouts.remove(&frame.stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
+                
+                                                let msg_meta = from_slice(&stream_layout.msg_meta)?;
+                        
+                                                match read_tx.send(ClientMsg::Message(frame.stream_id, msg_meta, stream_layout.payload, match stream_layout.attachments_data.is_empty() {
+                                                    true => Some(stream_layout.attachments_data),
+                                                    false => None
+                                                })) {
+                                                    Ok(()) => {}
+                                                    Err(_) => {
+                                                        panic!("Client message send with read_tx in full message mode failed")
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            None => {
+                                match frame_type {
+                                    FrameType::MsgMeta | FrameType::MsgMetaEnd => {
+                                        match stream_layouts.get_mut(&frame.stream_id) {
+                                            Some(stream_layout) => {
+                                                match frame.payload {
+                                                    Some(payload) => {
+                                                        stream_layout.msg_meta.extend_from_slice(&payload[..frame.payload_size as usize]);
+                                                    }
+                                                    None => {}
+                                                }
+                                            }
+                                            None => {
+                                                stream_layouts.insert(frame.stream_id, StreamLayout {
+                                                    id: frame.stream_id,
+                                                    msg_meta: match frame.payload {
+                                                        Some(payload) => payload[..frame.payload_size as usize].to_vec(),
+                                                        None => vec![]
+                                                    },
+                                                    payload: vec![],
+                                                    attachments_data: vec![]
+                                                });
+                                            }
+                                        }
+                                    }
+                                    FrameType::Payload | FrameType::PayloadEnd => {
                                         match frame.payload {
                                             Some(payload) => {
-                                                stream_layout.msg_meta.extend_from_slice(&payload[..frame.payload_size as usize]);
+                                                let stream_layout = stream_layouts.get_mut(&frame.stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
+                                                stream_layout.payload.extend_from_slice(&payload[..frame.payload_size as usize]);
                                             }
                                             None => {}
                                         }
-									}
-									None => {
-										stream_layouts.insert(frame.stream_id, StreamLayout {
-											id: frame.stream_id,
-											msg_meta: match frame.payload {
-                                                Some(payload) => payload[..frame.payload_size as usize].to_vec(),
-                                                None => vec![]
-                                            },
-											payload: vec![],
-											attachments_data: vec![]
-										});
-									}
-								}
-							}
-							FrameType::Payload | FrameType::PayloadEnd => {
-                                match frame.payload {
-                                    Some(payload) => {
-                                        let stream_layout = stream_layouts.get_mut(&frame.stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
-								        stream_layout.payload.extend_from_slice(&payload[..frame.payload_size as usize]);
                                     }
-                                    None => {}
-                                }
-							}
-							FrameType::Attachment | FrameType::AttachmentEnd => {
-                                match frame.payload {
-                                    Some(payload) => {
-                                        let stream_layout = stream_layouts.get_mut(&frame.stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
-								        stream_layout.attachments_data.extend_from_slice(&payload[..frame.payload_size as usize]);
+                                    FrameType::Attachment | FrameType::AttachmentEnd => {
+                                        match frame.payload {
+                                            Some(payload) => {
+                                                let stream_layout = stream_layouts.get_mut(&frame.stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
+                                                stream_layout.attachments_data.extend_from_slice(&payload[..frame.payload_size as usize]);
+                                            }
+                                            None => {}
+                                        }
                                     }
-                                    None => {}
+                                    FrameType::End => {
+                                        let stream_layout = stream_layouts.remove(&frame.stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
+        
+                                        let msg_meta = from_slice(&stream_layout.msg_meta)?;
+                
+                                        match read_tx.send(ClientMsg::Message(frame.stream_id, msg_meta, stream_layout.payload, match stream_layout.attachments_data.is_empty() {
+                                            true => Some(stream_layout.attachments_data),
+                                            false => None
+                                        })) {
+                                            Ok(()) => {}
+                                            Err(_) => {
+                                                panic!("Client message send with read_tx in full message mode failed")
+                                            }
+                                        }
+                                    }
                                 }
-							}
-							FrameType::End => {
-								let stream_layout = stream_layouts.remove(&frame.stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
-
-								let msg_meta = from_slice(&stream_layout.msg_meta)?;
-		
-								match read_tx.send(ClientMsg::Message(frame.stream_id, msg_meta, stream_layout.payload, match stream_layout.attachments_data.is_empty() {
-                                    true => Some(stream_layout.attachments_data),
-                                    false => None
-                                })) {
-									Ok(()) => {}
-									Err(_) => {
-										panic!("Client message send with read_tx in full message mode failed")
-									}
-								}
-							}
-						}
+                            }
+                        }
+						
 					}
 					Err(e) => {
 						error!("Get frame type failed in read: {:?}", e);

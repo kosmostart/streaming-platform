@@ -430,10 +430,6 @@ pub enum Error {
     SerdeJson(serde_json::Error),
     StreamingPlatform(streaming_platform::ProcessError),
     SendFrame,
-    FileNameIsEmpty,
-    TargetDirNotFoundByAccessKey,
-    NoFilesInTargetDir,
-    OptionIsNone(String),
     CustomError(String)
 }
 

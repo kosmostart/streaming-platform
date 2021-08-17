@@ -15,7 +15,7 @@ fn dog(barry: &[u8]) -> Result<[u8; 8], Error> {
 
 #[derive(Clone)]
 pub struct Dc {
-    root_path: String,
+    storage_path: String,
     user_id: u64,
     db: Db,
     tree: Tree
@@ -28,15 +28,15 @@ pub struct TxDc<'a> {
 }
 
 impl Dc {
-    pub fn new(user_id: u64, root_path: &str) -> Result<Dc, Error> {
-        let root_path = root_path.to_owned();
+    pub fn new(user_id: u64, storage_path: &str) -> Result<Dc, Error> {
+        let storage_path = storage_path.to_owned();
         let tree_name = "sp-co-cfg";
         
-        let db = sled::open(&root_path)?;
+        let db = sled::open(&storage_path)?;
         let tree = db.open_tree(&tree_name)?;
 
         Ok(Dc {
-            root_path,
+            storage_path,
             user_id,
             db,
             tree
@@ -128,7 +128,7 @@ impl Dc {
                 self.tree.insert(id_bytes.to_vec(), &serialize(&convert_value(payload))?[..])?;
             }
             false => {
-                info!("Entity with id {} not found, root path {}", id, self.root_path);
+                info!("Entity with id {} not found, root path {}", id, self.storage_path);
             }
         }
     
@@ -259,9 +259,9 @@ mod tests {
         let _ = env_logger::try_init();
 
         let user_id = 1; 
-        let root_path = "d:/src/test-storage";
+        let storage_path = "d:/src/test-storage";
 
-        let dc = Dc::new(user_id, root_path)?;
+        let dc = Dc::new(user_id, storage_path)?;
 
         dc.create(json!({
             "hello": "hello"

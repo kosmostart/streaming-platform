@@ -35,7 +35,8 @@ pub async fn go(aca_origin: Option<String>, body: warp::hyper::body::Bytes, mut 
                                                     msg_meta.key,
                                                     msg_meta.correlation_id,
                                                     json!({
-                                                        "result": true
+                                                        "result": true,
+							"domain": msg.payload["domain"]
                                                     }),
                                                     RpcResult::Ok,
                                                     msg_meta.route,

@@ -96,7 +96,7 @@ pub fn main() {
     env_logger::init();
 
     let user_id = 1;
-    let root_path = "c:/src/sp-co-cfg-storage";
+    let root_path = "d:/src/sp-co-cfg-storage";
 
     let dc = Dc::new(user_id, root_path).expect("Failed to create dc");
 

@@ -19,45 +19,6 @@ mod hub;
 mod upstream;
 mod downstream;
 
-mod sse_stream {    
-    use streaming_platform::tokio::sync::mpsc::{self, UnboundedSender};
-    use async_stream::stream;
-    use tokio_stream::Stream;
-    use warp::sse::Event;
-
-    #[derive(Debug)]
-    pub enum Error {
-        Kick
-    }
-
-    impl std::fmt::Display for Error {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            write!(f, "SuperErrorError is here!")
-        }
-    }
-
-    impl std::error::Error for Error {}
-
-    pub fn new(is_error: bool) -> (Option<UnboundedSender<Event>>, impl Stream<Item = Result<Event, Error>>) {
-        let (tx, mut rx) = mpsc::unbounded_channel();
-
-        let stream = stream! {
-            match is_error {
-                true => yield Err(Error::Kick),
-                false => 
-                    while let Some(event) = rx.recv().await {
-                        yield Ok(event);
-                    }      
-            }   
-        };
-
-        (match is_error {
-            true => None,
-            false => Some(tx)
-        }, stream)
-    }
-}
-
 pub async fn process_event(_config: Value, mut _mb: MagicBall, _msg: Message<Value>, _: ()) -> Result<(), Box<dyn std::error::Error>>  {
     Ok(())
 }
@@ -247,36 +208,7 @@ pub async fn startup(initial_config: Value, target_config: Value, mb: MagicBall,
                     crate::hub::go(aca_origin, auth_token_key, cookie_header, body, mb)
                 }
             )
-        )		
-        .or(
-            warp::path("events")
-                .and(warp::get())
-                .and(warp::header::optional("cookie"))
-                .map(move |cookie_header: Option<String>| {
-                    let auth_token_key = auth_token_key3.clone();
-                    let aca_origin = aca_origin3.clone();                    
-                    let mb = mb3.clone();
-
-                    match check_auth_token(auth_token_key.as_bytes(), cookie_header) {
-                        Some(auth_data) => {
-                            let (tx, stream) = sse_stream::new(false);
-                            tx.expect("Empty sse tx").send(warp::sse::Event::default().data("Hello"));
-
-                            warp::sse::reply(stream)
-                        }
-                        None => {
-                            warn!("Unauthorized events access attempt");
-                            
-                            //let (_, stream) = sse_stream::new(true);
-                            let (tx, stream) = sse_stream::new(false);
-                            tx.expect("Empty sse tx").send(warp::sse::Event::default().data("Hello"));
-
-                            warp::sse::reply(stream)
-                        }
-                    }
-                }
-            )
-        )
+        )        
 		.or(
             warp::path("upstream")
 				.and(warp::post())

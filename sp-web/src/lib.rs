@@ -51,8 +51,7 @@ pub async fn startup(initial_config: Value, target_config: Value, mb: MagicBall,
     let aca_origin = target_config["aca_origin"].as_str().map(|x| x.to_owned());
     let aca_origin2 = aca_origin.clone();
     let aca_origin3 = aca_origin.clone();
-	let aca_origin4 = aca_origin.clone();
-	let aca_origin5 = aca_origin.clone();
+	let aca_origin4 = aca_origin.clone();	
     let mb2 = mb.clone();
     let mb3 = mb.clone();
 
@@ -62,8 +61,7 @@ pub async fn startup(initial_config: Value, target_config: Value, mb: MagicBall,
     let auth_token_key1 = auth_token_key.clone();
     let auth_token_key2 = auth_token_key.clone();
     let auth_token_key3 = auth_token_key.clone();
-	let auth_token_key4 = auth_token_key.clone();
-	let auth_token_key5 = auth_token_key.clone();
+	let auth_token_key4 = auth_token_key.clone();	
 
     let mut app_indexes = HashMap::new();
     let mut app_paths = HashMap::new();
@@ -215,10 +213,11 @@ pub async fn startup(initial_config: Value, target_config: Value, mb: MagicBall,
 				.and(warp::body::stream())
                 .and(warp::header::optional("cookie"))                
                 .and_then(move |stream, cookie_header: Option<String>| {		
-					let auth_token_key = auth_token_key4.clone();
-                    let aca_origin = aca_origin4.clone();									
+					let auth_token_key = auth_token_key3.clone();
+                    let aca_origin = aca_origin3.clone();
+					let mb = mb3.clone();							
 
-                    crate::upstream::go(aca_origin, stream)
+                    crate::upstream::go(aca_origin, auth_token_key, cookie_header, stream, mb)
                 }
             )
         )
@@ -227,8 +226,8 @@ pub async fn startup(initial_config: Value, target_config: Value, mb: MagicBall,
                 .and(warp::get())
                 .and(warp::header::optional("cookie"))                
                 .and_then(move |cookie_header: Option<String>| {
-                    let auth_token_key = auth_token_key5.clone();
-                    let aca_origin = aca_origin5.clone();
+                    let auth_token_key = auth_token_key4.clone();
+                    let aca_origin = aca_origin4.clone();
 					
 					let mut restream_tx = restream_tx.clone();
 
@@ -524,41 +523,7 @@ pub async fn process_stream(config: Value, mut mb: MagicBall, mut rx: UnboundedR
 
         match process_client_msg(&mut mb2, &mut stream_layouts, client_msg, &mut restream_tx).await {
             Ok(()) => {}
-            Err(e) => {
-				/*
-                match stream_id {
-                    Some(stream_id) => {
-                        match stream_layouts.remove(&stream_id) {
-                            Some(stream_layout) => {
-                                match stream_layout.stream.msg_meta.kind {
-                                    MsgKind::RpcRequest => {
-                                        let mut route = stream_layout.stream.msg_meta.route.clone();
-                                        route.points.push(Participator::Service(mb2.addr.clone()));
-                                        let (res, msg_meta_size, payload_size, attachments_size) = rpc_response_dto2_sizes(
-                                            mb2.addr.clone(), 
-                                            stream_layout.stream.msg_meta.tx.clone(), 
-                                            stream_layout.stream.msg_meta.key.clone(), 
-                                            stream_layout.stream.msg_meta.correlation_id, 
-                                            vec![],
-                                            vec![], vec![],
-                                            RpcResult::Err,
-                                            route,
-                                            None,
-                                            None
-                                        ).expect("failed to create rpc reply");
-                                        mb2.write_vec(stream_layout.stream.id, res, msg_meta_size, payload_size, attachments_size).await.expect("failed to write response to upload");
-                                    }
-                                    _ => {}
-                                }                        
-                            }
-                            None => {}
-                        }
-                    }
-                    None => {
-
-                    }
-                } 
-				*/               
+            Err(e) => {				
                 error!("{:?}", e);
             }
         }

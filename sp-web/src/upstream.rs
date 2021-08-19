@@ -1,5 +1,5 @@
 use log::*;
-use serde_json::json;
+use serde_json::{error, json};
 use warp::Buf;
 use warp::{http::Response, hyper};
 use streaming_platform::MagicBall;
@@ -15,8 +15,17 @@ pub async fn go(aca_origin: Option<String>, auth_token_key: String, cookie_heade
 				//"file_name": file_name
 			})).await.unwrap();
 
-			stream.for_each(|chunk| {            
-				async move {
+			stream.for_each(|data| {            
+				match data {
+					Ok(data) => {
+						let len = data.remaining();
+						info!("Data len is {}", len);
+					}
+					Err(e) => {
+						error!("{}", e);
+					}
+				}
+				async move {					
 				}
 			});
 				

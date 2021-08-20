@@ -790,10 +790,19 @@ pub fn rpc_dto_with_attachments2(tx: String, key: Key, mut payload: Vec<u8>, att
     Ok((correlation_id, buf))
 }
 
+pub fn get_msg_len(data: &[u8]) -> u32 {
+    let mut buf = Cursor::new(data);
+    buf.get_u32()
+}
+
 pub fn get_msg_meta(data: &[u8]) -> Result<MsgMeta, Error> {
     let mut buf = Cursor::new(data);
     let len = buf.get_u32() as usize;
 
+    serde_json::from_slice::<MsgMeta>(&data[4..len + 4])
+}
+
+pub fn get_msg_meta_with_len(data: &[u8], len: usize) -> Result<MsgMeta, Error> {    
     serde_json::from_slice::<MsgMeta>(&data[4..len + 4])
 }
 

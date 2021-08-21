@@ -9,11 +9,7 @@ use crate::{check_auth_token, response_for_body};
 
 pub async fn go(aca_origin: Option<String>, auth_token_key: String, cookie_header: Option<String>, stream: impl Stream<Item = Result<impl Buf, warp::Error>>, mut mb: MagicBall) -> Result<Response<hyper::body::Body>, warp::Rejection> {
 	match check_auth_token(auth_token_key.as_bytes(), cookie_header) {
-        Some(auth_data) => {
-
-			//mb.start_rpc_stream(Key::new("Upload", "File", "File"), json!({
-				//"file_name": file_name
-			//})).await.unwrap();
+        Some(auth_data) => {			
 
 			#[derive(Debug)]
 			enum Step {
@@ -25,7 +21,8 @@ pub async fn go(aca_origin: Option<String>, auth_token_key: String, cookie_heade
 			struct State {
 				pub step: Step,
 				pub len: usize,
-				pub buf: Vec<u8>
+				pub buf: Vec<u8>,
+				pub msg_meta: Option<MsgMeta>
 			}
 
 			enum CheckResult {
@@ -49,6 +46,8 @@ pub async fn go(aca_origin: Option<String>, auth_token_key: String, cookie_heade
 								let msg_meta = serde_json::from_slice::<MsgMeta>(&data.chunk()[..state.len]).unwrap();
 								data.advance(state.len);
 								info!("msg meta by data is {:?}", msg_meta);
+
+								state.msg_meta = Some(msg_meta);
 
 								state.step = Step::Done;
 
@@ -84,6 +83,7 @@ pub async fn go(aca_origin: Option<String>, auth_token_key: String, cookie_heade
 						if state.buf.len() >= state.len + 4 {
 							let msg_meta = get_msg_meta_with_len(&state.buf, state.len).unwrap();
 							info!("msg meta is {:?}", msg_meta);
+							state.msg_meta = Some(msg_meta);
 							state.step = Step::Done;
 						}
 					}
@@ -97,8 +97,11 @@ pub async fn go(aca_origin: Option<String>, auth_token_key: String, cookie_heade
 			let mut state = State {
 				step: Step::Len,
 				len: 0,
-				buf: vec![]
+				buf: vec![],
+				msg_meta: None
 			};
+			
+			let mut msg_meta = None;
 
 			stream.for_each(|mut data| {
 				match data {
@@ -110,14 +113,28 @@ pub async fn go(aca_origin: Option<String>, auth_token_key: String, cookie_heade
 							}
 						}
 
-						info!("Loop completed, remaining {} bytes", data.remaining());
+						info!("Loop completed, remaining {} bytes", data.remaining());						
+
+						msg_meta = state.msg_meta.take();
 					}
 					Err(e) => {
 						error!("{}", e);
 					}
 				}
 
+
+				let mut mb = mb.clone();
+				let msg_meta = msg_meta.clone();
+
 				async move {
+					match msg_meta {
+						Some(msg_meta) => {
+							let _ = mb.proxy_rpc_stream(msg_meta).await;
+						}
+						None => {
+
+						}
+					}					
 				}
 			}).await;
 				

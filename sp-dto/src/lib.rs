@@ -571,6 +571,19 @@ pub fn rpc_dto<T>(tx: String, key: Key, payload: T, route: Route, auth_token: Op
     Ok((correlation_id, buf))
 }
 
+pub fn rpc_dto_no_payload(msg_meta: &MsgMeta) -> Result<(u32, Vec<u8>), Error> {        
+    let mut msg_meta = serde_json::to_vec(msg_meta)?;
+	let len = msg_meta.len() as u32;
+
+    let mut buf = vec![];	
+
+    buf.put_u32(len);
+
+    buf.append(&mut msg_meta);    
+
+    Ok((len, buf))
+}
+
 pub fn rpc_dto_with_sizes<T>(tx: String, key: Key, payload: T, route: Route, auth_token: Option<String>, auth_data: Option<Value>) -> Result<(Uuid, Vec<u8>, u64, u64, Vec<u64>), Error> where T: Debug, T: serde::Serialize {
     let mut payload = serde_json::to_vec(&payload)?;
     let correlation_id = Uuid::new_v4();

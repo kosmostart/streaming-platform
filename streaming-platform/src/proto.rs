@@ -828,7 +828,22 @@ impl MagicBall {
         self.write_full_message(self.msg_type, self.key_hash, self.stream_id, self.source_hash, dto, msg_meta_size, payload_size, attachments_sizes, false).await?;
         
         Ok(correlation_id)
-    }
+    }	
+	pub async fn proxy_rpc_stream(&mut self, mut msg_meta: MsgMeta) -> Result<Uuid, ProcessError> {
+        msg_meta.route.points.push(Participator::Service(self.addr.clone()));
+
+        let (msg_meta_size, dto) = rpc_dto_no_payload(&msg_meta)?;
+
+		self.frame_type = FrameType::Attachment as u8;
+		self.msg_type = MsgType::RpcRequest.get_u8();
+        self.key_hash = get_key_hash(&msg_meta.key);
+        self.stream_id = self.get_stream_id();
+        self.source_hash = get_addr_hash(&self.addr);
+
+        self.write_full_message(self.msg_type, self.key_hash, self.stream_id, self.source_hash, dto, msg_meta_size as u64, msg_meta.payload_size, msg_meta.attachments_sizes(), false).await?;
+        
+        Ok(msg_meta.correlation_id)
+    }	
     pub async fn start_rpc_stream_response<T>(&mut self, mut msg_meta: MsgMeta, payload: T) -> Result<(), ProcessError> where T: serde::Serialize, for<'de> T: serde::Deserialize<'de>, T: Debug {
         msg_meta.route.points.push(Participator::Service(self.addr.clone()));
 
@@ -1108,7 +1123,7 @@ impl MagicBall {
 
         let mut msg_meta = res?;
 
-        let correlation_id = msg_meta.correlation_id;        
+        let correlation_id = msg_meta.correlation_id;
         
         msg_meta.tx = tx;
         msg_meta.route.points.push(Participator::Service(self.addr.to_owned()));

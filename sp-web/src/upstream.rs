@@ -102,8 +102,10 @@ pub async fn go(aca_origin: Option<String>, auth_token_key: String, cookie_heade
 			};
 			
 			let mut msg_meta = None;			
-			use streaming_platform::futures::FutureExt;
-			stream.then(|mut data| {
+			
+			stream.scan(state.step.clone(), |q, mut data| {
+				state.step = q;
+
 				match data {
 					Ok(mut data) => {						
 						loop {
@@ -125,7 +127,7 @@ pub async fn go(aca_origin: Option<String>, auth_token_key: String, cookie_heade
 
 				let mut mb = mb.clone();
 				let msg_meta = msg_meta.clone();
-				let step = state.step.clone();
+				let mut step = state.step.clone();
 				
 				async move {
 					match step {
@@ -135,6 +137,7 @@ pub async fn go(aca_origin: Option<String>, auth_token_key: String, cookie_heade
 							match msg_meta {
 								Some(msg_meta) => {										
 									let _ = mb.proxy_rpc_stream(msg_meta).await;
+									step = Step::Stream;
 								}
 								None => {
 		
@@ -147,13 +150,11 @@ pub async fn go(aca_origin: Option<String>, auth_token_key: String, cookie_heade
 						Step::Complete(res) => {
 							info!("Stream competed with {:?}", res);
 						}
-					}					
+					}
+
+					Some(step)
 				}
-			}).for_each(|q| {
-				async {
-					
-				}
-			}).await;
+			}).for_each(|_| async {}).await;
 
 			let body = hyper::Body::from("Here comes the error");	
 			let res = response_for_body(aca_origin, body).expect("failed to build aca origin response");

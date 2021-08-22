@@ -103,8 +103,8 @@ pub async fn go(aca_origin: Option<String>, auth_token_key: String, cookie_heade
 			
 			let mut msg_meta = None;			
 			
-			stream.scan(state.step.clone(), |q, mut data| {
-				state.step = q;
+			stream.scan(state.step.clone(), |current, mut data| {
+				state.step = current.clone();
 
 				match data {
 					Ok(mut data) => {						

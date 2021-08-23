@@ -1,10 +1,12 @@
+use std::path::MAIN_SEPARATOR;
+
 use log::*;
-use serde_json::{error, json};
+use serde_json::{json, Value};
 use warp::Buf;
 use warp::{http::Response, hyper};
-use streaming_platform::MagicBall;
+use streaming_platform::{MagicBall, MAX_FRAME_PAYLOAD_SIZE};
 use streaming_platform::futures::stream::{Stream, StreamExt};
-use streaming_platform::sp_dto::{Key, MsgMeta, get_msg_len, get_msg_meta_with_len};
+use streaming_platform::sp_dto::{Key, MsgMeta, MsgType, get_msg_len, get_msg_meta_with_len};
 use crate::{check_auth_token, response_for_body};
 
 #[derive(Debug, Clone)]
@@ -91,6 +93,22 @@ fn check(state: &mut State, data: &mut impl Buf) -> CheckResult {
 	CheckResult::Next
 }
 
+fn send_data(data: &mut impl Buf, mb: &mut MagicBall) {
+	loop {
+		match data.remaining() > MAX_FRAME_PAYLOAD_SIZE {
+			true => {
+				let _ = mb.send_frame(&data.chunk()[..MAX_FRAME_PAYLOAD_SIZE], MAX_FRAME_PAYLOAD_SIZE);															
+				data.advance(MAX_FRAME_PAYLOAD_SIZE);
+			}
+			false => {
+				let _ = mb.send_frame(&data.chunk()[..data.remaining()], data.remaining());
+				data.advance(data.remaining());
+				break;
+			}
+		}													
+	}
+}
+
 pub async fn go(aca_origin: Option<String>, auth_token_key: String, cookie_header: Option<String>, stream: impl Stream<Item = Result<impl Buf, warp::Error>>, mut mb: MagicBall) -> Result<Response<hyper::body::Body>, warp::Rejection> {
 	match check_auth_token(auth_token_key.as_bytes(), cookie_header) {
         Some(auth_data) => {
@@ -99,34 +117,30 @@ pub async fn go(aca_origin: Option<String>, auth_token_key: String, cookie_heade
 				len: 0,
 				buf: vec![],
 				msg_meta: None
-			};
-			
-			let mut msg_meta = None;			
+			};					
 			
 			stream.scan(state.step.clone(), |current, mut data| {
 				state.step = current.clone();
 
 				match data {
-					Ok(mut data) => {						
+					Ok(ref mut data) => {						
 						loop {
-							match check(&mut state, &mut data) {
+							match check(&mut state, data) {
 								CheckResult::ContinueWithCurrent => {}
 								CheckResult::Next => break
 							}
 						}
 
 						info!("Loop completed, remaining {} bytes", data.remaining());						
-
-						msg_meta = state.msg_meta.take();						
 					}
-					Err(e) => {
+					Err(ref e) => {
 						error!("{}", e);
 						state.step = Step::Complete(Err(()));
 					}
 				}
 
 				let mut mb = mb.clone();
-				let msg_meta = msg_meta.clone();
+				let msg_meta = state.msg_meta.clone();
 				let mut step = state.step.clone();
 				
 				async move {
@@ -138,6 +152,13 @@ pub async fn go(aca_origin: Option<String>, auth_token_key: String, cookie_heade
 								Some(msg_meta) => {										
 									let _ = mb.proxy_rpc_stream(msg_meta).await;
 									step = Step::Stream;
+
+									match data {
+										Ok(mut data) if data.has_remaining() => {
+											send_data(&mut data, &mut mb);
+										}
+										_ => {}
+									}
 								}
 								None => {
 		
@@ -145,7 +166,12 @@ pub async fn go(aca_origin: Option<String>, auth_token_key: String, cookie_heade
 							}
 						}
 						Step::Stream => {
-
+							match data {
+								Ok(mut data) if data.has_remaining() => {
+									send_data(&mut data, &mut mb);
+								}
+								_ => {}
+							}
 						}
 						Step::Complete(res) => {
 							info!("Stream competed with {:?}", res);
@@ -156,8 +182,32 @@ pub async fn go(aca_origin: Option<String>, auth_token_key: String, cookie_heade
 				}
 			}).for_each(|_| async {}).await;
 
+			match state.msg_meta {
+				Some(msg_meta) => {
+					match msg_meta.msg_type {
+						MsgType::RpcRequest => {
+							match mb.complete_rpc_stream::<Value>(msg_meta.correlation_id).await {
+								Ok(msg) => {}
+								Err(e) => {
+									error!("Error on receiving stream completion response, {:?}", e);
+								}
+							}
+						}
+						_ => {
+							let _ = mb.complete_stream();
+						}
+					}					
+				}
+				None => {
+					let _ = mb.complete_stream();
+					error!("Failed to properly complete stream as rpc because of empty msg meta, simple completion sent.");
+				}
+			}
+
+			info!("Stream completed");
+
 			let body = hyper::Body::from("Here comes the error");	
-			let res = response_for_body(aca_origin, body).expect("failed to build aca origin response");
+			let res = response_for_body(aca_origin, body).expect("Failed to build aca origin response");
 		
 			Ok::<Response<hyper::Body>, warp::Rejection>(res)
 		}
@@ -165,7 +215,7 @@ pub async fn go(aca_origin: Option<String>, auth_token_key: String, cookie_heade
 			warn!("Unauthorized upstream access attempt");
 
 			let body = hyper::Body::from("Here comes the error");
-            let res = response_for_body(aca_origin, body).expect("failed to build aca origin response");
+            let res = response_for_body(aca_origin, body).expect("Failed to build aca origin response");
             Ok::<Response<hyper::Body>, warp::Rejection>(res)                                    
         }
     }    

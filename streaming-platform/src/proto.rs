@@ -486,16 +486,16 @@ pub async fn write_to_tcp_stream(tcp_stream: &mut TcpStream, msg_type: u8, key_h
 
     let mut source = &data[LEN_BUF_SIZE..msg_meta_offset];
 
-	let mut bytes_send = 0;
+	let mut bytes_sent = 0;
 
     loop {        
         let n = source.read(&mut data_buf).await?;
         match n {
             0 => break,
             _ => {
-				bytes_send = bytes_send + n as u64;
+				bytes_sent = bytes_sent + n as u64;
 
-				let frame_type = match bytes_send == msg_meta_size {
+				let frame_type = match bytes_sent == msg_meta_size {
 					true => FrameType::MsgMetaEnd,
 					false => FrameType::MsgMeta
 				};
@@ -505,7 +505,7 @@ pub async fn write_to_tcp_stream(tcp_stream: &mut TcpStream, msg_type: u8, key_h
         }
     }
 
-	bytes_send = 0;
+	bytes_sent = 0;
 
     match payload_size {
         0 => {}
@@ -517,9 +517,9 @@ pub async fn write_to_tcp_stream(tcp_stream: &mut TcpStream, msg_type: u8, key_h
                 match n {
                     0 => break,
                     _ => {
-						bytes_send = bytes_send + n as u64;
+						bytes_sent = bytes_sent + n as u64;
 
-						let frame_type = match bytes_send == payload_size {
+						let frame_type = match bytes_sent == payload_size {
 							true => FrameType::PayloadEnd,
 							false => FrameType::Payload
 						};
@@ -536,7 +536,7 @@ pub async fn write_to_tcp_stream(tcp_stream: &mut TcpStream, msg_type: u8, key_h
     for attachment_size in attachments_sizes {
         let attachment_offset = prev + attachment_size as usize;
 
-		bytes_send = 0;
+		bytes_sent = 0;
 
         match attachment_size {
             0 => {}
@@ -548,9 +548,9 @@ pub async fn write_to_tcp_stream(tcp_stream: &mut TcpStream, msg_type: u8, key_h
                     match n {
                         0 => break,
                         _ => {
-							bytes_send = bytes_send + n as u64;
+							bytes_sent = bytes_sent + n as u64;
 
-							let frame_type = match bytes_send == attachment_size {
+							let frame_type = match bytes_sent == attachment_size {
 								true => FrameType::AttachmentEnd,
 								false => FrameType::Attachment
 							};
@@ -587,7 +587,7 @@ pub struct MagicBall {
     pub auth_data: Option<Value>,    
     hash_buf: BytesMut,
     addr_bytes_len: usize,
-	frame_type: u8,
+	pub frame_type: u8,
 	msg_type: u8,
 	key_hash: u64,
 	stream_id: u64,
@@ -655,16 +655,16 @@ impl MagicBall {
 
         let mut source = &data[LEN_BUF_SIZE..msg_meta_offset];
 
-		let mut bytes_send = 0;
+		let mut bytes_sent = 0;
 
         loop {        
             let n = source.read(&mut data_buf).await?;
             match n {
                 0 => break,
                 _ => {
-					bytes_send = bytes_send + n as u64;
+					bytes_sent = bytes_sent + n as u64;
 
-					let frame_type = match bytes_send == msg_meta_size {
+					let frame_type = match bytes_sent == msg_meta_size {
 						true => FrameType::MsgMetaEnd,
 						false => FrameType::MsgMeta
 					};
@@ -674,7 +674,7 @@ impl MagicBall {
             }
         }
 
-		bytes_send = 0;
+		bytes_sent = 0;
 
         match payload_size {
             0 => {}
@@ -682,13 +682,14 @@ impl MagicBall {
                 let mut source = &data[msg_meta_offset..payload_offset];
 
                 loop {        
-                    let n = source.read(&mut data_buf).await?;        
+                    let n = source.read(&mut data_buf).await?;
+
                     match n {
                         0 => break,
                         _ => {
-							bytes_send = bytes_send + n as u64;
+							bytes_sent = bytes_sent + n as u64;
 
-							let frame_type = match bytes_send == payload_size {
+							let frame_type = match bytes_sent == payload_size {
 								true => FrameType::PayloadEnd,
 								false => FrameType::Payload
 							};
@@ -705,7 +706,7 @@ impl MagicBall {
         for attachment_size in attachments_sizes {
             let attachment_offset = prev + attachment_size as usize;
 
-			bytes_send = 0;
+			bytes_sent = 0;
 
             match attachment_size {
                 0 => {}
@@ -717,9 +718,9 @@ impl MagicBall {
                         match n {
                             0 => break,
                             _ => {
-								bytes_send = bytes_send + n as u64;
+								bytes_sent = bytes_sent + n as u64;
 
-								let frame_type = match bytes_send == attachment_size {
+								let frame_type = match bytes_sent == attachment_size {
 									true => FrameType::AttachmentEnd,
 									false => FrameType::Attachment
 								};
@@ -834,7 +835,6 @@ impl MagicBall {
 
         let (msg_meta_size, dto) = rpc_dto_no_payload(&msg_meta)?;
 
-		self.frame_type = FrameType::Attachment as u8;
 		self.msg_type = MsgType::RpcRequest.get_u8();
         self.key_hash = get_key_hash(&msg_meta.key);
         self.stream_id = self.get_stream_id();

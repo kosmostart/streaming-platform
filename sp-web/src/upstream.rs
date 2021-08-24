@@ -2,7 +2,7 @@ use log::*;
 use serde_json::{json, Value};
 use warp::Buf;
 use warp::{http::Response, hyper};
-use streaming_platform::{FrameType, MAX_FRAME_PAYLOAD_SIZE, MagicBall};
+use streaming_platform::{FrameType, MAX_FRAME_PAYLOAD_SIZE, MagicBall, MsgSpec};
 use streaming_platform::futures::stream::{Stream, StreamExt};
 use streaming_platform::sp_dto::{Key, MsgMeta, MsgType, get_msg_len, get_msg_meta_with_len};
 use crate::{check_auth_token, response_for_body};
@@ -12,8 +12,8 @@ enum Step {
 	Len,
 	MsgMeta,
 	StartStream,
-	StreamPayload(u64, u64),
-	StreamAttachment,
+	StreamPayload(MsgSpec, u64, u64),
+	StreamAttachment(MsgSpec),
 	Complete(Result<(), ()>)
 }
 
@@ -98,7 +98,7 @@ fn send_data(data: &mut impl Buf, mb: &mut MagicBall, mut step: Step) -> Step {
 		info!("Sending data, step {:?}, len {}", step, len);
 
 		match step {
-			Step::StreamPayload(payload_size, mut bytes_sent) => {
+			Step::StreamPayload(msg_spec, payload_size, mut bytes_sent) => {
 				let bytes_left = (payload_size - bytes_sent) as usize;
 
 				match bytes_left <= len {
@@ -107,7 +107,7 @@ fn send_data(data: &mut impl Buf, mb: &mut MagicBall, mut step: Step) -> Step {
 						match bytes_left > MAX_FRAME_PAYLOAD_SIZE {
 							true => {
 								bytes_sent = bytes_sent + MAX_FRAME_PAYLOAD_SIZE as u64;
-								step = Step::StreamPayload(payload_size, bytes_sent);
+								step = Step::StreamPayload(msg_spec, payload_size, bytes_sent);
 
 								mb.frame_type = FrameType::Payload as u8;
 
@@ -119,9 +119,8 @@ fn send_data(data: &mut impl Buf, mb: &mut MagicBall, mut step: Step) -> Step {
 
 								let _ = mb.send_frame(&data.chunk()[..bytes_left], bytes_left);
 								data.advance(bytes_left);
-								
-								step = Step::StreamAttachment;
-								return step;
+
+								step = Step::StreamAttachment(msg_spec);
 							}
 						}
 					}
@@ -133,13 +132,13 @@ fn send_data(data: &mut impl Buf, mb: &mut MagicBall, mut step: Step) -> Step {
 						match bytes_to_send > MAX_FRAME_PAYLOAD_SIZE {
 							true => {
 								bytes_sent = bytes_sent + MAX_FRAME_PAYLOAD_SIZE as u64;
-								step = Step::StreamPayload(payload_size, bytes_sent);
+								step = Step::StreamPayload(msg_spec, payload_size, bytes_sent);
 								let _ = mb.send_frame(&data.chunk()[..MAX_FRAME_PAYLOAD_SIZE], MAX_FRAME_PAYLOAD_SIZE);															
-								data.advance(MAX_FRAME_PAYLOAD_SIZE);							
+								data.advance(MAX_FRAME_PAYLOAD_SIZE);
 							}
 							false => {
 								bytes_sent = bytes_sent + bytes_to_send as u64;
-								step = Step::StreamPayload(payload_size, bytes_sent);
+								step = Step::StreamPayload(msg_spec, payload_size, bytes_sent);
 								let _ = mb.send_frame(&data.chunk()[..bytes_to_send], bytes_to_send);
 								data.advance(bytes_to_send);
 							}
@@ -147,7 +146,7 @@ fn send_data(data: &mut impl Buf, mb: &mut MagicBall, mut step: Step) -> Step {
 					}
 				}
 			}
-			Step::StreamAttachment => {
+			Step::StreamAttachment(_) => {
 				mb.frame_type = FrameType::Attachment as u8;
 
 				match len > MAX_FRAME_PAYLOAD_SIZE {
@@ -177,7 +176,7 @@ pub async fn go(aca_origin: Option<String>, auth_token_key: String, cookie_heade
 				msg_meta: None
 			};					
 			
-			stream.scan(state.step.clone(), |current, mut data| {
+			let final_step = stream.fold(state.step.clone(), |current, mut data| {
 				state.step = current.clone();
 
 				match data {
@@ -210,11 +209,13 @@ pub async fn go(aca_origin: Option<String>, auth_token_key: String, cookie_heade
 						Step::StartStream => {
 							match msg_meta {
 								Some(msg_meta) => {
-									step = Step::StreamPayload(msg_meta.payload_size, 0);
+									let payload_size = msg_meta.payload_size;
+									
+									let _ = mb.proxy_rpc_stream(msg_meta).await;
+									
+									step = Step::StreamPayload(mb.get_msg_spec(), payload_size, 0);
 
-									let _ = mb.proxy_rpc_stream(msg_meta).await;									
-
-									info!("Stream started (msg meta sent)");
+									info!("Stream started (msg meta sent), step {:?}", step);
 
 									match data {
 										Ok(mut data) if data.has_remaining() => {
@@ -228,7 +229,7 @@ pub async fn go(aca_origin: Option<String>, auth_token_key: String, cookie_heade
 								}
 							}
 						}
-						Step::StreamPayload(_, _) | Step::StreamAttachment => {
+						Step::StreamPayload(_, _, _) | Step::StreamAttachment(_) => {
 							match data {
 								Ok(mut data) if data.has_remaining() => {
 									step = send_data(&mut data, &mut mb, step);
@@ -237,13 +238,21 @@ pub async fn go(aca_origin: Option<String>, auth_token_key: String, cookie_heade
 							}
 						}
 						Step::Complete(res) => {
-							info!("Stream competed with {:?}", res);
+							info!("Stream completed with {:?}", res);
 						}
 					}
 
-					Some(step)
+					step
 				}
-			}).for_each(|_| async {}).await;
+			}).await;
+
+			match &final_step {
+				Step::StreamPayload(msg_spec, _, _) |
+				Step::StreamAttachment(msg_spec) => {
+					mb.load_msg_spec(msg_spec);
+				}
+				_ => {}
+			};
 
 			match state.msg_meta {
 				Some(msg_meta) => {
@@ -267,7 +276,7 @@ pub async fn go(aca_origin: Option<String>, auth_token_key: String, cookie_heade
 				}
 			}
 
-			info!("Stream completed");
+			info!("Stream completed, step {:?}", final_step);
 
 			let body = hyper::Body::from("Here comes the error");	
 			let res = response_for_body(aca_origin, body).expect("Failed to build aca origin response");

@@ -597,6 +597,13 @@ pub struct MagicBall {
     pub emittable_tx: Option<UnboundedSender<Frame>>
 }
 
+#[derive(Debug, Clone)]
+pub struct MsgSpec {
+    pub msg_type: u8,
+	pub key_hash: u64,
+	pub stream_id: u64,
+    pub source_hash: u64
+}
 
 impl MagicBall {
     pub fn new(addr: String, write_tx: UnboundedSender<WriteMsg>, rpc_inbound_tx: UnboundedSender<RpcMsg>) -> MagicBall {
@@ -626,6 +633,22 @@ impl MagicBall {
             rpc_inbound_tx,
             emittable_tx: None
         }
+    }
+
+    pub fn get_msg_spec(&self) -> MsgSpec {
+        MsgSpec {
+            msg_type: self.msg_type,
+            key_hash: self.key_hash,
+            stream_id: self.stream_id,
+            source_hash: self.source_hash
+        }
+    }
+
+    pub fn load_msg_spec(&mut self, msg_spec: &MsgSpec) {
+        self.msg_type = msg_spec.msg_type;
+        self.key_hash = msg_spec.key_hash;
+        self.stream_id = msg_spec.stream_id;
+        self.source_hash = msg_spec.source_hash;
     }
 
     pub fn start_frame_emit(&mut self) -> UnboundedReceiver<Frame> {

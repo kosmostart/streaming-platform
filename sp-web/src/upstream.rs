@@ -95,14 +95,17 @@ fn check(state: &mut State, data: &mut impl Buf) -> CheckResult {
 
 fn send_data(data: &mut impl Buf, mb: &mut MagicBall) {
 	loop {
-		match data.remaining() > MAX_FRAME_PAYLOAD_SIZE {
+		let len = data.remaining();
+		info!("Sending data, len {}", len);
+
+		match len > MAX_FRAME_PAYLOAD_SIZE {
 			true => {
 				let _ = mb.send_frame(&data.chunk()[..MAX_FRAME_PAYLOAD_SIZE], MAX_FRAME_PAYLOAD_SIZE);															
 				data.advance(MAX_FRAME_PAYLOAD_SIZE);
 			}
 			false => {
-				let _ = mb.send_frame(&data.chunk()[..data.remaining()], data.remaining());
-				data.advance(data.remaining());
+				let _ = mb.send_frame(&data.chunk()[..len], len);
+				data.advance(len);
 				break;
 			}
 		}													
@@ -142,6 +145,8 @@ pub async fn go(aca_origin: Option<String>, auth_token_key: String, cookie_heade
 				let mut mb = mb.clone();
 				let msg_meta = state.msg_meta.clone();
 				let mut step = state.step.clone();
+
+				info!("Stream step: {:?}", step);
 				
 				async move {
 					match step {
@@ -152,6 +157,8 @@ pub async fn go(aca_origin: Option<String>, auth_token_key: String, cookie_heade
 								Some(msg_meta) => {										
 									let _ = mb.proxy_rpc_stream(msg_meta).await;
 									step = Step::Stream;
+
+									info!("Stream started (msg meta sent)");
 
 									match data {
 										Ok(mut data) if data.has_remaining() => {

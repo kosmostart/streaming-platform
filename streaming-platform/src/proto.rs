@@ -840,7 +840,7 @@ impl MagicBall {
         self.stream_id = self.get_stream_id();
         self.source_hash = get_addr_hash(&self.addr);
 
-        self.write_full_message(self.msg_type, self.key_hash, self.stream_id, self.source_hash, dto, msg_meta_size as u64, msg_meta.payload_size, msg_meta.attachments_sizes(), false).await?;
+        self.write_full_message(self.msg_type, self.key_hash, self.stream_id, self.source_hash, dto, msg_meta_size as u64, 0, vec![], false).await?;
         
         Ok(msg_meta.correlation_id)
     }	

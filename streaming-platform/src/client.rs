@@ -348,7 +348,7 @@ where
 						Some(emittable_tx) => {
 							match emittable_tx.send(frame) {
 								Ok(()) => {
-									info!("Emittable frame send succeeded");
+									debug!("Emittable frame send succeeded");
 								}
 								Err(_) => {
 									error!("Error while sending emittable frame");

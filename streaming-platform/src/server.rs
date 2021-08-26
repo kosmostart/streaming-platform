@@ -194,6 +194,7 @@ async fn auth_tcp_stream(tcp_stream: &mut TcpStream, state: &mut State, client_n
 							FrameType::End => {								
 								break;
 							}
+							FrameType::Skip => {}
 						}
 
 					}

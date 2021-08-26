@@ -4,7 +4,7 @@ use std::error::Error;
 use log::*;
 use tokio::{io::AsyncWriteExt, runtime::Runtime};
 use tokio::net::TcpStream;
-use tokio::sync::{mpsc::{self, UnboundedSender, UnboundedReceiver}};
+use tokio::sync::{watch, mpsc::{self, UnboundedSender, UnboundedReceiver}};
 use serde_json::{json, Value, from_slice, to_vec};
 use sp_dto::*;
 use crate::proto::*;
@@ -248,6 +248,7 @@ where
             let mut mb = mb.clone();
             let config = target_config.clone();
             let dependency = dependency.clone();
+			let (emittable_tx, emittable_rx) = watch::channel(Frame::new(0, 0, 0, 0, 0, 0, None));
 
             match msg {
                 ClientMsg::Message(_, msg_meta, payload, attachments_data) => {
@@ -257,12 +258,14 @@ where
                             debug!("Client got event {}", msg_meta.display());
 
                             tokio::spawn(async move {
+								let addr = mb.addr.clone();
                                 let key = msg_meta.key.clone();
                                 let payload: P = from_slice(&payload).expect("Failed to deserialize event payload");                                
-                                if let Err(e) = process_event(config, mb.clone(), Message {meta: msg_meta, payload, attachments_data}, dependency).await {
-                                    error!("Process event error {}, {:?}, {:?}", mb.addr.clone(), key, e);
+								mb.emittable_rx = Some(emittable_rx);
+                                if let Err(e) = process_event(config, mb, Message {meta: msg_meta, payload, attachments_data}, dependency).await {
+                                    error!("Process event error {}, {:?}, {:?}", addr, key, e);
                                 }
-                                debug!("Client {} process_event succeeded", mb.addr);
+                                debug!("Client {} process_event succeeded", addr);
                             });                            
                         }
                         MsgType::RpcRequest => {                        
@@ -275,7 +278,7 @@ where
                                 let payload: P = from_slice(&payload).expect("failed to deserialize rpc request payload");
 								let source_hash = get_addr_hash(&msg_meta.tx);
 
-                                let (payload, attachments, attachments_data, rpc_result) = match process_rpc(config.clone(), mb.clone(), Message {meta: msg_meta, payload, attachments_data}, dependency).await {
+                                let (payload, attachments, attachments_data, rpc_result) = match process_rpc(config.clone(), {let mut res = mb.clone(); mb.emittable_rx = Some(emittable_rx); res}, Message {meta: msg_meta, payload, attachments_data}, dependency).await {
                                     Ok(res) => {
                                         debug!("Client {} process_rpc succeeded", mb.addr);
                                         let (res, attachments, attachments_data) = match res {
@@ -285,7 +288,7 @@ where
                                         (to_vec(&res).expect("Failed to serialize rpc process result"), attachments, attachments_data, RpcResult::Ok)
                                     }
                                     Err(e) =>  {
-                                        error!("Process rpc error {}, {:?}, {:?}", mb.addr.clone(), key, e);
+                                        error!("Process rpc error {}, {:?}, {:?}", mb.addr, key, e);
                                         (to_vec(&json!({ "err": e.to_string() })).expect("failed to serialize rpc process error result"), vec![], vec![], RpcResult::Err)
                                     }
                                 };                                
@@ -336,21 +339,14 @@ where
                     }
                 }
                 ClientMsg::Frame(frame) => {
-                    match mb.emittable_tx {
-                        Some(tx) => {
-                            match tx.send(frame) {
-                                Ok(()) => {
-                                    debug!("Emittable frame send succeeded");
-                                }
-                                Err(_) => {
-                                    error!("Error while sending emittable frame");
-                                }
-                            }
-                        }
-                        None => {
-                            warn!("Received emittalbe frame, but emittable tx is empty, frame will be lost.");
-                        }
-                    }
+                    match emittable_tx.send(frame) {
+						Ok(()) => {
+							debug!("Emittable frame send succeeded");
+						}
+						Err(_) => {
+							error!("Error while sending emittable frame");
+						}
+					}
                 }
             }
         }
@@ -490,7 +486,7 @@ async fn process_full_message_mode(mut write_tcp_stream: TcpStream, mut read_tcp
         error!("{:?}", res);
     });
 
-    let emmittable_key_hashes = emittable_keys.map(|a| {
+    let emittable_key_hashes = emittable_keys.map(|a| {
         let mut res = vec![];
 
         for key in a {
@@ -512,7 +508,7 @@ async fn process_full_message_mode(mut write_tcp_stream: TcpStream, mut read_tcp
 				match frame.get_frame_type() {
 					Ok(frame_type) => {
 
-                        match &emmittable_key_hashes {
+                        match &emittable_key_hashes {
                             Some(emittable_key_hashes) => {
                                 match emittable_key_hashes.contains(&frame.key_hash) {
                                     true => {
@@ -581,6 +577,7 @@ async fn process_full_message_mode(mut write_tcp_stream: TcpStream, mut read_tcp
                                                     }
                                                 }
                                             }
+											FrameType::Skip => {}
                                         }
                                     }
                                 }
@@ -643,6 +640,7 @@ async fn process_full_message_mode(mut write_tcp_stream: TcpStream, mut read_tcp
                                             }
                                         }
                                     }
+									FrameType::Skip => {}
                                 }
                             }
                         }
@@ -911,6 +909,7 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
 								}
 							}
 						}
+						FrameType::Skip => {}
 					}
 
 				}

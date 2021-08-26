@@ -327,6 +327,7 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
 								}
 							}
 						}
+						FrameType::Skip => {}
 					}
 
 				}

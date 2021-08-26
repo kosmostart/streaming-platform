@@ -13,6 +13,7 @@ use serde_json::{from_slice, Value, to_vec};
 use siphasher::sip::SipHasher24;
 use tokio::net::TcpStream;
 use tokio::sync::{mpsc::{unbounded_channel, UnboundedSender, UnboundedReceiver, error::{SendError, TrySendError}}, oneshot};
+use tokio::sync::watch::Receiver;
 //use tokio::time::{timeout, error::Elapsed};
 use tokio::time::timeout;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -126,7 +127,8 @@ pub enum FrameType {
     PayloadEnd = 3,
     Attachment = 4,
 	AttachmentEnd = 5,
-    End = 6
+    End = 6,
+	Skip = 7
 }
 
 impl Frame {
@@ -153,6 +155,7 @@ impl Frame {
             4 => FrameType::Attachment,
             5 => FrameType::AttachmentEnd,
 			6 => FrameType::End,
+			7 => FrameType::Skip,
             _ => return Err(ProcessError::IncorrectFrameType)
         })
     }
@@ -594,7 +597,7 @@ pub struct MagicBall {
     source_hash: u64,
     write_tx: UnboundedSender<WriteMsg>,
     rpc_inbound_tx: UnboundedSender<RpcMsg>,
-    pub emittable_tx: Option<UnboundedSender<Frame>>
+    pub emittable_rx: Option<Receiver<Frame>>
 }
 
 #[derive(Debug, Clone)]
@@ -631,7 +634,7 @@ impl MagicBall {
             source_hash: 0,
             write_tx,
             rpc_inbound_tx,
-            emittable_tx: None
+            emittable_rx: None
         }
     }
 
@@ -649,14 +652,7 @@ impl MagicBall {
         self.key_hash = msg_spec.key_hash;
         self.stream_id = msg_spec.stream_id;
         self.source_hash = msg_spec.source_hash;
-    }
-
-    pub fn start_frame_emit(&mut self) -> UnboundedReceiver<Frame> {
-        let (tx, rx) = unbounded_channel();
-        self.emittable_tx = Some(tx);
-
-        rx
-    }
+    }    
     
     /// This function generates new stream id
     pub fn get_stream_id(&mut self) -> u64 {

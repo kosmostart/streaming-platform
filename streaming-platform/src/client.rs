@@ -232,8 +232,9 @@ where
 		info!("Rpc loop completed");
     });
 
-    tokio::spawn(async move {
-        let mb = MagicBall::new(addr2, write_tx, rpc_inbound_tx);        
+    tokio::spawn(async move {		
+        let mb = MagicBall::new(addr2, write_tx, rpc_inbound_tx);		
+		let (emittable_tx, emittable_rx) = watch::channel(Frame::new(0, 0, 0, 0, 0, 0, None));
 
         tokio::spawn(startup(initial_config, target_config.clone(), mb.clone(), startup_data, dependency.clone()));
 
@@ -248,7 +249,7 @@ where
             let mut mb = mb.clone();
             let config = target_config.clone();
             let dependency = dependency.clone();
-			let (emittable_tx, emittable_rx) = watch::channel(Frame::new(0, 0, 0, 0, 0, 0, None));
+			let emittable_rx = emittable_rx.clone();
 
             match msg {
                 ClientMsg::Message(_, msg_meta, payload, attachments_data) => {
@@ -278,7 +279,7 @@ where
                                 let payload: P = from_slice(&payload).expect("failed to deserialize rpc request payload");
 								let source_hash = get_addr_hash(&msg_meta.tx);
 
-                                let (payload, attachments, attachments_data, rpc_result) = match process_rpc(config.clone(), {let mut res = mb.clone(); mb.emittable_rx = Some(emittable_rx); res}, Message {meta: msg_meta, payload, attachments_data}, dependency).await {
+                                let (payload, attachments, attachments_data, rpc_result) = match process_rpc(config.clone(), {let mut res = mb.clone(); res.emittable_rx = Some(emittable_rx); res}, Message {meta: msg_meta, payload, attachments_data}, dependency).await {
                                     Ok(res) => {
                                         debug!("Client {} process_rpc succeeded", mb.addr);
                                         let (res, attachments, attachments_data) = match res {
@@ -341,7 +342,7 @@ where
                 ClientMsg::Frame(frame) => {
                     match emittable_tx.send(frame) {
 						Ok(()) => {
-							debug!("Emittable frame send succeeded");
+							info!("Emittable frame send succeeded");
 						}
 						Err(_) => {
 							error!("Error while sending emittable frame");

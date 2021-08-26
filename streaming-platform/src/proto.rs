@@ -13,7 +13,6 @@ use serde_json::{from_slice, Value, to_vec};
 use siphasher::sip::SipHasher24;
 use tokio::net::TcpStream;
 use tokio::sync::{mpsc::{unbounded_channel, UnboundedSender, UnboundedReceiver, error::{SendError, TrySendError}}, oneshot};
-use tokio::sync::watch::Receiver;
 //use tokio::time::{timeout, error::Elapsed};
 use tokio::time::timeout;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -127,8 +126,7 @@ pub enum FrameType {
     PayloadEnd = 3,
     Attachment = 4,
 	AttachmentEnd = 5,
-    End = 6,
-	Skip = 7
+    End = 6	
 }
 
 impl Frame {
@@ -154,8 +152,7 @@ impl Frame {
 			3 => FrameType::PayloadEnd,
             4 => FrameType::Attachment,
             5 => FrameType::AttachmentEnd,
-			6 => FrameType::End,
-			7 => FrameType::Skip,
+			6 => FrameType::End,			
             _ => return Err(ProcessError::IncorrectFrameType)
         })
     }
@@ -394,9 +391,9 @@ pub enum ServerMsg {
 /// Type for function called on data stream processing
 pub type ProcessStream<T, D> = fn(Value, MagicBall, UnboundedReceiver<ClientMsg>, Option<UnboundedSender<RestreamMsg>>, Option<UnboundedReceiver<RestreamMsg>>, D) -> T;
 /// Type for function called on event processing with json payload
-pub type ProcessEvent<T, R, D> = fn(Value, MagicBall, Message<R>, D) -> T;
+pub type ProcessEvent<T, R, D> = fn(Value, MagicBall, Message<R>, D, UnboundedReceiver<Frame>) -> T;
 /// Type for function called on rpc processing with json payload
-pub type ProcessRpc<T, R, D> = fn(Value, MagicBall, Message<R>, D) -> T;
+pub type ProcessRpc<T, R, D> = fn(Value, MagicBall, Message<R>, D, UnboundedReceiver<Frame>) -> T;
 /// Type for function called on client starting
 pub type Startup<T, D> = fn(Value, Value, MagicBall, Option<Value>, D) -> T;
 
@@ -596,8 +593,7 @@ pub struct MagicBall {
 	stream_id: u64,
     source_hash: u64,
     write_tx: UnboundedSender<WriteMsg>,
-    rpc_inbound_tx: UnboundedSender<RpcMsg>,
-    pub emittable_rx: Option<Receiver<Frame>>
+    rpc_inbound_tx: UnboundedSender<RpcMsg>    
 }
 
 #[derive(Debug, Clone)]
@@ -633,8 +629,7 @@ impl MagicBall {
 			stream_id: 0,
             source_hash: 0,
             write_tx,
-            rpc_inbound_tx,
-            emittable_rx: None
+            rpc_inbound_tx            
         }
     }
 

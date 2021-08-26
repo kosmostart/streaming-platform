@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use log::*;
 use chrono::Utc;
 use serde_json::{json, Value, to_vec};
-use streaming_platform::{client, MagicBall, sp_dto::{MsgMeta, Message, Response, resp}};
+use streaming_platform::{client, MagicBall, sp_dto::{MsgMeta, Message, Response, resp}, tokio::sync::mpsc::UnboundedReceiver, Frame};
 use crate::error::Error;
 use storage::Dc;
 
@@ -10,13 +10,13 @@ mod ser_de;
 mod storage;
 mod error;
 
-pub async fn process_event(config: Value, mut mb: MagicBall, msg: Message<Value>, _: Dc) -> Result<(), Box<dyn std::error::Error>>  {
+pub async fn process_event(config: Value, mut mb: MagicBall, msg: Message<Value>, _: Dc, emittable_rx: UnboundedReceiver<Frame>) -> Result<(), Box<dyn std::error::Error>>  {
     //info!("{:#?}", msg);
     
     Ok(())
 }
 
-pub async fn process_rpc(config: Value, mut mb: MagicBall, msg: Message<Value>, dc: Dc) -> Result<Response<Value>, Box<dyn std::error::Error>> {   
+pub async fn process_rpc(config: Value, mut mb: MagicBall, msg: Message<Value>, dc: Dc, emittable_rx: UnboundedReceiver<Frame>) -> Result<Response<Value>, Box<dyn std::error::Error>> {   
     //info!("{:#?}", msg);
 
     let res = match msg.meta.key.action.as_ref() {

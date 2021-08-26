@@ -2,7 +2,10 @@ use std::{collections::HashMap, process::ExitStatus};
 use std::io::Read;
 use serde_json::{json, Value, from_value, to_vec};
 use log::*;
-use streaming_platform::{MAX_FRAME_PAYLOAD_SIZE, tokio::{self, fs::File, io::AsyncReadExt}, client, MagicBall, sp_dto::{Key, MsgMeta, Message, Response, resp}};
+use streaming_platform::{
+	MAX_FRAME_PAYLOAD_SIZE, tokio::{self, fs::File, io::AsyncReadExt, sync::mpsc::UnboundedReceiver}, 
+	client, MagicBall, sp_dto::{Key, MsgMeta, Message, Response, resp}, Frame
+};
 use sp_build_core::{pack, DeployConfig, DeployUnitConfig, TargetFile, RunConfig, RunUnit};
 
 mod flow;
@@ -13,13 +16,13 @@ mod repository {
     pub mod commit;
 }
 
-pub async fn process_event(config: Value, mut mb: MagicBall, msg: Message<Value>, _: ()) -> Result<(), Box<dyn std::error::Error>>  {
+pub async fn process_event(config: Value, mut mb: MagicBall, msg: Message<Value>, _: (), emittable_rx: UnboundedReceiver<Frame>) -> Result<(), Box<dyn std::error::Error>>  {
     //info!("{:#?}", msg);
     
     Ok(())
 }
 
-pub async fn process_rpc(config: Value, mut mb: MagicBall, msg: Message<Value>, _: ()) -> Result<Response<Value>, Box<dyn std::error::Error>> {   
+pub async fn process_rpc(config: Value, mut mb: MagicBall, msg: Message<Value>, _: (), emittable_rx: UnboundedReceiver<Frame>) -> Result<Response<Value>, Box<dyn std::error::Error>> {   
     info!("{:#?}", msg);
 
     let res = match msg.meta.key.action.as_ref() {

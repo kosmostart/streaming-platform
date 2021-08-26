@@ -2,7 +2,10 @@ use std::collections::HashMap;
 use base64::encode;
 use serde_json::{json, Value, to_vec};
 use sp_auth::create_auth_token;
-use streaming_platform::{client, MagicBall, sp_dto::{MsgMeta, Message, Response, resp}};
+use streaming_platform::{
+	client, MagicBall, sp_dto::{MsgMeta, Message, Response, resp},
+	tokio::sync::mpsc::UnboundedReceiver, Frame
+};
 
 #[derive(Debug)]
 enum Error {
@@ -18,13 +21,13 @@ impl std::fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
-pub async fn process_event(config: Value, mut mb: MagicBall, msg: Message<Value>, _: ()) -> Result<(), Box<dyn std::error::Error>>  {
+pub async fn process_event(config: Value, mut mb: MagicBall, msg: Message<Value>, _: (), emittable_rx: UnboundedReceiver<Frame>) -> Result<(), Box<dyn std::error::Error>>  {
     //info!("{:#?}", msg);
     
     Ok(())
 }
 
-pub async fn process_rpc(config: Value, mut mb: MagicBall, msg: Message<Value>, _: ()) -> Result<Response<Value>, Box<dyn std::error::Error>> {   
+pub async fn process_rpc(config: Value, mut mb: MagicBall, msg: Message<Value>, _: (), emittable_rx: UnboundedReceiver<Frame>) -> Result<Response<Value>, Box<dyn std::error::Error>> {
     //info!("{:#?}", msg);
 
     let res = match msg.meta.key.action.as_ref() {

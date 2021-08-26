@@ -326,8 +326,7 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
 									error!("Not found stream layout for stream end");
 								}
 							}
-						}
-						FrameType::Skip => {}
+						}						
 					}
 
 				}

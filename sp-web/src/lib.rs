@@ -6,10 +6,11 @@ use serde_json::{Value, from_slice, json, to_vec};
 use warp::{Filter, http::{Response, header::SET_COOKIE}, hyper::{self, body::Bytes}, Buf};
 use streaming_platform::{MagicBall, tokio::{io::AsyncReadExt}};
 use streaming_platform::sp_dto::{uuid::Uuid, MsgMeta};
-use streaming_platform::{client::stream_mode, ClientMsg, FrameType, StreamCompletion, 
+use streaming_platform::{
+	client::stream_mode, ClientMsg, FrameType, StreamCompletion, 
 	tokio::{self, sync::{mpsc::{self, UnboundedReceiver, UnboundedSender}, oneshot}}, 
 	sp_dto::{Key, Message, Participator, resp, rpc_dto_with_sizes, Route, RouteSpec}, 
-	RestreamMsg, StreamLayout, ProcessError
+	RestreamMsg, StreamLayout, ProcessError, Frame
 };
 use sp_auth::verify_auth_token;
 pub use streaming_platform;
@@ -19,11 +20,11 @@ mod hub;
 mod upstream;
 mod downstream;
 
-pub async fn process_event(_config: Value, mut _mb: MagicBall, _msg: Message<Value>, _: ()) -> Result<(), Box<dyn std::error::Error>>  {
+pub async fn process_event(_config: Value, mut _mb: MagicBall, _msg: Message<Value>, _: (), emittable_rx: UnboundedReceiver<Frame>) -> Result<(), Box<dyn std::error::Error>>  {
     Ok(())
 }
 
-pub async fn process_rpc(_config: Value, mut _mb: MagicBall, _msg: Message<Value>, _: ()) -> Result<streaming_platform::sp_dto::Response<Value>, Box<dyn std::error::Error>> {
+pub async fn process_rpc(_config: Value, mut _mb: MagicBall, _msg: Message<Value>, _: (), emittable_rx: UnboundedReceiver<Frame>) -> Result<streaming_platform::sp_dto::Response<Value>, Box<dyn std::error::Error>> {
     resp(json!({}))    
 }
 
@@ -473,8 +474,7 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
 									error!("Not found stream layout for stream end");
 								}
 							}
-						}
-						FrameType::Skip => {}
+						}						
 					}
 
 				}

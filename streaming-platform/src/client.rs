@@ -4,7 +4,7 @@ use std::error::Error;
 use log::*;
 use tokio::{io::AsyncWriteExt, runtime::Runtime};
 use tokio::net::TcpStream;
-use tokio::sync::{watch, mpsc::{self, UnboundedSender, UnboundedReceiver}};
+use tokio::sync::{mpsc::{self, UnboundedSender, UnboundedReceiver}};
 use serde_json::{json, Value, from_slice, to_vec};
 use sp_dto::*;
 use crate::proto::*;
@@ -233,10 +233,11 @@ where
     });
 
     tokio::spawn(async move {		
-        let mb = MagicBall::new(addr2, write_tx, rpc_inbound_tx);		
-		let (emittable_tx, emittable_rx) = watch::channel(Frame::new(0, 0, 0, 0, 0, 0, None));
+        let mb = MagicBall::new(addr2, write_tx, rpc_inbound_tx);				
 
         tokio::spawn(startup(initial_config, target_config.clone(), mb.clone(), startup_data, dependency.clone()));
+
+		let mut emittables = HashMap::new();
 
         loop {                        
             let msg = match read_rx.recv().await {
@@ -249,21 +250,21 @@ where
             let mut mb = mb.clone();
             let config = target_config.clone();
             let dependency = dependency.clone();
-			let emittable_rx = emittable_rx.clone();
 
             match msg {
                 ClientMsg::Message(_, msg_meta, payload, attachments_data) => {
                     match msg_meta.msg_type {
                         MsgType::Event => {          
-
                             debug!("Client got event {}", msg_meta.display());
+
+							let (emittable_tx, emittable_rx) = mpsc::unbounded_channel();
+							emittables.insert(msg_meta.correlation_id, emittable_tx);
 
                             tokio::spawn(async move {
 								let addr = mb.addr.clone();
                                 let key = msg_meta.key.clone();
-                                let payload: P = from_slice(&payload).expect("Failed to deserialize event payload");                                
-								mb.emittable_rx = Some(emittable_rx);
-                                if let Err(e) = process_event(config, mb, Message {meta: msg_meta, payload, attachments_data}, dependency).await {
+                                let payload: P = from_slice(&payload).expect("Failed to deserialize event payload");                                								
+                                if let Err(e) = process_event(config, mb, Message {meta: msg_meta, payload, attachments_data}, dependency, emittable_rx).await {
                                     error!("Process event error {}, {:?}, {:?}", addr, key, e);
                                 }
                                 debug!("Client {} process_event succeeded", addr);
@@ -272,6 +273,9 @@ where
                         MsgType::RpcRequest => {                        
                             debug!("Client got rpc request {}", msg_meta.display());
 
+							let (emittable_tx, emittable_rx) = mpsc::unbounded_channel();
+							emittables.insert(msg_meta.correlation_id, emittable_tx);
+
                             tokio::spawn(async move {
                                 let mut route = msg_meta.route.clone();
                                 let correlation_id = msg_meta.correlation_id;
@@ -279,7 +283,7 @@ where
                                 let payload: P = from_slice(&payload).expect("failed to deserialize rpc request payload");
 								let source_hash = get_addr_hash(&msg_meta.tx);
 
-                                let (payload, attachments, attachments_data, rpc_result) = match process_rpc(config.clone(), {let mut res = mb.clone(); res.emittable_rx = Some(emittable_rx); res}, Message {meta: msg_meta, payload, attachments_data}, dependency).await {
+                                let (payload, attachments, attachments_data, rpc_result) = match process_rpc(config.clone(), mb.clone(), Message {meta: msg_meta, payload, attachments_data}, dependency, emittable_rx).await {
                                     Ok(res) => {
                                         debug!("Client {} process_rpc succeeded", mb.addr);
                                         let (res, attachments, attachments_data) = match res {
@@ -340,7 +344,9 @@ where
                     }
                 }
                 ClientMsg::Frame(frame) => {
-                    match emittable_tx.send(frame) {
+					let emittable_tx = emittables.values().nth(0).unwrap();
+
+					match emittable_tx.send(frame) {
 						Ok(()) => {
 							info!("Emittable frame send succeeded");
 						}
@@ -577,8 +583,7 @@ async fn process_full_message_mode(mut write_tcp_stream: TcpStream, mut read_tcp
                                                         panic!("Client message send with read_tx in full message mode failed")
                                                     }
                                                 }
-                                            }
-											FrameType::Skip => {}
+                                            }											
                                         }
                                     }
                                 }
@@ -640,8 +645,7 @@ async fn process_full_message_mode(mut write_tcp_stream: TcpStream, mut read_tcp
                                                 panic!("Client message send with read_tx in full message mode failed")
                                             }
                                         }
-                                    }
-									FrameType::Skip => {}
+                                    }									
                                 }
                             }
                         }
@@ -909,8 +913,7 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
 									error!("Not found stream layout for stream end");
 								}
 							}
-						}
-						FrameType::Skip => {}
+						}						
 					}
 
 				}

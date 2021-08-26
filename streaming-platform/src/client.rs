@@ -344,16 +344,21 @@ where
                     }
                 }
                 ClientMsg::Frame(frame) => {
-					let emittable_tx = emittables.values().nth(0).unwrap();
-
-					match emittable_tx.send(frame) {
-						Ok(()) => {
-							info!("Emittable frame send succeeded");
+					match emittables.values().nth(0) {
+						Some(emittable_tx) => {
+							match emittable_tx.send(frame) {
+								Ok(()) => {
+									info!("Emittable frame send succeeded");
+								}
+								Err(_) => {
+									error!("Error while sending emittable frame");
+								}
+							}
 						}
-						Err(_) => {
-							error!("Error while sending emittable frame");
+						None => {
+							warn!("Emittable tx not found, stream id {}, frame type {}, key hash {}", frame.stream_id, frame.frame_type, frame.key_hash);
 						}
-					}
+					}					
                 }
             }
         }

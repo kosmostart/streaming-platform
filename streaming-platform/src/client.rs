@@ -360,7 +360,7 @@ where
 									}
 								}
 								None => {
-									warn!("Emittable tx not found, stream id {}, frame type {}, key hash {}", frame.stream_id, frame.frame_type, frame.key_hash);
+									warn!("Emittable tx not found, stream id {}, source stream id {}, frame type {}, key hash {}", frame.stream_id, frame.source_stream_id, frame.frame_type, frame.key_hash);
 								}
 							}
 						}

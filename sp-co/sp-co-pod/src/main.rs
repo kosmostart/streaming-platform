@@ -81,6 +81,7 @@ pub async fn process_stream(config: Value, mut mb: MagicBall, mut rx: UnboundedR
 async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64, FileStreamLayout>, client_msg: ClientMsg) -> Result<(), Error> {
     match client_msg {
 		ClientMsg::Frame(frame) => {
+			mb.source_stream_id = frame.source_stream_id;
 			match frame.get_frame_type() {
 				Ok(frame_type) => {
 					match frame_type {

@@ -165,9 +165,11 @@ pub async fn startup(initial_config: Value, target_config: Value, mb: MagicBall,
                 .and(warp::header::optional("cookie"))
                 .and(warp::path::tail())                                
                 .map(move |app_name: String, cookie_header: Option<String>, tail: warp::path::Tail| {
+					info!("App access attempt");
+					
                     let auth_token_key = auth_token_key1.clone();
                     let deploy_path = deploy_path.clone();
-                    let mut app_paths = app_paths.clone();
+                    let mut app_paths = app_paths.clone();					
 
                     match app_paths.remove(&app_name) {
                         Some((allow_unauthorized, app_path)) => {

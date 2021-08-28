@@ -252,15 +252,16 @@ where
             let dependency = dependency.clone();
 
             match msg {
-                ClientMsg::Message(_, msg_meta, payload, attachments_data) => {
+                ClientMsg::Message(source_stream_id, msg_meta, payload, attachments_data) => {
                     match msg_meta.msg_type {
                         MsgType::Event => {          
                             debug!("Client got event {}", msg_meta.display());
 
 							let (emittable_tx, emittable_rx) = mpsc::unbounded_channel();
-							emittables.insert(msg_meta.correlation_id, emittable_tx);
+							emittables.insert(source_stream_id, emittable_tx);
 
                             tokio::spawn(async move {
+								mb.source_stream_id = source_stream_id;
 								let addr = mb.addr.clone();
                                 let key = msg_meta.key.clone();
                                 let payload: P = from_slice(&payload).expect("Failed to deserialize event payload");                                								
@@ -274,9 +275,10 @@ where
                             debug!("Client got rpc request {}", msg_meta.display());
 
 							let (emittable_tx, emittable_rx) = mpsc::unbounded_channel();
-							emittables.insert(msg_meta.correlation_id, emittable_tx);
+							emittables.insert(source_stream_id, emittable_tx);
 
                             tokio::spawn(async move {
+								mb.source_stream_id = source_stream_id;
                                 let mut route = msg_meta.route.clone();
                                 let correlation_id = msg_meta.correlation_id;
                                 let key = msg_meta.key.clone();
@@ -308,7 +310,7 @@ where
 
                                 let stream_id = mb.get_stream_id();
 
-                                mb.write_full_message(MsgType::RpcResponse(RpcResult::Ok).get_u8(), key_hash, stream_id, source_hash, res, msg_meta_size, payload_size, attachments_sizes, true).await.expect("Failed to write rpc response");
+                                mb.write_full_message(MsgType::RpcResponse(RpcResult::Ok).get_u8(), key_hash, stream_id, source_stream_id, source_hash, res, msg_meta_size, payload_size, attachments_sizes, true).await.expect("Failed to write rpc response");
                              
                                 debug!("Client {} write rpc response succeded", mb.addr);
                             });                            
@@ -344,21 +346,42 @@ where
                     }
                 }
                 ClientMsg::Frame(frame) => {
-					match emittables.values().nth(0) {
-						Some(emittable_tx) => {
-							match emittable_tx.send(frame) {
-								Ok(()) => {
-									debug!("Emittable frame send succeeded");
+					let emittable_tx = match frame.frame_type {
+						6 => {							
+							match emittables.remove(&frame.source_stream_id) {
+								Some(emittable_tx) => {
+									match emittable_tx.send(frame) {
+										Ok(()) => {
+											debug!("Emittable frame send succeeded");
+										}
+										Err(_) => {
+											error!("Error while sending emittable frame");
+										}
+									}
 								}
-								Err(_) => {
-									error!("Error while sending emittable frame");
+								None => {
+									warn!("Emittable tx not found, stream id {}, frame type {}, key hash {}", frame.stream_id, frame.frame_type, frame.key_hash);
 								}
 							}
 						}
-						None => {
-							warn!("Emittable tx not found, stream id {}, frame type {}, key hash {}", frame.stream_id, frame.frame_type, frame.key_hash);
+						_ => {							
+							match emittables.get(&frame.source_stream_id) {
+								Some(emittable_tx) => {
+									match emittable_tx.send(frame) {
+										Ok(()) => {
+											debug!("Emittable frame send succeeded");
+										}
+										Err(_) => {
+											error!("Error while sending emittable frame");
+										}
+									}
+								}
+								None => {
+									warn!("Emittable tx not found, stream id {}, frame type {}, key hash {}", frame.stream_id, frame.frame_type, frame.key_hash);
+								}
+							}
 						}
-					}					
+					};																
                 }
             }
         }
@@ -378,7 +401,7 @@ async fn auth(addr: String, access_key: String, tcp_stream: &mut TcpStream) -> R
         "access_key": access_key
     }), route, None, None).expect("Failed to create auth dto");
 
-    write_to_tcp_stream(tcp_stream, 0, 0, get_stream_id_onetime(&addr), get_addr_hash(&addr), dto, msg_meta_size, payload_size, attachments_size, true).await
+    write_to_tcp_stream(tcp_stream, 0, 0, get_stream_id_onetime(&addr), 0, get_addr_hash(&addr), dto, msg_meta_size, payload_size, attachments_size, true).await
 }
 
 

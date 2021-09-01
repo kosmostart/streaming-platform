@@ -1,3 +1,4 @@
+use std::env;
 use std::collections::HashMap;
 use log::*;
 use chrono::Utc;
@@ -96,9 +97,9 @@ pub fn main() {
     env_logger::init();
 
     let user_id = 1;
-    let storage_path = "d:/src/sp-co-cfg-storage";
+    let storage_path = env::var("SP_CFG_STORAGE_PATH").expect("Failed to get cfg storage path");
 
-    let dc = Dc::new(user_id, storage_path).expect("Failed to create dc");
+    let dc = Dc::new(user_id, &storage_path).expect("Failed to create dc");
 
 	if dc.find(|a| a["domain"].as_str() == Some("Cfg") && a["key"].as_str() == Some("Auth")).unwrap().is_none() {
 		let _ = dc.create(json!({

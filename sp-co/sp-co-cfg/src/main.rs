@@ -97,7 +97,7 @@ pub fn main() {
     env_logger::init();
 
     let user_id = 1;
-    let storage_path = env::var("SP_CFG_STORAGE_PATH").expect("Failed to get cfg storage path");
+    let storage_path = env::var("SP_CO_CFG_STORAGE_PATH").expect("Failed to get sp co cfg storage path");
 
     let dc = Dc::new(user_id, &storage_path).expect("Failed to create dc");
 

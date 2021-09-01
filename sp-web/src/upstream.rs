@@ -110,14 +110,16 @@ fn send_data(data: &mut impl Buf, mb: &mut MagicBall, mut step: Step) -> Step {
 								step = Step::StreamPayload(msg_spec, payload_size, bytes_sent);
 
 								mb.frame_type = FrameType::Payload as u8;
-
-								let _ = mb.send_frame(&data.chunk()[..MAX_FRAME_PAYLOAD_SIZE], MAX_FRAME_PAYLOAD_SIZE);															
+								
+								let res = mb.send_frame(&data.chunk()[..MAX_FRAME_PAYLOAD_SIZE], MAX_FRAME_PAYLOAD_SIZE);															
+								debug!("{:?}", res);
 								data.advance(MAX_FRAME_PAYLOAD_SIZE);							
 							}
 							false => {
 								mb.frame_type = FrameType::PayloadEnd as u8;
-
-								let _ = mb.send_frame(&data.chunk()[..bytes_left], bytes_left);
+								
+								let res = mb.send_frame(&data.chunk()[..bytes_left], bytes_left);
+								debug!("{:?}", res);
 								data.advance(bytes_left);
 
 								step = Step::StreamAttachment(msg_spec);
@@ -132,14 +134,16 @@ fn send_data(data: &mut impl Buf, mb: &mut MagicBall, mut step: Step) -> Step {
 						match bytes_to_send > MAX_FRAME_PAYLOAD_SIZE {
 							true => {
 								bytes_sent = bytes_sent + MAX_FRAME_PAYLOAD_SIZE as u64;
-								step = Step::StreamPayload(msg_spec, payload_size, bytes_sent);
-								let _ = mb.send_frame(&data.chunk()[..MAX_FRAME_PAYLOAD_SIZE], MAX_FRAME_PAYLOAD_SIZE);															
+								step = Step::StreamPayload(msg_spec, payload_size, bytes_sent);								
+								let res = mb.send_frame(&data.chunk()[..MAX_FRAME_PAYLOAD_SIZE], MAX_FRAME_PAYLOAD_SIZE);															
+								debug!("{:?}", res);
 								data.advance(MAX_FRAME_PAYLOAD_SIZE);
 							}
 							false => {
 								bytes_sent = bytes_sent + bytes_to_send as u64;
-								step = Step::StreamPayload(msg_spec, payload_size, bytes_sent);
-								let _ = mb.send_frame(&data.chunk()[..bytes_to_send], bytes_to_send);
+								step = Step::StreamPayload(msg_spec, payload_size, bytes_sent);								
+								let res = mb.send_frame(&data.chunk()[..bytes_to_send], bytes_to_send);
+								debug!("{:?}", res);
 								data.advance(bytes_to_send);
 							}
 						}
@@ -150,19 +154,21 @@ fn send_data(data: &mut impl Buf, mb: &mut MagicBall, mut step: Step) -> Step {
 				mb.frame_type = FrameType::Attachment as u8;
 
 				match len > MAX_FRAME_PAYLOAD_SIZE {
-					true => {
-						let _ = mb.send_frame(&data.chunk()[..MAX_FRAME_PAYLOAD_SIZE], MAX_FRAME_PAYLOAD_SIZE);															
+					true => {						
+						let res = mb.send_frame(&data.chunk()[..MAX_FRAME_PAYLOAD_SIZE], MAX_FRAME_PAYLOAD_SIZE);
+						debug!("{:?}", res);
 						data.advance(MAX_FRAME_PAYLOAD_SIZE);
 					}
-					false => {
-						let _ = mb.send_frame(&data.chunk()[..len], len);
+					false => {						
+						let res = mb.send_frame(&data.chunk()[..len], len);
+						debug!("{:?}", res);
 						data.advance(len);
 						return step;
 					}
 				}
 			}
 			_ => {}
-		}								
+		}
 	}
 }
 
@@ -200,7 +206,7 @@ pub async fn go(aca_origin: Option<String>, auth_token_key: String, cookie_heade
 				let msg_meta = state.msg_meta.clone();
 				let mut step = state.step.clone();
 
-				info!("Stream step: {:?}", step);
+				info!("Starting payload and attachments streaming, stream step: {:?}", step);
 				
 				async move {
 					match step {
@@ -229,9 +235,10 @@ pub async fn go(aca_origin: Option<String>, auth_token_key: String, cookie_heade
 								}
 							}
 						}
-						Step::StreamPayload(_, _, _) | Step::StreamAttachment(_) => {
+						Step::StreamPayload(ref msg_spec, _, _) | Step::StreamAttachment(ref msg_spec) => {
 							match data {
 								Ok(mut data) if data.has_remaining() => {
+									mb.load_msg_spec(msg_spec);
 									step = send_data(&mut data, &mut mb, step);
 								}
 								_ => {}
@@ -258,6 +265,7 @@ pub async fn go(aca_origin: Option<String>, auth_token_key: String, cookie_heade
 				Some(msg_meta) => {
 					match msg_meta.msg_type {
 						MsgType::RpcRequest => {
+							info!("Sending stream completion");
 							match mb.complete_rpc_stream::<Value>(msg_meta.correlation_id).await {
 								Ok(msg) => {}
 								Err(e) => {

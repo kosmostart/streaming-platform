@@ -87,6 +87,16 @@ impl Route {
             Participator::Component(addr, _, _) => addr
         }
     }
+	pub fn get_last_point_addr(&self) -> Option<&String> {
+        match &self.points.last() {
+			Some(point) => Some(match point {
+					Participator::Service(addr) => addr,
+					Participator::Cli(addr) => addr,
+					Participator::Component(addr, _, _) => addr
+				}),
+			None => None
+		}
+    }
 }
 
 /// The message itself

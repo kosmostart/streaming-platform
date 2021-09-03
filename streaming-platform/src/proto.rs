@@ -853,11 +853,11 @@ impl MagicBall {
         Ok(msg_meta.correlation_id)
     }	
     pub async fn start_rpc_stream_response<T>(&mut self, mut msg_meta: MsgMeta, payload: T) -> Result<(), ProcessError> where T: serde::Serialize, for<'de> T: serde::Deserialize<'de>, T: Debug {
+		self.source_hash = get_addr_hash(msg_meta.route.get_last_point_addr().ok_or(ProcessError::None)?);
+
         msg_meta.route.points.push(Participator::Service(self.addr.clone()));
 
-        let rpc_result = RpcResult::Ok;
-
-        self.source_hash = get_addr_hash(msg_meta.route.get_last_point_addr().ok_or(ProcessError::None)?);
+        let rpc_result = RpcResult::Ok;        
 
         let (dto, msg_meta_size, payload_size, attachments_sizes) = rpc_response_dto_sizes(self.addr.clone(), msg_meta.key.clone(), msg_meta.correlation_id, payload, vec![], vec![], rpc_result.clone(), msg_meta.route, self.auth_token.clone(), self.auth_data.clone())?;
 
@@ -871,9 +871,9 @@ impl MagicBall {
         Ok(())
     }
     pub async fn start_rpc_stream_response_custom_res<T>(&mut self, mut msg_meta: MsgMeta, payload: T, rpc_result: RpcResult) -> Result<(), ProcessError> where T: serde::Serialize, for<'de> T: serde::Deserialize<'de>, T: Debug {
-        msg_meta.route.points.push(Participator::Service(self.addr.clone()));
+		self.source_hash = get_addr_hash(msg_meta.route.get_last_point_addr().ok_or(ProcessError::None)?);
 
-        self.source_hash = get_addr_hash(msg_meta.route.get_last_point_addr().ok_or(ProcessError::None)?);
+        msg_meta.route.points.push(Participator::Service(self.addr.clone()));        
 
         let (dto, msg_meta_size, payload_size, attachments_sizes) = rpc_response_dto_sizes(self.addr.clone(), msg_meta.key.clone(), msg_meta.correlation_id, payload, vec![], vec![], rpc_result.clone(), msg_meta.route, self.auth_token.clone(), self.auth_data.clone())?;
 
@@ -887,11 +887,11 @@ impl MagicBall {
         Ok(())
     }
     pub async fn send_rpc_response<T>(&mut self, mut msg_meta: MsgMeta, payload: T) -> Result<(), ProcessError> where T: serde::Serialize, for<'de> T: serde::Deserialize<'de>, T: Debug {
+		self.source_hash = get_addr_hash(msg_meta.route.get_last_point_addr().ok_or(ProcessError::None)?);
+
         msg_meta.route.points.push(Participator::Service(self.addr.clone()));
 
-        let rpc_result = RpcResult::Ok;
-
-        self.source_hash = get_addr_hash(msg_meta.route.get_last_point_addr().ok_or(ProcessError::None)?);
+        let rpc_result = RpcResult::Ok;        
 
         let (dto, msg_meta_size, payload_size, attachments_sizes) = rpc_response_dto_sizes(self.addr.clone(), msg_meta.key.clone(), msg_meta.correlation_id, payload, vec![], vec![], rpc_result.clone(), msg_meta.route, self.auth_token.clone(), self.auth_data.clone())?;
 
@@ -905,11 +905,11 @@ impl MagicBall {
         Ok(())
     }
     pub async fn send_rpc_response_with_attachments<T>(&mut self, mut msg_meta: MsgMeta, payload: T, attachments: Vec<(String, u64)>, attachments_data: Vec<u8>) -> Result<(), ProcessError> where T: serde::Serialize, for<'de> T: serde::Deserialize<'de>, T: Debug {
+		self.source_hash = get_addr_hash(msg_meta.route.get_last_point_addr().ok_or(ProcessError::None)?);
+		
         msg_meta.route.points.push(Participator::Service(self.addr.clone()));
 
-        let rpc_result = RpcResult::Ok;
-
-        self.source_hash = get_addr_hash(msg_meta.route.get_last_point_addr().ok_or(ProcessError::None)?);
+        let rpc_result = RpcResult::Ok;        
 
         let (dto, msg_meta_size, payload_size, attachments_sizes) = rpc_response_dto_sizes(self.addr.clone(), msg_meta.key.clone(), msg_meta.correlation_id, payload, attachments, attachments_data, rpc_result.clone(), msg_meta.route, self.auth_token.clone(), self.auth_data.clone())?;
 

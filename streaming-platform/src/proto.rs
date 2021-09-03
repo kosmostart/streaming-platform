@@ -961,14 +961,25 @@ impl MagicBall {
 
         self.write_tx.send(WriteMsg::Frame(Frame::new(FrameType::End as u8, 0, self.msg_type, self.key_hash, self.stream_id, self.source_stream_id, self.source_hash, None)))?;
 
-        let (msg_meta, payload, attachments_data) = timeout(Duration::from_millis(RPC_TIMEOUT_MS_AMOUNT), rpc_rx).await??;
-        let payload: T = from_slice(&payload)?;
+        let (msg_meta, payload_data, attachments_data) = timeout(Duration::from_millis(RPC_TIMEOUT_MS_AMOUNT), rpc_rx).await??;
+        let payload: T = from_slice(&payload_data)?;
 
         Ok(Message {
             meta: msg_meta,
             payload, 
             attachments_data
         })
+	}
+	/// This function will be waiting for rpc response, please note (in async function).
+    pub async fn complete_rpc_stream_raw(&mut self, correlation_id: Uuid) -> Result<(MsgMeta, Vec<u8>, Option<Vec<u8>>), ProcessError> {
+        let (rpc_tx, rpc_rx) = oneshot::channel();
+        
+        self.source_hash = get_addr_hash(&self.addr);
+        self.rpc_inbound_tx.send(RpcMsg::AddRpc(correlation_id, rpc_tx))?;
+
+        self.write_tx.send(WriteMsg::Frame(Frame::new(FrameType::End as u8, 0, self.msg_type, self.key_hash, self.stream_id, self.source_stream_id, self.source_hash, None)))?;
+
+        Ok(timeout(Duration::from_millis(RPC_TIMEOUT_MS_AMOUNT), rpc_rx).await??)		
 	}
 	pub fn complete_stream(&mut self) -> Result<(), ProcessError> {
         self.write_tx.send(WriteMsg::Frame(Frame::new(FrameType::End as u8, 0, self.msg_type, self.key_hash, self.stream_id, self.source_stream_id, self.source_hash, None)))?;

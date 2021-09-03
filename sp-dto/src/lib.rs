@@ -803,6 +803,26 @@ pub fn rpc_dto_with_attachments2(tx: String, key: Key, mut payload: Vec<u8>, att
     Ok((correlation_id, buf))
 }
 
+pub fn raw_dto(msg_meta: MsgMeta, mut payload_data: Vec<u8>, mut attachments_data: Option<Vec<u8>>) -> Result<Vec<u8>, Error> {
+	let mut msg_meta = serde_json::to_vec(&msg_meta)?;    
+
+    let mut buf = vec![];
+
+    buf.put_u32(msg_meta.len() as u32);
+
+    buf.append(&mut msg_meta);
+    buf.append(&mut payload_data);
+
+	match attachments_data {
+		Some(ref mut attachments_data) => {
+			buf.append(attachments_data);
+		}
+		None => {}
+	}    
+
+	Ok(buf)
+}
+
 pub fn get_msg_len(data: &[u8]) -> u32 {
     let mut buf = Cursor::new(data);
     buf.get_u32()

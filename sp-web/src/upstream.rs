@@ -4,7 +4,7 @@ use warp::Buf;
 use warp::{http::Response, hyper};
 use streaming_platform::{FrameType, MAX_FRAME_PAYLOAD_SIZE, MagicBall, MsgSpec};
 use streaming_platform::futures::stream::{Stream, StreamExt};
-use streaming_platform::sp_dto::{Key, MsgMeta, MsgType, get_msg_len, get_msg_meta_with_len};
+use streaming_platform::sp_dto::{Key, MsgMeta, MsgType, get_msg_len, get_msg_meta_with_len, raw_dto};
 use crate::{check_auth_token, response_for_body};
 
 #[derive(Debug, Clone)]
@@ -261,32 +261,35 @@ pub async fn go(aca_origin: Option<String>, auth_token_key: String, cookie_heade
 				_ => {}
 			};
 
-			match state.msg_meta {
+			let rpc_res = match state.msg_meta {
 				Some(msg_meta) => {
 					match msg_meta.msg_type {
 						MsgType::RpcRequest => {
 							info!("Sending stream completion");
-							match mb.complete_rpc_stream::<Value>(msg_meta.correlation_id).await {
-								Ok(msg) => {}
+							match mb.complete_rpc_stream_raw(msg_meta.correlation_id).await {
+								Ok((resp_msg_meta, resp_payload_data, resp_attachments_data)) => raw_dto(resp_msg_meta, resp_payload_data, resp_attachments_data).expect("Failed to build raw dto for rpc response"),
 								Err(e) => {
 									error!("Error on receiving stream completion response, {:?}", e);
+									vec![]
 								}
 							}
 						}
 						_ => {
 							let _ = mb.complete_stream();
+							vec![]
 						}
-					}					
+					}
 				}
 				None => {
 					let _ = mb.complete_stream();
 					error!("Failed to properly complete stream as rpc because of empty msg meta, simple completion sent.");
+					vec![]
 				}
-			}
+			};
 
 			info!("Stream completed, step {:?}", final_step);
 
-			let body = hyper::Body::from("Here comes the error");	
+			let body = hyper::Body::from(rpc_res);
 			let res = response_for_body(aca_origin, body).expect("Failed to build aca origin response");
 		
 			Ok::<Response<hyper::Body>, warp::Rejection>(res)

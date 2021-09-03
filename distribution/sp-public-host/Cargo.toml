@@ -13,5 +13,5 @@ env_logger = "*"
 serde = "*"
 serde_derive = "*"
 toml = "*"
-tokio = { version = "1", features = ["rt"] }
+tokio = { version = "*", features = ["rt"] }
 warp = { version = "*", features = ["tls"] }

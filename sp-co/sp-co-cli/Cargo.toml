@@ -10,6 +10,6 @@ edition = "2018"
 
 serde_json = "*"
 futures = "*"
-tokio = { version = "1", features = ["rt-multi-thread"] }
+tokio = { version = "*", features = ["rt-multi-thread"] }
 reqwest = { version = "*" }
 sp-dto = { path = "../../sp-dto" }

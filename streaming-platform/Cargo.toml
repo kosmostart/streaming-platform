@@ -17,16 +17,16 @@ edition = "2018"
 
 [dependencies]
 
-log = "0.4"
-futures = { version = "0.3", features = ["async-await"] }
-rand = "0.8"
+log = "*"
+futures = { version = "*", features = ["async-await"] }
+rand = "*"
 byteorder = "*"
-siphasher = "0.3"
-serde = "1"
-serde_derive = "1"
-serde_json = "1"
-tokio = { version = "1", features = ["full"] }
-hyper = { version = "0.14", optional = true }
+siphasher = "*"
+serde = "*"
+serde_derive = "*"
+serde_json = "*"
+tokio = { version = "*", features = ["full"] }
+hyper = { version = "*", optional = true }
 sp-dto = { path = "../sp-dto" }
 sp-cfg = { path = "../sp-cfg" }
 

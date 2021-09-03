@@ -9,7 +9,7 @@ edition = "2018"
 [dependencies]
 
 log = "*"
-rand = "0.8"
+rand = "*"
 chrono = "*"
 serde = "*"
 serde_json = "*"

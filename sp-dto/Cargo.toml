@@ -11,7 +11,7 @@ documentation = "https://docs.rs/sp-dto"
 description = """
 Message format and types for data transfer used by https://github.com/skytfs/streaming-platform/streaming-platform
 """
-edition = "2018"
+edition = "2021"
 
 [dependencies]
 

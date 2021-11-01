@@ -1637,14 +1637,13 @@ name = "sp-co-build"
 version = "0.1.0"
 dependencies = [
  "env_logger",
- "git2",
  "log",
  "serde",
  "serde_derive",
  "serde_json",
  "sp-build-core",
+ "sp-co-repository",
  "streaming-platform",
- "structopt",
 ]
 
 [[package]]
@@ -1696,6 +1695,14 @@ dependencies = [
  "sp-build-core",
  "streaming-platform",
  "sysinfo",
+]
+
+[[package]]
+name = "sp-co-repository"
+version = "0.1.0"
+dependencies = [
+ "git2",
+ "structopt",
 ]
 
 [[package]]

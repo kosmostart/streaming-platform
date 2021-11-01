@@ -1,19 +1,18 @@
-use std::{collections::HashMap, process::ExitStatus};
+use std::{
+	collections::HashMap, process::ExitStatus
+};
 use std::io::Read;
-use serde_json::{json, Value, from_value, to_vec};
+use serde_json::{
+	json, Value, from_value, to_vec
+};
 use log::*;
 use streaming_platform::{
 	MAX_FRAME_PAYLOAD_SIZE, tokio::{self, fs::File, io::AsyncReadExt, sync::mpsc::UnboundedReceiver}, 
 	client, MagicBall, sp_dto::{Key, MsgMeta, Message, Response, resp}, Frame
 };
-use sp_build_core::{pack, DeployConfig, DeployUnitConfig, TargetFile, RunConfig, RunUnit};
-
-mod repository {
-    pub mod status;
-    pub mod pull;
-    pub mod add;
-    pub mod commit;
-}
+use sp_build_core::{
+	pack, DeployConfig, DeployUnitConfig, TargetFile, RunConfig, RunUnit
+};
 
 pub async fn process_event(config: Value, mut mb: MagicBall, msg: Message<Value>, _: (), emittable_rx: UnboundedReceiver<Frame>) -> Result<(), Box<dyn std::error::Error>>  {
     //info!("{:#?}", msg);
@@ -43,7 +42,7 @@ pub async fn process_rpc(config: Value, mut mb: MagicBall, msg: Message<Value>, 
 
                     match build_config.pull_config {
                         Some(pull_config) => {
-                            let res = repository::pull::go(&pull_config.repository_path, &pull_config.remote_name, &pull_config.remote_branch);
+                            let res = sp_co_repository::pull::go(&pull_config.repository_path, &pull_config.remote_name, &pull_config.remote_branch);
                             pull_result_msg = format!("pull result is {:?}", res);
                         }
                         None => {

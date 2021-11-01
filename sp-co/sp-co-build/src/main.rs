@@ -8,7 +8,6 @@ use streaming_platform::{
 };
 use sp_build_core::{pack, DeployConfig, DeployUnitConfig, TargetFile, RunConfig, RunUnit};
 
-mod flow;
 mod repository {
     pub mod status;
     pub mod pull;

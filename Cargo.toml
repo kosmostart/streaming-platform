@@ -8,6 +8,7 @@ members = [
 	"sp-cfg",
 	"sp-web",
 	#"sp-yew",
+	"sp-dev",
 	"sp-co/sp-build-core",
 	"sp-co/sp-co-repository",
 	"sp-co/sp-co-hub",

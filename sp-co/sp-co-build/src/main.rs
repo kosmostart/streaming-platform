@@ -78,7 +78,7 @@ pub async fn process_rpc(config: Value, mut mb: MagicBall, msg: Message<Value>, 
                         }
                     };
 
-                    let mut stdout = handle.stdout.take().unwrap();		
+                    let mut stdout = handle.stdout.take().unwrap();
                     
                     let mut buf = [0; 100];
 

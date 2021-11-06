@@ -1,5 +1,12 @@
 use std::collections::HashMap;
-use streaming_platform::{sp_cfg::ServerConfig, server, sp_dto::{Key, Subscribes}};
+use streaming_platform::{
+	server::{
+		self, ServerConfig
+	}, 
+	sp_dto::{
+		Key, Subscribes
+	}
+};
 
 fn main() {
     env_logger::init();

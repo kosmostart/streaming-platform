@@ -28,7 +28,6 @@ serde_json = "*"
 tokio = { version = "*", features = ["full"] }
 hyper = { version = "*", optional = true }
 sp-dto = { path = "../sp-dto" }
-sp-cfg = { path = "../sp-cfg" }
 
 [features]
 

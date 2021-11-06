@@ -3,14 +3,25 @@ use std::net::SocketAddr;
 use std::hash::Hasher;
 use log::*;
 use siphasher::sip::SipHasher24;
+use serde_derive::Deserialize;
 use serde_json::from_slice;
 use tokio::runtime::Runtime;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc::{self, UnboundedSender};
 use sp_dto::bytes::{BytesMut, BufMut};
 use sp_dto::{Key, MsgMeta, MsgType, Subscribes};
-use sp_cfg::ServerConfig;
 use crate::proto::*;
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct ServerConfig {
+    pub host: String
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct Dir {
+    pub access_key: String,
+    pub path: String
+}
 
 fn to_hashed_subscribes(key_hasher: &mut SipHasher24, subscribes: HashMap<Key, Vec<String>>) -> HashMap<u64, Vec<u64>> {
     let mut res = HashMap::new();

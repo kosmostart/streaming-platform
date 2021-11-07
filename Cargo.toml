@@ -5,7 +5,7 @@ members = [
 	#"sp-tokio-tls",
 	"sp-dto",
 	"sp-auth",	
-	"sp-web",
+	"sp-web",	
 	#"sp-yew",
 	"sp-dev",
 	"sp-co/sp-build-core",

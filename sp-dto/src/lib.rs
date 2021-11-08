@@ -898,3 +898,46 @@ pub fn get_payload<T>(msg_meta: &MsgMeta, data: &[u8]) -> Result<T, Error> where
 
     Ok(payload)
 }
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub enum Relation {
+	Less,
+	Greater
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub enum QueryPrm {
+	I64(i64),
+	U64(u64),
+	U64Relation(Relation, u64),
+	String(String),
+	IdList(Vec<u64>)
+}
+
+pub fn i64_prm(name: &str, value: i64) -> (String, QueryPrm) {
+    (name.to_owned(), QueryPrm::I64(value))	
+}
+
+pub fn u64_prm(name: &str, value: u64) -> (String, QueryPrm) {
+	(name.to_owned(), QueryPrm::U64(value))	
+}
+
+pub fn u64_rel_prm(name: &str, relation: Relation, value: u64) -> (String, QueryPrm) {
+	(name.to_owned(), QueryPrm::U64Relation(relation, value))	
+}
+
+pub fn u64_less_prm(name: &str, value: u64) -> (String, QueryPrm) {
+	(name.to_owned(), QueryPrm::U64Relation(Relation::Less, value))	
+}
+
+pub fn u64_greater_prm(name: &str, value: u64) -> (String, QueryPrm) {
+	(name.to_owned(), QueryPrm::U64Relation(Relation::Greater, value))	
+}
+
+pub fn str_prm(name: &str, value: &str) -> (String, QueryPrm) {
+    (name.to_owned(), QueryPrm::String(value.to_owned()))
+}
+
+pub fn string_prm(name: &str, value: String) -> (String, QueryPrm) {
+    (name.to_owned(), QueryPrm::String(value))	
+}

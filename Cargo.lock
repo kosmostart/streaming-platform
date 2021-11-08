@@ -1746,6 +1746,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "sp-storage"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "log",
+ "rkyv",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "sled",
+ "sp-dto",
+]
+
+[[package]]
 name = "sp-web"
 version = "0.1.0"
 dependencies = [

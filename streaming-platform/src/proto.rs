@@ -32,11 +32,7 @@ pub fn get_key_hasher() -> SipHasher24 {
     SipHasher24::new_with_keys(0, 0)
 }
 
-pub fn get_addr_hasher() -> SipHasher24 {    
-    SipHasher24::new_with_keys(0, 0)
-}
-
-pub fn get_stream_id_hasher() -> SipHasher24 {    
+pub fn get_stream_id_hasher() -> SipHasher24 {
     SipHasher24::new_with_keys(0, 0)
 }
 
@@ -201,11 +197,6 @@ impl State {
             source_hash: 0,
 			frame_size: 0
         }
-    }
-    pub fn clear(&mut self) {
-		self.frame_reading_status = FrameReadingStatus::Header;
-        self.bytes_read = 0;
-        self.bytes_processed = 0;
     }
     pub async fn read_from_tcp_stream(&mut self, tcp_stream: &mut TcpStream) -> Result<(), ProcessError> {
         let bytes_read = tcp_stream.read(&mut self.read_buf[self.bytes_read..]).await?;

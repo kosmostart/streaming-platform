@@ -1,6 +1,11 @@
 use std::collections::HashMap;
 use serde_json::json;
-use rkyv::{AlignedVec, Archive, Deserialize, Fallible, Infallible, Serialize, archived_root, ser::{serializers::{AllocSerializer, CompositeSerializerError, AllocScratch, AllocScratchError, SharedSerializeMapError}, Serializer}};
+use rkyv::{
+	AlignedVec, Archive, Deserialize, Fallible, Infallible, Serialize, archived_root, 
+	ser::{
+		serializers::{AllocSerializer, CompositeSerializerError, AllocScratchError, SharedSerializeMapError}, Serializer
+	}
+};
 use crate::error::Error;
 
 pub const POSITION_LEN: usize = 8;

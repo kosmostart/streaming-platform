@@ -25,7 +25,7 @@ pub struct Dir {
 
 fn to_hashed_subscribes(key_hasher: &mut SipHasher24, subscribes: HashMap<Key, Vec<String>>) -> HashMap<u64, Vec<u64>> {
     let mut res = HashMap::new();
-    let mut buf = BytesMut::new();
+    let buf = BytesMut::new();
 
     for (key, addrs) in subscribes {
         res.insert(get_key_hash(&key), addrs.iter().map(|a| get_addr_hash(a)).collect());

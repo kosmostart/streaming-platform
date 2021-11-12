@@ -589,7 +589,7 @@ pub struct MsgSpec {
 impl MagicBall {
     pub fn new(addr: String, write_tx: UnboundedSender<WriteMsg>, rpc_inbound_tx: UnboundedSender<RpcMsg>) -> MagicBall {
         let key_hasher = get_key_hasher();
-        let mut key_hash_buf = BytesMut::new();
+        let key_hash_buf = BytesMut::new();
 
         let hasher = get_stream_id_hasher();
         let mut hash_buf = BytesMut::new();

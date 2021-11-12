@@ -16,4 +16,5 @@ serde_json = "*"
 chrono = { version = "*", features = ["serde"] }
 rkyv = "*"
 sled = { version = "*"}
+sp-storage = { path = "../../sp-storage" }
 streaming-platform = { path = "../../streaming-platform" }

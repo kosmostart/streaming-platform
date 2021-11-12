@@ -66,7 +66,7 @@ pub struct TxDc<'a> {
 }
 
 #[derive(Clone)]
-    pub struct Sc {
+pub struct Sc {
     pub name: String,
     pub service: String,
     pub domain: String,

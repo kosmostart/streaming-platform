@@ -1,9 +1,12 @@
-use std::collections::HashMap;
 use base64::encode;
-use serde_json::{json, Value, to_vec};
+use serde_json::{
+	json, Value, to_vec
+};
 use sp_auth::create_auth_token;
 use streaming_platform::{
-	client, MagicBall, sp_dto::{MsgMeta, Message, Response, resp},
+	client, MagicBall, sp_dto::{
+		MsgMeta, Message, Response, resp
+	},
 	tokio::sync::mpsc::UnboundedReceiver, Frame
 };
 

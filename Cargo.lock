@@ -141,20 +141,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
-name = "chrono"
-version = "0.4.19"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "670ad68c9088c2a963aaa298cb369688cf3f9465ce5e2d4ca10e6e0098a1ce73"
-dependencies = [
- "libc",
- "num-integer",
- "num-traits",
- "serde",
- "time",
- "winapi",
-]
-
-[[package]]
 name = "clap"
 version = "2.33.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -907,25 +893,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "num-integer"
-version = "0.1.44"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d2cc698a63b549a70bc047073d2949cce27cd1c7b0a4a862d08a8031bc2801db"
-dependencies = [
- "autocfg",
- "num-traits",
-]
-
-[[package]]
-name = "num-traits"
-version = "0.2.14"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9a64b1ec5cda2586e284722486d802acf1f7dbdc623e2bfc57e65ca1cd099290"
-dependencies = [
- "autocfg",
-]
-
-[[package]]
 name = "num_cpus"
 version = "1.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1424,9 +1391,9 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.69"
+version = "1.0.70"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e466864e431129c7e0d3476b92f20458e5879919a0596c6472738d9fa2d342f8"
+checksum = "e277c495ac6cd1a01a58d0a0c574568b4d1ddf14f59965c6a58b8d96400b54f3"
 dependencies = [
  "itoa",
  "ryu",
@@ -1538,7 +1505,6 @@ dependencies = [
 name = "sp-build-core"
 version = "0.1.0"
 dependencies = [
- "chrono",
  "log",
  "lz4",
  "rand",
@@ -1546,6 +1512,7 @@ dependencies = [
  "serde_derive",
  "serde_json",
  "tar",
+ "time",
 ]
 
 [[package]]
@@ -1580,7 +1547,6 @@ dependencies = [
 name = "sp-co-cfg"
 version = "0.1.0"
 dependencies = [
- "chrono",
  "env_logger",
  "log",
  "rkyv",
@@ -1590,6 +1556,7 @@ dependencies = [
  "sled",
  "sp-storage",
  "streaming-platform",
+ "time",
 ]
 
 [[package]]
@@ -1689,7 +1656,6 @@ dependencies = [
 name = "sp-storage"
 version = "0.1.0"
 dependencies = [
- "chrono",
  "log",
  "rkyv",
  "serde",
@@ -1697,6 +1663,7 @@ dependencies = [
  "serde_json",
  "sled",
  "sp-dto",
+ "time",
 ]
 
 [[package]]
@@ -1863,12 +1830,13 @@ dependencies = [
 
 [[package]]
 name = "time"
-version = "0.1.43"
+version = "0.3.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ca8a50ef2360fbd1eeb0ecd46795a87a19024eb4b53c5dc916ca1fd95fe62438"
+checksum = "41effe7cfa8af36f439fac33861b66b049edc6f9a32331e2312660529c1c24ad"
 dependencies = [
+ "itoa",
  "libc",
- "winapi",
+ "serde",
 ]
 
 [[package]]

@@ -1,8 +1,12 @@
 use std::io::BufReader;
 use std::io::prelude::*;
-use serde_json::{Value, json, from_str};
+use serde_json::{
+	Value, json, from_str
+};
 use tokio::runtime::Runtime;
-use sp_dto::{Key, Route, rpc_dto, get_msg};
+use sp_dto::{
+	Key, Route, rpc_dto, get_msg
+};
 use error::Error;
 
 mod error;
@@ -39,7 +43,7 @@ fn main() -> Result<(), Error> {
             println!("Enter value:");
             println!("");
 
-            let mut payload = None;
+            let mut payload;
 
             loop {
                 let _ = std::io::stdin().read_line(&mut buf)?;
@@ -87,8 +91,7 @@ fn main() -> Result<(), Error> {
                                                 break;
                                             }
                                             _ => {
-                                                buf.clear();
-                                                payload = None;
+                                                buf.clear();                                                
 
                                                 println!("");
                                                 println!("Previous input cleared");
@@ -243,11 +246,7 @@ fn cfg_add(rt: &Runtime, payload: Value) {
 
     println!("{:#?}", res);
 
-    let split: Vec<&str> = res.headers().get("set-cookie").unwrap().to_str().unwrap().split(";").collect();
-
-    println!("{}", split[0]);
-
-	let qq = split[0].to_owned();
+    let split: Vec<&str> = res.headers().get("set-cookie").unwrap().to_str().unwrap().split(";").collect();    
 
     let (_, dto) = rpc_dto("Cli".to_owned(), Key::new("Add", "Cfg", "Cfg"), payload, Route::new_cli_with_service_client("Cli", "Web"), None, None).unwrap();
 
@@ -282,11 +281,7 @@ fn cfg_get_domain(rt: &Runtime, domain: &str) {
 
     println!("{:#?}", res);
 
-    let split: Vec<&str> = res.headers().get("set-cookie").unwrap().to_str().unwrap().split(";").collect();
-
-    println!("{}", split[0]);
-
-	let qq = split[0].to_owned();
+    let split: Vec<&str> = res.headers().get("set-cookie").unwrap().to_str().unwrap().split(";").collect();    
 
     let (_, dto) = rpc_dto("Cli".to_owned(), Key::new("GetDomain", "Cfg", "Cfg"), json!({
 		"domain": domain
@@ -323,11 +318,7 @@ fn cfg_get(rt: &Runtime, payload: Value) {
 
     println!("{:#?}", res);
 
-    let split: Vec<&str> = res.headers().get("set-cookie").unwrap().to_str().unwrap().split(";").collect();
-
-    println!("{}", split[0]);
-
-	let qq = split[0].to_owned();
+    let split: Vec<&str> = res.headers().get("set-cookie").unwrap().to_str().unwrap().split(";").collect();    
 
     let (_, dto) = rpc_dto("Cli".to_owned(), Key::new("Get", "Cfg", "Cfg"), payload, Route::new_cli_with_service_client("Cli", "Web"), None, None).unwrap();
 

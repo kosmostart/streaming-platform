@@ -3,9 +3,7 @@ use std::collections::HashMap;
 use std::ops::Index;
 use std::fs::{read_dir, remove_dir_all};
 use log::*;
-use chrono::{
-	NaiveDateTime, Utc
-};
+use time::OffsetDateTime;
 use serde_json::{
 	json, Value
 };
@@ -222,10 +220,10 @@ impl Dc {
         let id = self.db.generate_id()?;
 
         payload["id"] = json!(id);
-        payload["created_at"] = json!(Utc::now().naive_utc());
+        payload["created_at"] = json!(OffsetDateTime::now_utc());
         payload["author_id"] = json!(self.user_id);
-        payload["deactivated_at"] = json!(None as Option<NaiveDateTime>);
-        payload["updated_at"] = json!(None as Option<NaiveDateTime>);
+        payload["deactivated_at"] = json!(None as Option<OffsetDateTime>);
+        payload["updated_at"] = json!(None as Option<OffsetDateTime>);
 
         let _ = self.tree.insert(id.to_be_bytes(), &serialize(&convert_value(payload))?[..])?;
     
@@ -236,10 +234,10 @@ impl Dc {
         let id = self.db.generate_id()?;
 
         payload["id"] = json!(id);
-        payload["created_at"] = json!(Utc::now().naive_utc());
+        payload["created_at"] = json!(OffsetDateTime::now_utc());
         payload["author_id"] = json!(self.user_id);
-        payload["deactivated_at"] = json!(None as Option<NaiveDateTime>);
-        payload["updated_at"] = json!(None as Option<NaiveDateTime>);
+        payload["deactivated_at"] = json!(None as Option<OffsetDateTime>);
+        payload["updated_at"] = json!(None as Option<OffsetDateTime>);
 
         let converted_payload = convert_value(payload);
 
@@ -279,7 +277,7 @@ impl Dc {
 
         match self.tree.contains_key(id_bytes)? {
             true => {                    
-                payload["updated_at"] = json!(Utc::now().naive_utc());                    
+                payload["updated_at"] = json!(OffsetDateTime::now_utc());                    
                 self.tree.insert(id_bytes.to_vec(), &serialize(&convert_value(payload))?[..])?;
             }
             false => {
@@ -565,10 +563,10 @@ impl TxDc<'_> {
         let id = self.db.generate_id()?;
 
         payload["id"] = json!(id);
-        payload["created_at"] = json!(Utc::now().naive_utc());
+        payload["created_at"] = json!(OffsetDateTime::now_utc());
         payload["author_id"] = json!(self.user_id);
-        payload["deactivated_at"] = json!(None as Option<NaiveDateTime>);
-        payload["updated_at"] = json!(None as Option<NaiveDateTime>);
+        payload["deactivated_at"] = json!(None as Option<OffsetDateTime>);
+        payload["updated_at"] = json!(None as Option<OffsetDateTime>);
 
         let _ = self.tree.insert(id.to_be_bytes().to_vec(), &serialize(&convert_value(payload))?[..])?;
     
@@ -579,10 +577,10 @@ impl TxDc<'_> {
         let id = self.db.generate_id()?;
 
         payload["id"] = json!(id);
-        payload["created_at"] = json!(Utc::now().naive_utc());
+        payload["created_at"] = json!(OffsetDateTime::now_utc());
         payload["author_id"] = json!(self.user_id);
-        payload["deactivated_at"] = json!(None as Option<NaiveDateTime>);
-        payload["updated_at"] = json!(None as Option<NaiveDateTime>);
+        payload["deactivated_at"] = json!(None as Option<OffsetDateTime>);
+        payload["updated_at"] = json!(None as Option<OffsetDateTime>);
 
         let converted_payload = convert_value(payload);
 
@@ -609,7 +607,7 @@ impl TxDc<'_> {
 
         match self.tree.get(id_bytes)? {
             Some(_) => {
-                payload["updated_at"] = json!(Utc::now().naive_utc());
+                payload["updated_at"] = json!(OffsetDateTime::now_utc());
 
                 self.tree.insert(id_bytes.to_vec(), &serialize(&convert_value(payload))?[..])?;
             }

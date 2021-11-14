@@ -3,8 +3,7 @@ pub enum Error {
 	None,
 	ConversionFromSlice(std::array::TryFromSliceError),
 	Custom(String),
-	Io(std::io::Error),
-	Chrono(chrono::format::ParseError),	
+	Io(std::io::Error),	
 	SerdeJson(serde_json::Error),
 	Sled(sled::Error),
 	SledTransaction(sled::transaction::TransactionError<()>),
@@ -48,20 +47,6 @@ impl From<std::io::Error> for Error {
 		Error::Io(e)
 	}
 }
-
-impl From<chrono::format::ParseError> for Error {
-	fn from(e: chrono::format::ParseError) -> Error {
-		Error::Chrono(e)
-	}
-}
-
-/*
-impl From<rkyv::Unreachable> for Error {
-	fn from(e: rkyv::Unreachable) -> Error {
-		Error::SdDeserializationFailed(e)
-	}
-}
-*/
 
 impl From<serde_json::Error> for Error {
 	fn from(e: serde_json::Error) -> Error {

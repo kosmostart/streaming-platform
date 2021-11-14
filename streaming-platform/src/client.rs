@@ -184,6 +184,8 @@ where
         None => config
     };
 
+	//info!("{:#?}", target_config);
+
     let host = target_config["host"].as_str().expect("Failed to get host from config").to_owned();
     let addr = target_config["addr"].as_str().expect("Failed to get addr from config");
     let access_key = target_config["access_key"].as_str().expect("Failed to get access key from config");

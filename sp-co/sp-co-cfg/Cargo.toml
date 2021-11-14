@@ -10,10 +10,10 @@ edition = "2021"
 
 log = "*"
 env_logger = "*"
+time = { version = "*", features = ["serde-human-readable"] }
 serde = "*"
 serde_derive = "*"
 serde_json = "*"
-chrono = { version = "*", features = ["serde"] }
 rkyv = "*"
 sled = { version = "*"}
 sp-storage = { path = "../../sp-storage" }

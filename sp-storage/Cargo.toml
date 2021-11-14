@@ -8,10 +8,10 @@ edition = "2021"
 [dependencies]
 
 log = "*"
+time = { version = "*", features = ["serde-human-readable"] }
 serde = "*"
 serde_derive = "*"
 serde_json = "*"
-chrono = { version = "*", features = ["serde"] }
 rkyv = "*"
 sled = "*"
 sp-dto = { path = "../sp-dto" }

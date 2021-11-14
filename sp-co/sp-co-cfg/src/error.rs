@@ -5,13 +5,9 @@ pub enum Error {
 	None,
 	ConversionFromSlice(std::array::TryFromSliceError),
 	CustomError(String),
-	Io(std::io::Error),
-	Chrono(chrono::format::ParseError),
+	Io(std::io::Error),	
 	SerdeJson(serde_json::Error),
-	Sled(sled::Error),
-	SledTransaction(sled::transaction::TransactionError<()>),
-	SledUnabortableTransaction(sled::transaction::UnabortableTransactionError),
-	SledTransactionDc(sled::transaction::TransactionError<String>),
+	Sled(sled::Error),	
 	StreamingPlatform(streaming_platform::ProcessError),
 	SendFrame,
 	IncorrectKeyInRequest
@@ -53,12 +49,6 @@ impl From<std::io::Error> for Error {
 	}
 }
 
-impl From<chrono::format::ParseError> for Error {
-	fn from(e: chrono::format::ParseError) -> Error {
-		Error::Chrono(e)
-	}
-}
-
 impl From<serde_json::Error> for Error {
 	fn from(e: serde_json::Error) -> Error {
 		Error::SerdeJson(e)
@@ -68,18 +58,6 @@ impl From<serde_json::Error> for Error {
 impl From<sled::Error> for Error {
 	fn from(e: sled::Error) -> Error {
 		Error::Sled(e)
-	}
-}
-
-impl From<sled::transaction::TransactionError<()>> for Error {
-	fn from(e: sled::transaction::TransactionError<()>) -> Error {
-		Error::SledTransaction(e)
-	}
-}
-
-impl From<sled::transaction::UnabortableTransactionError> for Error {
-	fn from(e: sled::transaction::UnabortableTransactionError) -> Error {
-		Error::SledUnabortableTransaction(e)
 	}
 }
 

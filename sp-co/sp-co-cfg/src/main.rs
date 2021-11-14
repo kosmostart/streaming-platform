@@ -1,16 +1,15 @@
 use std::env;
-use std::collections::HashMap;
 use log::*;
-use chrono::Utc;
+use time::OffsetDateTime;
 use serde_json::{
-	json, Value, to_vec
+	json, Value
 };
 use sp_storage::{
 	Location, Dc, Sc, create_service
 };
 use streaming_platform::{
 	client, MagicBall, sp_dto::{
-		MsgMeta, Message, Response, resp
+		Message, Response, resp
 	}, 
 	tokio::sync::mpsc::UnboundedReceiver, Frame
 };
@@ -18,17 +17,16 @@ use crate::error::Error;
 
 mod error;
 
-pub async fn process_event(config: Value, mut mb: MagicBall, msg: Message<Value>, _: Sc, emittable_rx: UnboundedReceiver<Frame>) -> Result<(), Box<dyn std::error::Error>>  {
+pub async fn process_event(_config: Value, _mb: MagicBall, _msg: Message<Value>, _: Sc, _emittable_rx: UnboundedReceiver<Frame>) -> Result<(), Box<dyn std::error::Error>>  {
     //info!("{:#?}", msg);
     
     Ok(())
 }
 
-pub async fn process_rpc(config: Value, mut mb: MagicBall, msg: Message<Value>, sc: Sc, emittable_rx: UnboundedReceiver<Frame>) -> Result<Response<Value>, Box<dyn std::error::Error>> {
+pub async fn process_rpc(_config: Value, _mb: MagicBall, msg: Message<Value>, sc: Sc, _emittable_rx: UnboundedReceiver<Frame>) -> Result<Response<Value>, Box<dyn std::error::Error>> {
     //info!("{:#?}", msg);
-
-	/*
-    let res = match msg.meta.key.action.as_ref() {
+	
+    let _res = match msg.meta.key.action.as_ref() {
         "Add" => {
             info!("Received Add, payload {:#?}", msg.payload);
 
@@ -40,14 +38,14 @@ pub async fn process_rpc(config: Value, mut mb: MagicBall, msg: Message<Value>, 
                 return Err(Box::new(Error::custom("Empty key in payload")));
             }			
 
-            let active = dc.filter(|a| a["domain"] == msg.payload["domain"] && a["key"] == msg.payload["key"] && a["deactivated_at"].is_null())?;
+            let active = sc["Cfg"].filter(|a| a["domain"] == msg.payload["domain"] && a["key"] == msg.payload["key"] && a["deactivated_at"].is_null())?;
 
             for (id, mut payload) in active {
-                payload["deactivated_at"] = json!(Utc::now().naive_utc());
-                let _ = dc.update(id, payload)?;
+                payload["deactivated_at"] = json!(OffsetDateTime::now_utc());
+                let _ = sc["Cfg"].update(id, payload)?;
             }
 
-            let _ = dc.create(json!({
+            let _ = sc["Cfg"].create(json!({
 				"domain": msg.payload["domain"],
                 "key": msg.payload["key"],
                 "payload": msg.payload["payload"]
@@ -63,7 +61,7 @@ pub async fn process_rpc(config: Value, mut mb: MagicBall, msg: Message<Value>, 
                 return Err(Box::new(Error::custom("Empty domain in payload")));
             }
 
-            let data = dc.filter(|a| a["domain"] == msg.payload["domain"])?;
+            let data = sc["Cfg"].filter(|a| a["domain"] == msg.payload["domain"])?;
 
             json!({
                 "data": data
@@ -87,21 +85,20 @@ pub async fn process_rpc(config: Value, mut mb: MagicBall, msg: Message<Value>, 
 
             info!("Search for key {}", key);
 
-            match dc.find(|a| a["domain"] == msg.payload["domain"] && a["key"] == key && a["deactivated_at"].is_null())? {
+            match sc["Cfg"].find(|a| a["domain"] == msg.payload["domain"] && a["key"] == key && a["deactivated_at"].is_null())? {
                 Some((_, mut payload)) => payload["payload"].take(),
                 None => json!({})
             }
         }
         _ => return Err(Box::new(Error::IncorrectKeyInRequest))
-    };
-	*/
+    };	
 
 	let res = json!({});
 
     resp(res)
 }
 
-pub async fn startup(initial_config: Value, target_config: Value, mut mb: MagicBall, startup_data: Option<Value>, _: Sc) {
+pub async fn startup(_initial_config: Value, _target_config: Value, _mb: MagicBall, _startup_data: Option<Value>, _: Sc) {
 }
 
 pub fn main() {

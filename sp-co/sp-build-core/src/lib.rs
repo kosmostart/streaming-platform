@@ -1,12 +1,18 @@
 use std::collections::HashMap;
-use std::fs::{File, remove_file};
-use std::io::{self, Error};
+use std::fs::{
+	File, remove_file
+};
+use std::io::{
+	self, Error
+};
 use std::path::Path;
 use std::io::BufReader;
 use std::io::prelude::*;
 use log::*;
 use rand::{Rng, thread_rng};
-use chrono::Utc;
+use time::{
+	OffsetDateTime, format_description
+};
 use serde_json::Value;
 use serde_derive::{Serialize, Deserialize};
 use lz4::{Decoder, EncoderBuilder};
@@ -125,7 +131,8 @@ pub fn pack(config: DeployUnitConfig) -> Result<String, Error> {
 pub fn unpack(save_path: String, file_name: String) -> Result<String, Error> {
     let from = save_path.clone() + "/" + &file_name;
     let to = save_path.clone() + "/" + &file_name + ".tmp";
-    let dt = Utc::now().format("%Y-%m-%d-%H-%M-%S").to_string();
+	let format = format_description::parse("[year]-[month]-[day]-[hour]-[minute]-[second]").expect("Failed to create datetime format");
+    let dt = OffsetDateTime::now_utc().format(&format).expect("Failed to format datetime");
     let target_path = save_path.clone() + "/deploy-" + &file_name + "-" + &dt;
 
     decompress(&from, &to).unwrap();

@@ -108,9 +108,7 @@ pub fn main() {
     let scope_id = 1;
     let user_id = 1;
 
-    let storage_path = env::var("SP_CO_CFG_STORAGE_PATH").expect("Failed to get sp co cfg storage path from SP_CO_CFG_STORAGE_PATH env variable");
-
-    //let service_dc = Dc::new(Location::Services { region_id, scope_id }, user_id, &storage_path).expect("Failed to create service dc");
+    let storage_path = env::var("SP_CO_CFG_STORAGE_PATH").expect("Failed to get sp co cfg storage path from SP_CO_CFG_STORAGE_PATH env variable");    
 
 	let name = "Cfg";
 	let service = "Cfg";

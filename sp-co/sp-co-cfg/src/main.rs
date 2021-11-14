@@ -26,7 +26,7 @@ pub async fn process_event(_config: Value, _mb: MagicBall, _msg: Message<Value>,
 pub async fn process_rpc(_config: Value, _mb: MagicBall, msg: Message<Value>, sc: Sc, _emittable_rx: UnboundedReceiver<Frame>) -> Result<Response<Value>, Box<dyn std::error::Error>> {
     //info!("{:#?}", msg);
 	
-    let _res = match msg.meta.key.action.as_ref() {
+    let res = match msg.meta.key.action.as_ref() {
         "Add" => {
             info!("Received Add, payload {:#?}", msg.payload);
 
@@ -92,8 +92,6 @@ pub async fn process_rpc(_config: Value, _mb: MagicBall, msg: Message<Value>, sc
         }
         _ => return Err(Box::new(Error::IncorrectKeyInRequest))
     };	
-
-	let res = json!({});
 
     resp(res)
 }

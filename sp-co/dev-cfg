@@ -1,0 +1,18 @@
+[
+    {
+        "path": "c:/src/streaming-platform/target/debug/sp-co-hub.exe",
+        "name": "sp-co-hub.exe"
+    },
+    {
+        "path": "c:/src/streaming-platform/target/debug/sp-co-cfg.exe",
+        "name": "sp-co-cfg.exe"
+    },
+    {
+        "path": "c:/src/streaming-platform/target/debug/sp-co-auth.exe",
+        "name": "sp-co-hub.exe"
+    },
+    {
+        "path": "c:/src/streaming-platform/target/debug/sp-co-web.exe",
+        "name": "sp-co-cfg.exe"
+    }
+]

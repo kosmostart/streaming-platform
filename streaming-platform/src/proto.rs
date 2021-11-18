@@ -1,18 +1,19 @@
-use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{Debug, Display};
-use std::option;
 use std::io::Cursor;
 use std::net::SocketAddr;
 use std::hash::Hasher;
 use std::time::Duration;
 use log::*;
-use rand::random;
 use byteorder::ByteOrder;
 use serde_json::{from_slice, Value, to_vec};
 use siphasher::sip::SipHasher24;
 use tokio::net::TcpStream;
-use tokio::sync::{mpsc::{unbounded_channel, UnboundedSender, UnboundedReceiver, error::{SendError, TrySendError}}, oneshot};
+use tokio::sync::{
+    mpsc::{
+        UnboundedSender, UnboundedReceiver, error::SendError
+    }, oneshot
+};
 //use tokio::time::{timeout, error::Elapsed};
 use tokio::time::timeout;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -475,7 +476,7 @@ pub async fn write_to_tcp_stream(tcp_stream: &mut TcpStream, msg_type: u8, key_h
             _ => {
 				bytes_sent = bytes_sent + n as u64;
 
-				let frame_type = match bytes_sent == msg_meta_size {
+				let _frame_type = match bytes_sent == msg_meta_size {
 					true => FrameType::MsgMetaEnd,
 					false => FrameType::MsgMeta
 				};
@@ -499,7 +500,7 @@ pub async fn write_to_tcp_stream(tcp_stream: &mut TcpStream, msg_type: u8, key_h
                     _ => {
 						bytes_sent = bytes_sent + n as u64;
 
-						let frame_type = match bytes_sent == payload_size {
+						let _frame_type = match bytes_sent == payload_size {
 							true => FrameType::PayloadEnd,
 							false => FrameType::Payload
 						};
@@ -530,7 +531,7 @@ pub async fn write_to_tcp_stream(tcp_stream: &mut TcpStream, msg_type: u8, key_h
                         _ => {
 							bytes_sent = bytes_sent + n as u64;
 
-							let frame_type = match bytes_sent == attachment_size {
+							let _frame_type = match bytes_sent == attachment_size {
 								true => FrameType::AttachmentEnd,
 								false => FrameType::Attachment
 							};
@@ -587,11 +588,7 @@ pub struct MsgSpec {
 }
 
 impl MagicBall {
-    pub fn new(addr: String, write_tx: UnboundedSender<WriteMsg>, rpc_inbound_tx: UnboundedSender<RpcMsg>) -> MagicBall {
-        let key_hasher = get_key_hasher();
-        let key_hash_buf = BytesMut::new();
-
-        let hasher = get_stream_id_hasher();
+    pub fn new(addr: String, write_tx: UnboundedSender<WriteMsg>, rpc_inbound_tx: UnboundedSender<RpcMsg>) -> MagicBall {        
         let mut hash_buf = BytesMut::new();
 
         let addr_bytes = addr.as_bytes();
@@ -871,7 +868,7 @@ impl MagicBall {
 		self.frame_type = FrameType::Attachment as u8;
 		self.msg_type = MsgType::RpcResponse(rpc_result).get_u8();
         self.key_hash = get_key_hash(&msg_meta.key);
-        self.stream_id = self.get_stream_id();;
+        self.stream_id = self.get_stream_id();
 
         self.write_full_message(self.msg_type, self.key_hash, self.stream_id, self.source_stream_id, self.source_hash, dto, msg_meta_size, payload_size, attachments_sizes, false).await?;
         
@@ -1166,7 +1163,7 @@ impl MagicBall {
 
         debug!("proxy_rpc write attempt succeeded");
 
-        let (msg_meta, mut payload, mut attachments_data) = timeout(Duration::from_millis(RPC_TIMEOUT_MS_AMOUNT), rpc_rx).await??;
+        let (msg_meta, mut payload, attachments_data) = timeout(Duration::from_millis(RPC_TIMEOUT_MS_AMOUNT), rpc_rx).await??;
 
         let mut buf = vec![];
         let mut msg_meta_buf = to_vec(&msg_meta)?;
@@ -1237,7 +1234,7 @@ impl MagicBall {
 
         debug!("proxy_rpc_with_auth_data write attempt succeeded");
 
-        let (msg_meta, mut payload, mut attachments_data) = timeout(Duration::from_millis(RPC_TIMEOUT_MS_AMOUNT), rpc_rx).await??;
+        let (msg_meta, mut payload, attachments_data) = timeout(Duration::from_millis(RPC_TIMEOUT_MS_AMOUNT), rpc_rx).await??;
 
         let mut buf = vec![];
         let mut msg_meta_buf = to_vec(&msg_meta)?;

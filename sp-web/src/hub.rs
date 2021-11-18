@@ -1,5 +1,5 @@
 use log::*;
-use serde_json::{Value, to_vec};
+use serde_json::to_vec;
 use warp::http::Response;
 use streaming_platform::MagicBall;
 use streaming_platform::sp_dto::{get_msg_meta, MsgType};

@@ -701,7 +701,7 @@ pub fn delete_service(service_dc: &Dc, name: &str, storage_path: &str) -> Result
 #[cfg(test)]
 mod tests {
     use log::*;
-    use serde_json::{json, Value};    
+    use serde_json::json;
     use crate::error::Error;
     
     //#[test]

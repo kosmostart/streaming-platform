@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::fs::{
 	File, remove_file
 };
@@ -6,8 +5,6 @@ use std::io::{
 	self, Error
 };
 use std::path::Path;
-use std::io::BufReader;
-use std::io::prelude::*;
 use log::*;
 use rand::{Rng, thread_rng};
 use time::{

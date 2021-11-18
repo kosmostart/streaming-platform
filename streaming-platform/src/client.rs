@@ -1,8 +1,8 @@
-use std::{collections::HashMap, hash::Hash};
+use std::collections::HashMap;
 use std::future::Future;
 use std::error::Error;
 use log::*;
-use tokio::{io::AsyncWriteExt, runtime::Runtime};
+use tokio::runtime::Runtime;
 use tokio::net::TcpStream;
 use tokio::sync::{mpsc::{self, UnboundedSender, UnboundedReceiver}};
 use serde_json::{json, Value, from_slice, to_vec};
@@ -66,7 +66,7 @@ where
 			let cfg_domain = config["cfg_domain"].as_str().expect("cfg_domain not passed");
             let cfg_token = config["cfg_token"].as_str().expect("cfg_token not passed");
             let (cfg_tx, mut cfg_rx) = mpsc::unbounded_channel();
-			let (rpc_inbound_tx, mut rpc_inbound_rx) = mpsc::unbounded_channel();
+			let (rpc_inbound_tx, rpc_inbound_rx) = mpsc::unbounded_channel();
 			let (write_tx, write_rx) = mpsc::unbounded_channel();
 
 			let rpc_completion_tx = rpc_inbound_tx.clone();
@@ -159,7 +159,7 @@ where
 			let cfg_domain = config["cfg_domain"].as_str().expect("cfg_domain not passed");
             let cfg_token = config["cfg_token"].as_str().expect("cfg_token not passed");
             let (cfg_tx, mut cfg_rx) = mpsc::unbounded_channel();
-			let (rpc_inbound_tx, mut rpc_inbound_rx) = mpsc::unbounded_channel();
+			let (rpc_inbound_tx, rpc_inbound_rx) = mpsc::unbounded_channel();
 			let (write_tx, write_rx) = mpsc::unbounded_channel();			
 
             let rpc_completion_tx = rpc_inbound_tx.clone();
@@ -348,7 +348,7 @@ where
                     }
                 }
                 ClientMsg::Frame(frame) => {
-					let emittable_tx = match frame.frame_type {
+					let _emittable_tx = match frame.frame_type {
 						6 => {							
 							match emittables.remove(&frame.source_stream_id) {
 								Some(emittable_tx) => {
@@ -399,7 +399,7 @@ async fn auth(addr: String, access_key: String, tcp_stream: &mut TcpStream) -> R
         points: vec![Participator::Service(addr.clone())]
     };  
 
-    let (correlation_id, dto, msg_meta_size, payload_size, attachments_size) = rpc_dto_with_sizes(addr.clone(), Key::simple("Auth"), json!({
+    let (_correlation_id, dto, msg_meta_size, payload_size, attachments_size) = rpc_dto_with_sizes(addr.clone(), Key::simple("Auth"), json!({
         "access_key": access_key
     }), route, None, None).expect("Failed to create auth dto");
 
@@ -462,7 +462,7 @@ async fn process_stream_mode(complete_condition: CompleteCondition, mut write_tc
 					ReadFrameResult::Frame(frame) => {
 						debug!("Stream frame read, frame type {}, msg type {}, stream id {}", frame.frame_type, frame.msg_type, frame.stream_id);
 		
-						let frame_type = frame.frame_type;
+						let _frame_type = frame.frame_type;
 		
 						match read_tx.send(ClientMsg::Frame(frame)) {
 							Ok(()) => {}
@@ -754,7 +754,7 @@ pub async fn process_cfg_stream(mut mb: MagicBall, mut rx: UnboundedReceiver<Cli
 
     loop {        
         let client_msg = rx.recv().await.expect("Connection issues acquired");
-        let stream_id = client_msg.get_stream_id();
+        let _stream_id = client_msg.get_stream_id();
         match process_client_msg(&mut mb, &mut stream_layouts, client_msg, &mut result_tx).await {
             Ok(completed) => {
                 if completed {
@@ -800,7 +800,7 @@ pub async fn process_cfg_stream(mut mb: MagicBall, mut rx: UnboundedReceiver<Cli
     }
 }
 
-async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64, CfgStreamLayout>, client_msg: ClientMsg, result_tx: &mut UnboundedSender<Value>) -> Result<bool, ProcessError> {
+async fn process_client_msg(_mb: &mut MagicBall, stream_layouts: &mut HashMap<u64, CfgStreamLayout>, client_msg: ClientMsg, result_tx: &mut UnboundedSender<Value>) -> Result<bool, ProcessError> {
     match client_msg {
 		ClientMsg::Frame(frame) => {
 			match frame.get_frame_type() {
@@ -921,12 +921,12 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
 						FrameType::End => {
                             info!("Stream end frame");	
 							match stream_layouts.remove(&frame.stream_id) {
-								Some(mut stream_layout) => {
+								Some(stream_layout) => {
                                     match stream_layout.msg_meta {
                                         Some(msg_meta) => {
                                             match msg_meta.key.action.as_ref() {
                                                 "Get" => {
-                                                    let mut payload = stream_layout.payload.ok_or(ProcessError::None)?;
+                                                    let payload = stream_layout.payload.ok_or(ProcessError::None)?;
                                                     result_tx.send(payload).expect("Failed to send config");
 
                                                     return Ok(true);    

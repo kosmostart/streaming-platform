@@ -2,7 +2,9 @@ use log::*;
 use serde_json::{json, Value, to_vec};
 use warp::http::{Response, header::SET_COOKIE};
 use streaming_platform::MagicBall;
-use streaming_platform::sp_dto::{Key, MsgType, get_msg_meta_and_payload, rpc_response_dto, RpcResult};
+use streaming_platform::sp_dto::{
+    MsgType, get_msg_meta_and_payload, rpc_response_dto, RpcResult
+};
 use crate::{response, response_with_cookie};
 
 enum AuthResult {

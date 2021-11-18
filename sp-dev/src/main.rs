@@ -6,7 +6,7 @@ use std::io::{
 use log::*;
 use serde_derive::Deserialize;
 use serde_json::{
-	Value, from_str
+	from_str
 };
 use sysinfo::{
 	SystemExt, ProcessExt

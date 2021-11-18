@@ -1,8 +1,7 @@
 use std::collections::HashMap;
-use std::fs;
 use log::*;
 use serde_json::{
-	json, Value, from_slice, to_vec, to_string, from_str, from_value
+	json, Value, from_slice, to_string, from_value
 };
 use tokio::{
 	io::AsyncWriteExt, fs::File, sync::mpsc::{
@@ -13,13 +12,11 @@ use sysinfo::{
 	ProcessExt, SystemExt
 };
 use streaming_platform::{
-	ClientMsg, Frame, FrameType, MAX_FRAME_PAYLOAD_SIZE, MagicBall, ProcessError, RestreamMsg, StreamLayout, client, 
+	ClientMsg, FrameType, MagicBall, ProcessError, RestreamMsg, StreamLayout, client, 
 	sp_dto::{
-		MsgMeta, MsgType, rpc_response_dto2_sizes, Participator, RpcResult
-	}, 
-	tokio::{
-		self, io::AsyncReadExt
-	}
+		MsgMeta//, RpcResult
+	},
+	tokio
 };
 use sp_build_core::{
 	unpack, RunConfig
@@ -29,9 +26,9 @@ struct FileStreamLayout {
     layout: StreamLayout,
 	msg_meta: Option<MsgMeta>,
     payload: Option<Value>,
-    download_payload: Option<Value>,    
+    //download_payload: Option<Value>,
     file: Option<File>,
-    rpc_result: RpcResult
+    //rpc_result: RpcResult
 }
 
 fn main() {
@@ -49,12 +46,12 @@ fn main() {
 pub async fn startup(_initial_config: Value, _target_config: Value, mut _mb: MagicBall, _startup_data: Option<Value>, _: ()) {
 }
 
-pub async fn process_stream(config: Value, mut mb: MagicBall, mut rx: UnboundedReceiver<ClientMsg>, _: Option<UnboundedSender<RestreamMsg>>, _: Option<UnboundedReceiver<RestreamMsg>>, _: ()) {
+pub async fn process_stream(_config: Value, mut mb: MagicBall, mut rx: UnboundedReceiver<ClientMsg>, _: Option<UnboundedSender<RestreamMsg>>, _: Option<UnboundedReceiver<RestreamMsg>>, _: ()) {
     let mut stream_layouts = HashMap::new();
 
     loop {        
         let client_msg = rx.recv().await.expect("connection issues acquired");
-        let stream_id = client_msg.get_stream_id();
+        let _stream_id = client_msg.get_stream_id();
         match process_client_msg(&mut mb, &mut stream_layouts, client_msg).await {
             Ok(()) => {}
             Err(e) => {
@@ -128,9 +125,9 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
 										},
 										msg_meta:None,
 										payload: None,
-										download_payload: None,
+										//download_payload: None,
 										file: None,
-										rpc_result: RpcResult::Ok
+										//rpc_result: RpcResult::Ok
 									});
 								}
 							}
@@ -163,9 +160,9 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
 										},
 										msg_meta: None,
 										payload: None,
-										download_payload: None,
+										//download_payload: None,
 										file: None,
-										rpc_result: RpcResult::Ok
+										//rpc_result: RpcResult::Ok
 									};
 
                                     match frame.payload {
@@ -250,7 +247,7 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
 						FrameType::End => {
                             info!("Stream end frame");	
 							match stream_layouts.remove(&frame.stream_id) {
-								Some(mut stream_layout) => {
+								Some(stream_layout) => {
                                     match stream_layout.msg_meta {
                                         Some(msg_meta) => {
                                             match msg_meta.key.action.as_ref() {
@@ -260,7 +257,7 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
 
                                                     info!("Deploy unit name: {}", deploy_unit_name);
 
-                                                    let mut unpack_result_msg;
+                                                    let unpack_result_msg;
                                                     let mut run_config_msg = None;
                                                     let mut run_result_msg = vec![];
 
@@ -286,7 +283,7 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
 
                                                                         info!("Starting {}, file path is {}", run_unit.name, file_path);
 
-                                                                        let mut run_result;
+                                                                        let run_result;
 
                                                                         let res = match run_unit.config {
                                                                             Some(config) => {
@@ -362,6 +359,7 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
     Ok(())
 }
 
+/*
 async fn send_file(mut mb: MagicBall, msg_meta: MsgMeta, path: std::path::PathBuf, file_name: String) -> Result<(), Error> {
     let mut file = File::open(&path).await?;
     let size = file.metadata().await?.len();
@@ -394,6 +392,7 @@ async fn send_file(mut mb: MagicBall, msg_meta: MsgMeta, path: std::path::PathBu
 
     Ok(())
 }
+*/
 
 fn fix_running(name: &str) {
     info!("Fixing running processes for {}", name);

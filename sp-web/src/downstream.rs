@@ -1,14 +1,13 @@
 use log::*;
 use warp::http::Response;
 use warp::hyper;
-use streaming_platform::MagicBall;
-use streaming_platform::{sp_dto::{get_msg_meta, MsgType, uuid::Uuid}, RestreamMsg};
+use streaming_platform::{sp_dto::uuid::Uuid, RestreamMsg};
 use streaming_platform::tokio::sync::mpsc::UnboundedSender;
-use crate::{check_auth_token, response, response_for_body, response_for_content, ContentAccessType};
+use crate::{check_auth_token, response_for_body, response_for_content, ContentAccessType};
 
 pub async fn go(aca_origin: Option<String>, auth_token_key: String, cookie_header: Option<String>, restream_tx: UnboundedSender<RestreamMsg>) -> Result<Response<hyper::body::Body>, warp::Rejection> {
     match check_auth_token(auth_token_key.as_bytes(), cookie_header) {
-        Some(auth_data) => {
+        Some(_auth_data) => {
             let (body_tx, body) = hyper::Body::channel();
             
             match restream_tx.send(RestreamMsg::AddRestream(Uuid::new_v4(), body_tx, None)) {

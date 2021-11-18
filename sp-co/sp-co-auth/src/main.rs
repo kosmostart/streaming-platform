@@ -5,7 +5,7 @@ use serde_json::{
 use sp_auth::create_auth_token;
 use streaming_platform::{
 	client, MagicBall, sp_dto::{
-		MsgMeta, Message, Response, resp
+		Message, Response, resp
 	},
 	tokio::sync::mpsc::UnboundedReceiver, Frame
 };
@@ -24,13 +24,13 @@ impl std::fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
-pub async fn process_event(config: Value, mut mb: MagicBall, msg: Message<Value>, _: (), emittable_rx: UnboundedReceiver<Frame>) -> Result<(), Box<dyn std::error::Error>>  {
+pub async fn process_event(_config: Value, _mb: MagicBall, _msg: Message<Value>, _: (), _emittable_rx: UnboundedReceiver<Frame>) -> Result<(), Box<dyn std::error::Error>>  {
     //info!("{:#?}", msg);
     
     Ok(())
 }
 
-pub async fn process_rpc(config: Value, mut mb: MagicBall, msg: Message<Value>, _: (), emittable_rx: UnboundedReceiver<Frame>) -> Result<Response<Value>, Box<dyn std::error::Error>> {
+pub async fn process_rpc(_config: Value, _mb: MagicBall, msg: Message<Value>, _: (), _emittable_rx: UnboundedReceiver<Frame>) -> Result<Response<Value>, Box<dyn std::error::Error>> {
     //info!("{:#?}", msg);
 
     let res = match msg.meta.key.action.as_ref() {
@@ -56,7 +56,7 @@ pub async fn process_rpc(config: Value, mut mb: MagicBall, msg: Message<Value>, 
     resp(res)
 }
 
-pub async fn startup(initial_config: Value, target_config: Value, mut mb: MagicBall, startup_data: Option<Value>, _: ()) {
+pub async fn startup(_initial_config: Value, _target_config: Value, _mb: MagicBall, _startup_data: Option<Value>, _: ()) {
 }
 
 pub fn main() {

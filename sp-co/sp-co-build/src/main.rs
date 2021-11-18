@@ -1,26 +1,23 @@
-use std::{
-	collections::HashMap, process::ExitStatus
-};
 use std::io::Read;
 use serde_json::{
-	json, Value, from_value, to_vec
+	json, Value, from_value
 };
 use log::*;
 use streaming_platform::{
 	MAX_FRAME_PAYLOAD_SIZE, tokio::{self, fs::File, io::AsyncReadExt, sync::mpsc::UnboundedReceiver}, 
-	client, MagicBall, sp_dto::{Key, MsgMeta, Message, Response, resp}, Frame
+	client, MagicBall, sp_dto::{Key, Message, Response, resp}, Frame
 };
 use sp_build_core::{
-	pack, DeployConfig, DeployUnitConfig, TargetFile, RunConfig, RunUnit
+	pack, DeployConfig, RunConfig
 };
 
-pub async fn process_event(config: Value, mut mb: MagicBall, msg: Message<Value>, _: (), emittable_rx: UnboundedReceiver<Frame>) -> Result<(), Box<dyn std::error::Error>>  {
+pub async fn process_event(_config: Value, _mb: MagicBall, _msg: Message<Value>, _: (), _emittable_rx: UnboundedReceiver<Frame>) -> Result<(), Box<dyn std::error::Error>>  {
     //info!("{:#?}", msg);
     
     Ok(())
 }
 
-pub async fn process_rpc(config: Value, mut mb: MagicBall, msg: Message<Value>, _: (), emittable_rx: UnboundedReceiver<Frame>) -> Result<Response<Value>, Box<dyn std::error::Error>> {   
+pub async fn process_rpc(_config: Value, mut mb: MagicBall, msg: Message<Value>, _: (), _emittable_rx: UnboundedReceiver<Frame>) -> Result<Response<Value>, Box<dyn std::error::Error>> {   
     info!("{:#?}", msg);
 
     let res = match msg.meta.key.action.as_ref() {
@@ -38,7 +35,7 @@ pub async fn process_rpc(config: Value, mut mb: MagicBall, msg: Message<Value>, 
                 let mut build_success = false;
 
                 for build_config in deploy_config.build_configs {
-                    let mut pull_result_msg;
+                    let pull_result_msg;
 
                     match build_config.pull_config {
                         Some(pull_config) => {
@@ -104,7 +101,7 @@ pub async fn process_rpc(config: Value, mut mb: MagicBall, msg: Message<Value>, 
 
                     mb.send_frame(&payload, payload.len()).unwrap();
 
-                    let mut build_result_msg;
+                    let build_result_msg;
 
                     match ecode.success() {
                         true => {
@@ -128,7 +125,7 @@ pub async fn process_rpc(config: Value, mut mb: MagicBall, msg: Message<Value>, 
 
                 match build_success {
                     true => {
-                        let mut pack_result_msg;
+                        let pack_result_msg;
 
                         match pack(deploy_config.deploy_unit_config) {
                             Ok(deploy_unit_path) => {
@@ -179,7 +176,7 @@ pub async fn process_rpc(config: Value, mut mb: MagicBall, msg: Message<Value>, 
     resp(res)
 }
 
-pub async fn startup(initial_config: Value, target_config: Value, mut mb: MagicBall, startup_data: Option<Value>, _: ()) {
+pub async fn startup(_initial_config: Value, _target_config: Value, _mb: MagicBall, _startup_data: Option<Value>, _: ()) {
 }
 
 async fn deploy_unit(mut mb: MagicBall, path: &str, deploy_unit_name: &str, run_config: Option<RunConfig>) -> Result<Message<Value>, Error> {

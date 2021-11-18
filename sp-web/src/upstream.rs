@@ -1,10 +1,11 @@
 use log::*;
-use serde_json::{json, Value};
 use warp::Buf;
 use warp::{http::Response, hyper};
 use streaming_platform::{FrameType, MAX_FRAME_PAYLOAD_SIZE, MagicBall, MsgSpec};
 use streaming_platform::futures::stream::{Stream, StreamExt};
-use streaming_platform::sp_dto::{Key, MsgMeta, MsgType, get_msg_len, get_msg_meta_with_len, raw_dto};
+use streaming_platform::sp_dto::{
+	MsgMeta, MsgType, get_msg_len, get_msg_meta_with_len, raw_dto
+};
 use crate::{check_auth_token, response_for_body};
 
 #[derive(Debug, Clone)]
@@ -174,7 +175,7 @@ fn send_data(data: &mut impl Buf, mb: &mut MagicBall, mut step: Step) -> Step {
 
 pub async fn go(aca_origin: Option<String>, auth_token_key: String, cookie_header: Option<String>, stream: impl Stream<Item = Result<impl Buf, warp::Error>>, mut mb: MagicBall) -> Result<Response<hyper::body::Body>, warp::Rejection> {
 	match check_auth_token(auth_token_key.as_bytes(), cookie_header) {
-        Some(auth_data) => {
+        Some(_auth_data) => {
 			let mut state = State {
 				step: Step::Len,
 				len: 0,

@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::hash::Hasher;
 use log::*;
 use siphasher::sip::SipHasher24;
 use serde_derive::Deserialize;
@@ -8,7 +7,6 @@ use serde_json::from_slice;
 use tokio::runtime::Runtime;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc::{self, UnboundedSender};
-use sp_dto::bytes::{BytesMut, BufMut};
 use sp_dto::{Key, MsgMeta, MsgType, Subscribes};
 use crate::proto::*;
 
@@ -23,9 +21,8 @@ pub struct Dir {
     pub path: String
 }
 
-fn to_hashed_subscribes(key_hasher: &mut SipHasher24, subscribes: HashMap<Key, Vec<String>>) -> HashMap<u64, Vec<u64>> {
-    let mut res = HashMap::new();
-    let buf = BytesMut::new();
+fn to_hashed_subscribes(_key_hasher: &mut SipHasher24, subscribes: HashMap<Key, Vec<String>>) -> HashMap<u64, Vec<u64>> {
+    let mut res = HashMap::new();    
 
     for (key, addrs) in subscribes {
         res.insert(get_key_hash(&key), addrs.iter().map(|a| get_addr_hash(a)).collect());
@@ -64,7 +61,7 @@ pub async fn start_future(config: ServerConfig, subscribes: Subscribes) -> Resul
                         Some(client) => {
                             match client.tx.send(WriteMsg::Frame(frame)) {
                                 Ok(()) => {}                             
-                                Err(msg) => panic!("ServerMsg::Send processing failed - send error, client addr hash {}", addr_hash)
+                                Err(_msg) => panic!("ServerMsg::Send processing failed - send error, client addr hash {}", addr_hash)
                             }
                         }
                         None => error!("No client with addr hash {} for sending frame, stream id {}, key hash {}", addr_hash, frame.stream_id, frame.key_hash)
@@ -230,7 +227,7 @@ async fn process_read_tcp_stream(addr: String, mut tcp_stream: TcpStream, client
     write_loop(client_rx, &mut tcp_stream).await
 }
 
-async fn process_write_tcp_stream(tcp_stream: &mut TcpStream, state: &mut State, addr: String, event_subscribes: HashMap<u64, Vec<u64>>, rpc_subscribes: HashMap<u64, Vec<u64>>, _client_net_addr: SocketAddr, server_tx: UnboundedSender<ServerMsg>) -> Result<(), ProcessError> {
+async fn process_write_tcp_stream(tcp_stream: &mut TcpStream, state: &mut State, _addr: String, event_subscribes: HashMap<u64, Vec<u64>>, rpc_subscribes: HashMap<u64, Vec<u64>>, _client_net_addr: SocketAddr, server_tx: UnboundedSender<ServerMsg>) -> Result<(), ProcessError> {
 	loop {
 		match state.read_frame() {
 			ReadFrameResult::NotEnoughBytesForFrame => {

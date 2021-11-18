@@ -1,12 +1,11 @@
-use std::fs::File;
-use std::io;
-use std::path::{Path, PathBuf};
-use git2::{Repository, RepositoryInitOptions};
+use git2::{
+    Repository, RepositoryInitOptions
+};
 
 pub fn start() {
-    let path = "d:/src/test";
+    let path = "c:/src/test";
 
-    let mut opts = RepositoryInitOptions::new();
+    let opts = RepositoryInitOptions::new();
     //opts.initial_head("main");
     let repo = Repository::init_opts(&path, &opts).unwrap();
 

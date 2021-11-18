@@ -2,14 +2,16 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::env::current_dir;
 use log::*;
-use serde_json::{Value, from_slice, json, to_vec};
-use warp::{Filter, http::{Response, header::SET_COOKIE}, hyper::{self, body::Bytes}, Buf};
+use serde_json::{Value, from_slice, json};
+use warp::{Filter, http::{Response, header::SET_COOKIE}, hyper::{self, body::Bytes}};
 use streaming_platform::{MagicBall, tokio::{io::AsyncReadExt}};
 use streaming_platform::sp_dto::{uuid::Uuid, MsgMeta};
 use streaming_platform::{
 	client::stream_mode, ClientMsg, FrameType, StreamCompletion, 
 	tokio::{self, sync::{mpsc::{self, UnboundedReceiver, UnboundedSender}, oneshot}}, 
-	sp_dto::{Key, Message, Participator, resp, rpc_dto_with_sizes, Route, RouteSpec}, 
+	sp_dto::{
+        Message, resp
+    }, 
 	RestreamMsg, StreamLayout, ProcessError, Frame
 };
 use sp_auth::verify_auth_token;
@@ -20,20 +22,20 @@ mod hub;
 mod upstream;
 mod downstream;
 
-pub async fn process_event(_config: Value, mut _mb: MagicBall, _msg: Message<Value>, _: (), emittable_rx: UnboundedReceiver<Frame>) -> Result<(), Box<dyn std::error::Error>>  {
+pub async fn process_event(_config: Value, mut _mb: MagicBall, _msg: Message<Value>, _: (), _emittable_rx: UnboundedReceiver<Frame>) -> Result<(), Box<dyn std::error::Error>>  {
     Ok(())
 }
 
-pub async fn process_rpc(_config: Value, mut _mb: MagicBall, _msg: Message<Value>, _: (), emittable_rx: UnboundedReceiver<Frame>) -> Result<streaming_platform::sp_dto::Response<Value>, Box<dyn std::error::Error>> {
+pub async fn process_rpc(_config: Value, mut _mb: MagicBall, _msg: Message<Value>, _: (), _emittable_rx: UnboundedReceiver<Frame>) -> Result<streaming_platform::sp_dto::Response<Value>, Box<dyn std::error::Error>> {
     resp(json!({}))    
 }
 
-pub async fn startup2(initial_config: Value, target_config: Value, mb: MagicBall, startup_data: Option<Value>, _: ()) {	
+pub async fn startup2(_initial_config: Value, _target_config: Value, _mb: MagicBall, _startup_data: Option<Value>, _: ()) {	
 }
 
 pub async fn startup(initial_config: Value, target_config: Value, mb: MagicBall, startup_data: Option<Value>, _: ()) {
-	let (mut restream_tx, mut restream_rx) = mpsc::unbounded_channel();
-    let mut restream_tx2 = restream_tx.clone();
+	let (restream_tx, restream_rx) = mpsc::unbounded_channel();
+    let restream_tx2 = restream_tx.clone();
     
     let web_stream_config = json!({		
         "cfg_host": initial_config["cfg_host"],
@@ -138,7 +140,7 @@ pub async fn startup(initial_config: Value, target_config: Value, mb: MagicBall,
                                     .body(index),
                                 false =>
                                     match check_auth_token(auth_token_key.as_bytes(), cookie_header) {
-                                        Some(auth_data) => 
+                                        Some(_auth_data) => 
                                             Response::builder()
                                                 .header("content-type", "text/html")
                                                 .body(index),
@@ -178,7 +180,7 @@ pub async fn startup(initial_config: Value, target_config: Value, mb: MagicBall,
                                 true => process_static_file_request(deploy_path, app_path, tail.as_str().to_owned()),
                                 false => 
                                     match check_auth_token(auth_token_key.as_bytes(), cookie_header) {
-                                        Some(auth_data) => process_static_file_request(deploy_path, app_path, tail.as_str().to_owned()),
+                                        Some(_auth_data) => process_static_file_request(deploy_path, app_path, tail.as_str().to_owned()),
                                         None => {
                                             warn!("Unauthorized file access attempt, app name: {}, tail: {}", app_name, tail.as_str());
                 
@@ -232,7 +234,7 @@ pub async fn startup(initial_config: Value, target_config: Value, mb: MagicBall,
                     let auth_token_key = auth_token_key4.clone();
                     let aca_origin = aca_origin4.clone();
 					
-					let mut restream_tx = restream_tx.clone();
+					let restream_tx = restream_tx.clone();
 
                     crate::downstream::go(aca_origin, auth_token_key, cookie_header, restream_tx)
                 }
@@ -330,7 +332,7 @@ struct DownstreamStreamLayout {
     txs: HashMap<Uuid, (warp::hyper::body::Sender, Option<oneshot::Sender<StreamCompletion>>)>
 }
 
-async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64, DownstreamStreamLayout>, client_msg: ClientMsg, restream_tx: &mut UnboundedSender<RestreamMsg>) -> Result<(), ProcessError> {
+async fn process_client_msg(_mb: &mut MagicBall, stream_layouts: &mut HashMap<u64, DownstreamStreamLayout>, client_msg: ClientMsg, restream_tx: &mut UnboundedSender<RestreamMsg>) -> Result<(), ProcessError> {
 	match client_msg {
 		ClientMsg::Frame(frame) => {
 			match frame.get_frame_type() {
@@ -396,7 +398,7 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
                                         None => {}
                                     }
 
-									let msg_meta: MsgMeta = from_slice(&stream_layout.layout.msg_meta)?;
+									let _msg_meta: MsgMeta = from_slice(&stream_layout.layout.msg_meta)?;
 
 									stream_layouts.insert(frame.stream_id, stream_layout);
 								}
@@ -421,7 +423,7 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
                             }
                             let txs = get_restreams_rx.await.expect("failed to get restream");
 
-							let mut stream_layout = stream_layouts.get_mut(&frame.stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
+							let stream_layout = stream_layouts.get_mut(&frame.stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
 
                             for (request_id, tx, completion_tx) in txs {
                                 stream_layout.txs.insert(request_id, (tx, completion_tx));
@@ -457,7 +459,7 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
 						}
 						FrameType::End => {
 							match stream_layouts.remove(&frame.stream_id) {
-								Some(mut stream_layout) => {
+								Some(stream_layout) => {
                                     for (_, (_, completion_tx)) in stream_layout.txs {
                                         match completion_tx {
                                             Some(completion_tx) => {
@@ -493,7 +495,7 @@ async fn process_client_msg(mb: &mut MagicBall, stream_layouts: &mut HashMap<u64
     Ok(())
 }
 
-pub async fn process_stream(config: Value, mut mb: MagicBall, mut rx: UnboundedReceiver<ClientMsg>, mut restream_tx: Option<UnboundedSender<RestreamMsg>>, mut restream_rx: Option<UnboundedReceiver<RestreamMsg>>, _: ()) {    
+pub async fn process_stream(_config: Value, mb: MagicBall, mut rx: UnboundedReceiver<ClientMsg>, restream_tx: Option<UnboundedSender<RestreamMsg>>, restream_rx: Option<UnboundedReceiver<RestreamMsg>>, _: ()) {    
     let mut restream_tx = restream_tx.expect("Restream tx is empty");
     let mut restream_rx = restream_rx.expect("Restream rx is empty");
     let mut mb2 = mb.clone();
@@ -522,7 +524,7 @@ pub async fn process_stream(config: Value, mut mb: MagicBall, mut rx: UnboundedR
 
     loop {        
         let client_msg = rx.recv().await.expect("connection issues acquired");
-        let stream_id = client_msg.get_stream_id();
+        let _stream_id = client_msg.get_stream_id();
 
         match process_client_msg(&mut mb2, &mut stream_layouts, client_msg, &mut restream_tx).await {
             Ok(()) => {}

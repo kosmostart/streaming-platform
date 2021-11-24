@@ -119,12 +119,13 @@ pub fn main() {
 			Some((service_id, _)) => service_id,
 			None => {
 				let service_id = create_service(&service_dc, name, service, domain).expect("Failed to create service");
-				let sc = Sc::new(user_id, region_id, scope_id, service_id, &storage_path, None, name, service, domain).expect("Failed to create sc");
+				let location = Location::Tokens { region_id, scope_id, service_id };
+		        let token_dc = Dc::new(location, user_id, &storage_path).expect("Failed to create token dc");
 
-				sc.token_dc.create(json!({
+				token_dc.create(json!({
 					"name": "Cfg"
-				})).expect("Failed to create token");
-
+				})).expect("Failed to create token");				
+				
 				service_id
 			}
 		}

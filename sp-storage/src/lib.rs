@@ -74,8 +74,7 @@ pub struct Sc {
     scope_id: u64,
     service_id: u64,
     user_id: u64,
-    tokens: HashMap<String, Dc>,
-    pub token_dc: Dc	
+    tokens: HashMap<String, Dc>    
 }
 
 impl Index<&str> for Sc {
@@ -88,7 +87,7 @@ impl Index<&str> for Sc {
 
 impl Sc {
     pub fn new(user_id: u64, region_id: u64, scope_id: u64, service_id: u64, storage_path: &str, files_path: Option<String>, name: &str, service: &str, domain: &str) -> Result<Sc, Error> {
-        let location = Location::Tokens { region_id, scope_id, service_id };        
+        let location = Location::Tokens { region_id, scope_id, service_id };
         let token_dc = Dc::new(location, user_id, storage_path)?;
 
         let mut tokens = HashMap::new();
@@ -113,24 +112,26 @@ impl Sc {
         }
 
         Ok(Sc {
-	    name: name.to_owned(),
-	    service: service.to_owned(),
-	    domain: domain.to_owned(),
+            name: name.to_owned(),
+            service: service.to_owned(),
+            domain: domain.to_owned(),
             storage_path: storage_path.to_owned(),
             files_path: files_path.map(|a| a + "/scope-" + &scope_id.to_string()),
             region_id,
             scope_id,
             service_id,
             user_id,
-            tokens,
-            token_dc
+            tokens
         })
     }
 
     pub fn load_tokens(&mut self) -> Result<(), Error> {
         let mut tokens = HashMap::new();
 
-        for pair in self.token_dc.tree.iter() {
+        let location = Location::Tokens { region_id: self.region_id, scope_id: self.scope_id, service_id: self.service_id };
+        let token_dc = Dc::new(location, self.user_id, &self.storage_path)?;
+
+        for pair in token_dc.tree.iter() {
             let (token_id, bytes) = pair?;
             let token_id = u64::from_be_bytes(dog(&token_id)?);
             let payload = deserialize(&bytes)?;

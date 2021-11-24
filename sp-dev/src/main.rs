@@ -67,7 +67,7 @@ fn start(path: &str, name: &str, running: &Vec<(usize, String)>) -> Child {
 		.spawn()
 		.expect("Failed to start build command");
 
-	std::thread::sleep(Duration::new(10, 0));
+	std::thread::sleep(Duration::new(5, 0));
 
 	res
 }

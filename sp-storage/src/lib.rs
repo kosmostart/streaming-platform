@@ -74,7 +74,8 @@ pub struct Sc {
     scope_id: u64,
     service_id: u64,
     user_id: u64,
-    tokens: HashMap<String, Dc>    
+    tokens: HashMap<String, Dc>,
+    pub token_dc: Dc
 }
 
 impl Index<&str> for Sc {
@@ -87,7 +88,7 @@ impl Index<&str> for Sc {
 
 impl Sc {
     pub fn new(user_id: u64, region_id: u64, scope_id: u64, service_id: u64, storage_path: &str, files_path: Option<String>, name: &str, service: &str, domain: &str) -> Result<Sc, Error> {
-        let location = Location::Tokens { region_id, scope_id, service_id };
+        let location = Location::Tokens { region_id, scope_id, service_id };        
         let token_dc = Dc::new(location, user_id, storage_path)?;
 
         let mut tokens = HashMap::new();
@@ -121,7 +122,8 @@ impl Sc {
             scope_id,
             service_id,
             user_id,
-            tokens
+            tokens,
+            token_dc
         })
     }
 

@@ -52,8 +52,8 @@ pub struct Dc {
     storage_path: String,
     location: Location,
     user_id: u64,
-    id: u64,
-    payload: Value,
+    pub id: u64,
+    pub payload: Value,
     db: Db,
     tree: Tree
 }

@@ -1,4 +1,6 @@
-use std::env;
+use std::{
+	collections::HashMap, env
+};
 use log::*;
 use time::OffsetDateTime;
 use serde_json::{
@@ -113,25 +115,39 @@ pub fn main() {
 	let domain = "Cfg";
 
 	let service_id = {
-        let service_dc = Dc::new(Location::Services { region_id, scope_id }, user_id, &storage_path).expect("Failed to create service dc");
+        let service_dc = Dc::new(Location::Services { region_id, scope_id }, user_id, &storage_path, None, None).expect("Failed to create service dc");
 
         match service_dc.find(|a| a["name"].as_str() == Some(name)).expect("Find error") {
 			Some((service_id, _)) => service_id,
 			None => {
 				let service_id = create_service(&service_dc, name, service, domain).expect("Failed to create service");
 				let location = Location::Tokens { region_id, scope_id, service_id };
-		        let token_dc = Dc::new(location, user_id, &storage_path).expect("Failed to create token dc");
+		        let token_dc = Dc::new(location, user_id, &storage_path, None, None).expect("Failed to create token dc");
 
 				token_dc.create(json!({
 					"name": "Cfg"
-				})).expect("Failed to create token");				
+				})).expect("Failed to create token");
+				
 				
 				service_id
 			}
 		}
     };
 
-    let sc = Sc::new(user_id, region_id, scope_id, service_id, &storage_path, None, name, service, domain).expect("Failed to create sc");
+	let mut tokens = HashMap::new();
+
+	let location = Location::Tokens { region_id, scope_id, service_id };
+	let token_dc = Dc::new(location, user_id, &storage_path, None, None).expect("Failed to create token dc");
+
+	for (token_id, payload) in token_dc.get_all().expect("Failed to get all tokens") {
+		let location = Location::Token { region_id, scope_id, service_id, token_id };
+		let name = payload["name"].as_str().expect("Empty token name").to_owned();
+		let token_dc = Dc::new(location, user_id, &storage_path, Some(token_id), Some(payload)).expect("Failed to creat dc for token");
+
+		tokens.insert(name, token_dc);
+	}
+
+    let sc = Sc::new(user_id, region_id, scope_id, service_id, None, name, service, domain, tokens).expect("Failed to create sc");
 
 	if sc["Cfg"].find(|a| a["domain"].as_str() == Some("Cfg") && a["key"].as_str() == Some("Auth")).unwrap().is_none() {
 		let _ = sc["Cfg"].create(json!({

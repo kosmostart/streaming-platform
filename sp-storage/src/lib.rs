@@ -52,13 +52,15 @@ pub struct Dc {
     storage_path: String,
     location: Location,
     user_id: u64,
+    id: u64,
+    payload: Value,
     db: Db,
     tree: Tree
 }
 
 pub struct TxDc<'a> {    
     location: Location,
-    user_id: u64,
+    user_id: u64,    
     db: &'a Db,
     tree: &'a TransactionalTree
 }
@@ -67,99 +69,42 @@ pub struct TxDc<'a> {
 pub struct Sc {
     pub name: String,
     pub service: String,
-    pub domain: String,
-    storage_path: String,
+    pub domain: String,    
     pub files_path: Option<String>,
-    region_id: u64,
-    scope_id: u64,
-    service_id: u64,
-    user_id: u64,
-    tokens: HashMap<String, Dc>,
-    pub token_dc: Dc
+    pub region_id: u64,
+    pub scope_id: u64,
+    pub service_id: u64,
+    pub user_id: u64,
+    pub tokens: HashMap<String, Dc>
 }
 
 impl Index<&str> for Sc {
     type Output = Dc;
 
     fn index(&self, key: &str) -> &Dc {
-        &self.tokens.get(key).expect("Token not found")
+        self.tokens.get(key).expect("Token not found")
     }
 }
 
 impl Sc {
-    pub fn new(user_id: u64, region_id: u64, scope_id: u64, service_id: u64, storage_path: &str, files_path: Option<String>, name: &str, service: &str, domain: &str) -> Result<Sc, Error> {
-        let location = Location::Tokens { region_id, scope_id, service_id };        
-        let token_dc = Dc::new(location, user_id, storage_path)?;
-
-        let mut tokens = HashMap::new();
-
-        for pair in token_dc.tree.iter() {
-            let (token_id, bytes) = pair?;
-            let token_id = u64::from_be_bytes(dog(&token_id)?);
-            let payload = deserialize(&bytes)?;
-            let payload = convert_value2(payload);
-
-            match payload["name"].as_str() {
-                Some(name) => {                    
-                    let token_location = Location::Token { region_id, scope_id, service_id, token_id };
-                    tokens.insert(name.to_owned(), Dc::new(token_location, user_id, storage_path)?);
-
-                    info!("Service id {}, added token {}", service_id, name);
-                }
-                None => {                    
-                    warn!("Token not added because of empty name, service id {}, id {} ", service_id, token_id);
-                }
-            }
-        }
+    pub fn new(user_id: u64, region_id: u64, scope_id: u64, service_id: u64, files_path: Option<String>, name: &str, service: &str, domain: &str, tokens: HashMap<String, Dc>) -> Result<Sc, Error> {
 
         Ok(Sc {
             name: name.to_owned(),
             service: service.to_owned(),
-            domain: domain.to_owned(),
-            storage_path: storage_path.to_owned(),
+            domain: domain.to_owned(),            
             files_path: files_path.map(|a| a + "/scope-" + &scope_id.to_string()),
             region_id,
             scope_id,
             service_id,
             user_id,
-            tokens,
-            token_dc
+            tokens
         })
-    }
-
-    pub fn load_tokens(&mut self) -> Result<(), Error> {
-        let mut tokens = HashMap::new();
-
-        let location = Location::Tokens { region_id: self.region_id, scope_id: self.scope_id, service_id: self.service_id };
-        let token_dc = Dc::new(location, self.user_id, &self.storage_path)?;
-
-        for pair in token_dc.tree.iter() {
-            let (token_id, bytes) = pair?;
-            let token_id = u64::from_be_bytes(dog(&token_id)?);
-            let payload = deserialize(&bytes)?;
-            let payload = convert_value2(payload);
-
-            match payload["name"].as_str() {
-                Some(name) => {                    
-                    let token_location = Location::Token { region_id: self.region_id, scope_id: self.scope_id, service_id: self.service_id, token_id };
-                    tokens.insert(name.to_owned(), Dc::new(token_location, self.user_id, &self.storage_path)?);
-
-                    info!("Added token {}", name);
-                }
-                None => {                    
-                    warn!("Token not added because of empty name, id {} ", token_id);
-                }
-            }
-        }
-
-        self.tokens = tokens;
-
-        Ok(())
-    }
+    }    
 }
 
 impl Dc {
-    pub fn new(location: Location, user_id: u64, storage_path: &str) -> Result<Dc, Error> {
+    pub fn new(location: Location, user_id: u64, storage_path: &str, id: Option<u64>, payload: Option<Value>) -> Result<Dc, Error> {
 
         let storage_path = storage_path.to_owned();
 
@@ -193,6 +138,8 @@ impl Dc {
             storage_path,
             location,
             user_id,
+            id: id.unwrap_or(0),
+            payload: payload.unwrap_or(json!({})),
             db,
             tree
         })
@@ -202,7 +149,7 @@ impl Dc {
         let res = self.tree.transaction(|tx_tree| {
             let tx_dc = TxDc {
                 location: self.location.clone(),
-                user_id: self.user_id,
+                user_id: self.user_id,                
                 db: &self.db,
                 tree: tx_tree
             };
@@ -626,7 +573,7 @@ impl TxDc<'_> {
 pub fn create_scope(storage_path: &str) -> Result<(u64, u64), Error> {
     let user_id = 1;
     
-    let region_dc = Dc::new(Location::Regions, user_id, storage_path)?;
+    let region_dc = Dc::new(Location::Regions, user_id, storage_path, None, None)?;
 
     let (region_id, mut region_payload) = match region_dc.find(|x| x["count"].as_u64().is_some() && x["count"].as_u64().unwrap() < 3)? {
         Some((id, payload)) => (id, payload),
@@ -643,7 +590,7 @@ pub fn create_scope(storage_path: &str) -> Result<(u64, u64), Error> {
     region_dc.update(region_id, region_payload)?;
         
     
-    let dc = Dc::new(Location::Scopes, user_id, storage_path)?;
+    let dc = Dc::new(Location::Scopes, user_id, storage_path, None, None)?;
     
     let scope_id = dc.create(json!({
         "region_id": region_id
@@ -705,7 +652,9 @@ pub fn delete_service(service_dc: &Dc, name: &str, storage_path: &str) -> Result
 mod tests {
     use log::*;
     use serde_json::json;
-    use crate::error::Error;
+    use crate::{
+        Location, Sc, Dc, error::Error, create_service, create_scope
+    };
     
     //#[test]
     fn full_test() -> Result<(), Error> {
@@ -718,12 +667,12 @@ mod tests {
 
         let storage_path = "c:/src/storage";    
 
-        let service_dc = Dc::new(Location::Services { region_id, scope_id }, user_id, storage_path)?;
+        let service_dc = Dc::new(Location::Services { region_id, scope_id }, user_id, storage_path, None, None)?;
 
         let service_id = create_service(&service_dc, "Dog")?;
 
         {
-            let dc = Dc::new(Location::Tokens { region_id, scope_id, service_id }, user_id, storage_path)?;
+            let dc = Dc::new(Location::Tokens { region_id, scope_id, service_id }, user_id, storage_path, None, None)?;
 
             dc.create(json!({
                 "name": "DogToken"
@@ -754,12 +703,12 @@ mod tests {
 
         let storage_path = "d:/src/storage";    
 
-        let service_dc = Dc::new(Location::Services { region_id, scope_id }, user_id, storage_path)?;
+        let service_dc = Dc::new(Location::Services { region_id, scope_id }, user_id, storage_path, None, None)?;
 
         let service_id = create_service(&service_dc, "Dog")?;
 
         {
-            let dc = Dc::new(Location::Tokens { region_id, scope_id, service_id }, user_id, storage_path)?;
+            let dc = Dc::new(Location::Tokens { region_id, scope_id, service_id }, user_id, storage_path, None, None)?;
 
             dc.create(json!({
                 "name": "DogToken"

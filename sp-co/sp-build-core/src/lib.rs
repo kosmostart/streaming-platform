@@ -12,7 +12,9 @@ use time::{
 };
 use serde_json::Value;
 use serde_derive::{Serialize, Deserialize};
-use lz4::{Decoder, EncoderBuilder};
+use lz4_flex::frame::{
+    FrameEncoder, FrameDecoder
+};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DeployConfig {
@@ -150,24 +152,18 @@ pub fn unpack(save_path: String, file_name: String) -> Result<String, Error> {
 
 fn compress(from: &str, to: &str) -> Result<(), Error> {    
     let mut input_file = File::open(from)?;
-    let output_file = File::create(to)?;
-    let mut encoder = EncoderBuilder::new()
-        .level(4)
-        .build(output_file)?;
+    let output_file = File::create(to)?;    
 
-    io::copy(&mut input_file, &mut encoder)?;
+    io::copy(&mut input_file, &mut FrameEncoder::new(output_file))?;    
 
-    let (_output, res) = encoder.finish();
-
-    Ok(res?)
+    Ok(())
 }
 
 fn decompress(from: &str, to: &str) -> Result<(), Error> {    
-    let input_file = File::open(from)?;
-    let mut decoder = Decoder::new(input_file)?;
+    let input_file = File::open(from)?;    
     let mut output_file = File::create(to)?;
 
-    io::copy(&mut decoder, &mut output_file)?;
+    io::copy(&mut FrameDecoder::new(input_file), &mut output_file)?;
 
     Ok(())
 }

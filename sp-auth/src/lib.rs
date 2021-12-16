@@ -1,7 +1,11 @@
 use base64::decode;
-use serde_json::{Value, to_vec, from_slice};
+use serde_json::{
+    Value, to_vec, from_slice
+};
 use sha3::Sha3_256;
-use hmac::{Hmac, Mac, crypto_mac::{NewMac, MacError}};
+use hmac::{
+    Hmac, Mac, digest::MacError
+};
 
 // Create alias for HMAC-SHA3 256, it's SHA3 friends, umad?
 type HmacSha = Hmac<Sha3_256>;
@@ -36,7 +40,7 @@ pub fn verify_auth_token(auth_token_key: &[u8], auth_token: &str) -> Result<Valu
     mac.update(&payload);
 
     // `verify` will return `Ok(())` if code is correct, `Err(MacError)` otherwise
-    mac.verify(&hash)?;
+    mac.verify_slice(&hash)?;
 
     Ok(from_slice(&payload)?)
 }

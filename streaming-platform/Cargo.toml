@@ -18,7 +18,7 @@ edition = "2021"
 [dependencies]
 
 log = "*"
-futures = { version = "*", features = ["async-await"] }
+futures = "*"
 rand = "*"
 byteorder = "*"
 siphasher = "*"

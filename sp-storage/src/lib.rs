@@ -100,7 +100,11 @@ impl Sc {
             user_id,
             tokens
         })
-    }    
+    }
+
+    pub fn create_token_dc(&self, storage_path: &str) -> Result<Dc, Error> {
+        Ok(Dc::new(Location::Tokens { region_id: self.region_id, scope_id: self.scope_id, service_id: self.service_id }, self.user_id, storage_path, None, None)?)
+    }
 }
 
 impl Dc {
@@ -143,7 +147,7 @@ impl Dc {
             db,
             tree
         })
-    }
+    }    
     
     pub fn tx(&self, transaction_body: fn(TxDc) -> Result<(), Error>) -> Result<(), Error> {
         let res = self.tree.transaction(|tx_tree| {

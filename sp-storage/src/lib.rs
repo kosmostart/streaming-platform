@@ -52,8 +52,8 @@ pub struct Dc {
     storage_path: String,
     location: Location,
     user_id: u64,
-    pub id: u64,
-    pub payload: Value,
+    //pub id: u64,
+    //pub payload: Value,
     db: Db,
     tree: Tree
 }
@@ -105,6 +105,19 @@ impl Sc {
     pub fn create_token_dc(&self, storage_path: &str) -> Result<Dc, Error> {
         Ok(Dc::new(Location::Tokens { region_id: self.region_id, scope_id: self.scope_id, service_id: self.service_id }, self.user_id, storage_path, None, None)?)
     }
+
+    pub fn add_token(&mut self, storage_path: &str, token_id: u64, name: String) -> Result<(), Error> {
+        let dc = Dc::new(Location::Token { 
+            region_id: self.region_id, 
+            scope_id: self.scope_id, 
+            service_id: self.service_id, 
+            token_id
+        }, self.user_id, storage_path, None, None)?;
+
+        let _ = self.tokens.insert(name, dc);
+
+        Ok(())
+    }    
 }
 
 impl Dc {
@@ -142,8 +155,8 @@ impl Dc {
             storage_path,
             location,
             user_id,
-            id: id.unwrap_or(0),
-            payload: payload.unwrap_or(json!({})),
+            //id: id.unwrap_or(0),
+            //payload: payload.unwrap_or(json!({})),
             db,
             tree
         })

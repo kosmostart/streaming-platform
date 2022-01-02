@@ -106,8 +106,7 @@ impl Sc {
         Ok(Dc::new(Location::Tokens { region_id: self.region_id, scope_id: self.scope_id, service_id: self.service_id }, self.user_id, storage_path, None, None)?)
     }
 
-    pub fn load_tokens(&mut self, storage_path: &str) -> Result<(), Error> {        
-        let token_dc = self.create_token_dc(storage_path)?;
+    pub fn load_tokens(&mut self, token_dc: &Dc) -> Result<(), Error> {
 
         self.tokens.clear();
 
@@ -119,7 +118,7 @@ impl Sc {
                 scope_id: self.scope_id, 
                 service_id: self.service_id, 
                 token_id
-            }, self.user_id, storage_path, Some(token_id), Some(payload))?;
+            }, self.user_id, &token_dc.storage_path, Some(token_id), Some(payload))?;
     
             let _ = self.tokens.insert(name, dc);
         }        

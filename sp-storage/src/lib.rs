@@ -52,8 +52,8 @@ pub struct Dc {
     storage_path: String,
     location: Location,
     user_id: u64,
-    //pub id: u64,
-    //pub payload: Value,
+    pub id: u64,
+    pub payload: Value,
     db: Db,
     tree: Tree
 }
@@ -155,8 +155,8 @@ impl Dc {
             storage_path,
             location,
             user_id,
-            //id: id.unwrap_or(0),
-            //payload: payload.unwrap_or(json!({})),
+            id: id.unwrap_or(0),
+            payload: payload.unwrap_or(json!({})),
             db,
             tree
         })

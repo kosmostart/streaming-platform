@@ -9,10 +9,10 @@
     },
     {
         "path": "c:/src/streaming-platform/target/debug/sp-co-auth.exe",
-        "name": "sp-co-hub.exe"
+        "name": "sp-co-auth.exe"
     },
     {
         "path": "c:/src/streaming-platform/target/debug/sp-co-web.exe",
-        "name": "sp-co-cfg.exe"
+        "name": "sp-co-web.exe"
     }
 ]

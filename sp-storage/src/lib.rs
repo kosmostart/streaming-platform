@@ -100,30 +100,6 @@ impl Sc {
             user_id,
             tokens
         })
-    }
-
-    pub fn create_token_dc(&self, storage_path: &str) -> Result<Dc, Error> {
-        Ok(Dc::new(Location::Tokens { region_id: self.region_id, scope_id: self.scope_id, service_id: self.service_id }, self.user_id, storage_path, None, None)?)
-    }
-
-    pub fn load_tokens(&mut self, token_dc: &Dc) -> Result<(), Error> {
-
-        self.tokens.clear();
-
-        for (token_id, payload) in token_dc.get_all()? {
-            let name = payload["name"].as_str().ok_or(Error::None)?.to_owned();
-
-            let dc = Dc::new(Location::Token { 
-                region_id: self.region_id, 
-                scope_id: self.scope_id, 
-                service_id: self.service_id, 
-                token_id
-            }, self.user_id, &token_dc.storage_path, Some(token_id), Some(payload))?;
-    
-            let _ = self.tokens.insert(name, dc);
-        }        
-
-        Ok(())
     }    
 }
 

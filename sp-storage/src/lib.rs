@@ -656,7 +656,7 @@ mod tests {
         Location, Sc, Dc, error::Error, create_service, create_scope
     };
     
-    //#[test]
+    #[test]
     fn full_test() -> Result<(), Error> {
         let _ = env_logger::try_init();
 
@@ -692,7 +692,7 @@ mod tests {
         Ok(())
     }
 
-    //#[test]
+    #[test]
     fn test_service_delete() -> Result<(), Error> {
         let _ = env_logger::try_init();
 

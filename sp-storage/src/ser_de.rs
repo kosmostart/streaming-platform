@@ -145,7 +145,6 @@ pub fn convert_value2(input: Value) -> serde_json::Value {
     }
 }
 
-
 #[test]
 fn full_test() -> Result<(), Error> {
     use log::*;

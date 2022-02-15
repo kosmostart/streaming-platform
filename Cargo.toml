@@ -16,7 +16,6 @@ members = [
 	"sp-co/sp-co-pod",
 	"sp-co/sp-co-auth",
 	"sp-co/sp-co-web",
-	"sp-co/sp-co-cfg",
 	"sp-co/sp-co-cli",
 	"distribution/sp-public-host",
 	#"distribution/sp-up"

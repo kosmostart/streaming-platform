@@ -1551,20 +1551,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sp-co-cfg"
-version = "0.1.0"
-dependencies = [
- "env_logger",
- "log",
- "serde",
- "serde_derive",
- "serde_json",
- "sp-storage",
- "streaming-platform",
- "time",
-]
-
-[[package]]
 name = "sp-co-cli"
 version = "0.1.0"
 dependencies = [

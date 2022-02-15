@@ -230,8 +230,8 @@ fn main() -> Result<(), Error> {
 fn cfg_add(rt: &Runtime, payload: Value) {
 	println!("Starting add for key {:?} {:?}", payload["domain"].as_str(), payload["key"].as_str());
 
-    let auth_url = "http://127.0.0.1:12345/authorize";
-    let hub_url = "http://127.0.0.1:12345/hub";
+    let auth_url = "http://127.0.0.1:12346/authorize";
+    let hub_url = "http://127.0.0.1:12346/hub";
 
     let auth_payload = json!({
     });
@@ -265,8 +265,8 @@ fn cfg_add(rt: &Runtime, payload: Value) {
 }
 
 fn cfg_get_domain(rt: &Runtime, domain: &str) {
-    let auth_url = "http://127.0.0.1:12345/authorize";
-    let hub_url = "http://127.0.0.1:12345/hub";	
+    let auth_url = "http://127.0.0.1:12346/authorize";
+    let hub_url = "http://127.0.0.1:12346/hub";	
 
     let auth_payload = json!({
     });
@@ -302,8 +302,8 @@ fn cfg_get_domain(rt: &Runtime, domain: &str) {
 }
 
 fn cfg_get(rt: &Runtime, payload: Value) {
-    let auth_url = "http://127.0.0.1:12345/authorize";
-    let hub_url = "http://127.0.0.1:12345/hub";	
+    let auth_url = "http://127.0.0.1:12346/authorize";
+    let hub_url = "http://127.0.0.1:12346/hub";	
 
     let auth_payload = json!({
     });
@@ -337,8 +337,8 @@ fn cfg_get(rt: &Runtime, payload: Value) {
 }
 
 fn deploy(rt: &Runtime, payload: Value) {
-    let auth_url = "http://127.0.0.1:12345/authorize";
-    let hub_url = "http://127.0.0.1:12345/hub";	
+    let auth_url = "http://127.0.0.1:12346/authorize";
+    let hub_url = "http://127.0.0.1:12346/hub";	
 
     let auth_payload = json!({
     });
@@ -383,7 +383,7 @@ fn deploy(rt: &Runtime, payload: Value) {
 	std::thread::park();
 
    /*
-    let event_source = sse_client::EventSource::new("http://localhost:12345/events").unwrap();
+    let event_source = sse_client::EventSource::new("http://localhost:12346/events").unwrap();
 
     for event in event_source.receiver().iter() {
         println!("New Message: {}", event.data);
@@ -395,7 +395,7 @@ async fn q(cookie: String) -> Result<(), Box<dyn std::error::Error>> {
 	let client = reqwest::Client::new();
 
     let mut res = client
-		.get("http://127.0.0.1:12345/downstream")
+		.get("http://127.0.0.1:12346/downstream")
 		.header("cookie", cookie)
 		.send()
 		.await?;
@@ -417,7 +417,7 @@ use reqwest_eventsource::RequestBuilderExt;
 async fn events() -> Result<(), Box<dyn std::error::Error>> {
     let client = Client::new();
     let mut stream = client
-        .get("http://127.0.0.1:12345/events")
+        .get("http://127.0.0.1:12346/events")
         .eventsource()?;
 
     println!("Waiting");

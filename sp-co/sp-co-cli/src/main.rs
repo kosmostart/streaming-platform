@@ -236,7 +236,7 @@ fn cfg_add(rt: &Runtime, payload: Value) {
     let auth_payload = json!({
     });
 
-    let (_, dto) = rpc_dto("Cli".to_owned(), Key::new("Auth", "Auth", "Auth"), auth_payload, Route::new_cli_with_service_client("Cli", "Web"), None, None).unwrap();
+    let (_, dto) = rpc_dto("Cli".to_owned(), Key::new("Auth", "Auth", "Cfg"), auth_payload, Route::new_cli_with_service_client("Cli", "Web"), None, None).unwrap();
 
     let client = reqwest::Client::new();
     
@@ -271,7 +271,7 @@ fn cfg_get_domain(rt: &Runtime, domain: &str) {
     let auth_payload = json!({
     });
 
-    let (_, dto) = rpc_dto("Cli".to_owned(), Key::new("Auth", "Auth", "Auth"), auth_payload, Route::new_cli_with_service_client("Cli", "Web"), None, None).unwrap();
+    let (_, dto) = rpc_dto("Cli".to_owned(), Key::new("Auth", "Auth", "Cfg"), auth_payload, Route::new_cli_with_service_client("Cli", "Web"), None, None).unwrap();
 
     let client = reqwest::Client::new();
     
@@ -308,7 +308,7 @@ fn cfg_get(rt: &Runtime, payload: Value) {
     let auth_payload = json!({
     });
 
-    let (_, dto) = rpc_dto("Cli".to_owned(), Key::new("Auth", "Auth", "Auth"), auth_payload, Route::new_cli_with_service_client("Cli", "Web"), None, None).unwrap();
+    let (_, dto) = rpc_dto("Cli".to_owned(), Key::new("Auth", "Auth", "Cfg"), auth_payload, Route::new_cli_with_service_client("Cli", "Web"), None, None).unwrap();
 
     let client = reqwest::Client::new();
     

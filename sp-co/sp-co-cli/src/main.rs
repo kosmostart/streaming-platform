@@ -248,7 +248,7 @@ fn cfg_add(rt: &Runtime, payload: Value) {
 
     let split: Vec<&str> = res.headers().get("set-cookie").unwrap().to_str().unwrap().split(";").collect();    
 
-    let (_, dto) = rpc_dto("Cli".to_owned(), Key::new("Add", "Cfg", "Cfg"), payload, Route::new_cli_with_service_client("Cli", "Web"), None, None).unwrap();
+    let (_, dto) = rpc_dto("Cli".to_owned(), Key::new("AddCfg", "Cfg", "Cfg"), payload, Route::new_cli_with_service_client("Cli", "Web"), None, None).unwrap();
 
     let client = reqwest::Client::new();
     
@@ -283,7 +283,7 @@ fn cfg_get_domain(rt: &Runtime, domain: &str) {
 
     let split: Vec<&str> = res.headers().get("set-cookie").unwrap().to_str().unwrap().split(";").collect();    
 
-    let (_, dto) = rpc_dto("Cli".to_owned(), Key::new("GetDomain", "Cfg", "Cfg"), json!({
+    let (_, dto) = rpc_dto("Cli".to_owned(), Key::new("GetCfgDomain", "Cfg", "Cfg"), json!({
 		"domain": domain
 	}), Route::new_cli_with_service_client("Cli", "Web"), None, None).unwrap();
 
@@ -320,7 +320,7 @@ fn cfg_get(rt: &Runtime, payload: Value) {
 
     let split: Vec<&str> = res.headers().get("set-cookie").unwrap().to_str().unwrap().split(";").collect();    
 
-    let (_, dto) = rpc_dto("Cli".to_owned(), Key::new("Get", "Cfg", "Cfg"), payload, Route::new_cli_with_service_client("Cli", "Web"), None, None).unwrap();
+    let (_, dto) = rpc_dto("Cli".to_owned(), Key::new("GetCfg", "Cfg", "Cfg"), payload, Route::new_cli_with_service_client("Cli", "Web"), None, None).unwrap();
 
     let client = reqwest::Client::new();
     

@@ -35,9 +35,9 @@ fn main() {
     ]);
 
     rpc_subscribes.insert("Cfg".to_owned(), vec![
-        Key::new("Add", "Cfg", "Cfg"),
-        Key::new("GetDomain", "Cfg", "Cfg"),
-        Key::new("Get", "Cfg", "Cfg")
+        Key::new("AddCfg", "Cfg", "Cfg"),
+        Key::new("GetCfgDomain", "Cfg", "Cfg"),
+        Key::new("GetCfg", "Cfg", "Cfg")
     ]);
 
     server::start(config, Subscribes::ByAddr(event_subscribes, rpc_subscribes));

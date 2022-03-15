@@ -23,7 +23,7 @@ pub async fn process_rpc(_config: Value, mut mb: MagicBall, msg: Message<Value>,
     let res = match msg.meta.key.action.as_ref() {
         "Deploy" => {
             tokio::spawn(async move {
-                let msg = mb.rpc(Key::new("Get", "Cfg", "Cfg"), json!({
+                let msg = mb.rpc(Key::new("GetCfg", "Cfg", "Cfg"), json!({
 					"domain": "Build",
                     "key": "DeployHello"
                 })).await.unwrap();

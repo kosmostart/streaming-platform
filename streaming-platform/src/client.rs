@@ -738,7 +738,7 @@ pub async fn cfg_mode(cfg_host: String, cfg_domain: String, cfg_token: String, r
 
     tokio::spawn(process_cfg_stream(mb.clone(), read_rx, result_tx));
 
-    match mb.send_rpc(Key::new("Get", "Cfg", "Cfg"), json!({
+    match mb.send_rpc(Key::new("GetCfg", "Cfg", "Cfg"), json!({
 		"domain": cfg_domain,
         "cfg_token": cfg_token
     })).await {

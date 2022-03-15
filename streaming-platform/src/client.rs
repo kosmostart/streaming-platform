@@ -900,7 +900,7 @@ async fn process_client_msg(_mb: &mut MagicBall, stream_layouts: &mut HashMap<u6
 							match &stream_layout.msg_meta {
 								Some(msg_meta) => {
 									match msg_meta.key.action.as_ref() {
-										"Get" => {							
+										"GetCfg" => {							
 											let payload: Value = from_slice(&stream_layout.layout.payload)?;                                            
 											stream_layout.payload = Some(payload);
 										}
@@ -925,7 +925,7 @@ async fn process_client_msg(_mb: &mut MagicBall, stream_layouts: &mut HashMap<u6
                                     match stream_layout.msg_meta {
                                         Some(msg_meta) => {
                                             match msg_meta.key.action.as_ref() {
-                                                "Get" => {
+                                                "GetCfg" => {
                                                     let payload = stream_layout.payload.ok_or(ProcessError::None)?;
                                                     result_tx.send(payload).expect("Failed to send config");
 

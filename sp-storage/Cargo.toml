@@ -15,7 +15,3 @@ serde_json = "*"
 rkyv = "*"
 sled = "*"
 sp-dto = { path = "../sp-dto" }
-
-[dev-dependencies]
-
-env_logger = "*"

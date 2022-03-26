@@ -127,7 +127,7 @@ impl Dc {
 
         payload["id"] = json!(id);
         payload["created_at"] = json!(OffsetDateTime::now_utc());
-        payload["author_id"] = json!(self.user_id);
+        payload["author"] = json!(self.user_id);
         payload["deactivated_at"] = json!(None as Option<OffsetDateTime>);
         payload["updated_at"] = json!(None as Option<OffsetDateTime>);
 
@@ -141,7 +141,7 @@ impl Dc {
 
         payload["id"] = json!(id);
         payload["created_at"] = json!(OffsetDateTime::now_utc());
-        payload["author_id"] = json!(self.user_id);
+        payload["author"] = json!(self.user_id);
         payload["deactivated_at"] = json!(None as Option<OffsetDateTime>);
         payload["updated_at"] = json!(None as Option<OffsetDateTime>);
 
@@ -470,7 +470,7 @@ impl TxDc<'_> {
 
         payload["id"] = json!(id);
         payload["created_at"] = json!(OffsetDateTime::now_utc());
-        payload["author_id"] = json!(self.user_id);
+        payload["author"] = json!(self.user_id);
         payload["deactivated_at"] = json!(None as Option<OffsetDateTime>);
         payload["updated_at"] = json!(None as Option<OffsetDateTime>);
 
@@ -484,7 +484,7 @@ impl TxDc<'_> {
 
         payload["id"] = json!(id);
         payload["created_at"] = json!(OffsetDateTime::now_utc());
-        payload["author_id"] = json!(self.user_id);
+        payload["author"] = json!(self.user_id);
         payload["deactivated_at"] = json!(None as Option<OffsetDateTime>);
         payload["updated_at"] = json!(None as Option<OffsetDateTime>);
 

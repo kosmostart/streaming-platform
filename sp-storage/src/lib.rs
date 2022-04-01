@@ -1,7 +1,6 @@
 use std::convert::TryInto;
 use std::collections::HashMap;
 use std::ops::Index;
-use std::fs::{read_dir, remove_dir_all};
 use log::*;
 use time::OffsetDateTime;
 use serde_json::{
@@ -10,9 +9,7 @@ use serde_json::{
 use sled::{
 	Db, Tree, transaction::TransactionalTree
 };
-use sp_dto::{
-	QueryPrm, Relation
-};
+use sp_dto::QueryPrm;
 use ser_de::{
 	serialize, deserialize, convert_value, convert_value2
 };
@@ -254,7 +251,7 @@ impl Dc {
 
             for (key, value) in &prm {
                 match value {
-                    QueryPrm::I64(value) => {
+                    QueryPrm::EqualsI64(value) => {
                         match payload[key].as_i64() {
                             Some(field_value) => {
                                 if field_value == *value {
@@ -264,7 +261,7 @@ impl Dc {
                             None => {}
                         }
                     }
-                    QueryPrm::U64(value) => {
+                    QueryPrm::EqualsU64(value) => {
                         match payload[key].as_u64() {
                             Some(field_value) => {
                                 if field_value == *value {
@@ -274,26 +271,27 @@ impl Dc {
                             None => {}
                         }
                     }
-                    QueryPrm::U64Relation(relation, value) => {
+                    QueryPrm::LessThanU64(value) => {
                         match payload[key].as_u64() {
                             Some(field_value) => {
-                                match relation {
-                                    Relation::Less => {
-                                        if field_value < *value {
-                                            check_sum = check_sum + 1;
-                                        }
-                                    }
-                                    Relation::Greater => {
-                                        if field_value > *value {
-                                            check_sum = check_sum + 1;
-                                        }
-                                    }
-                                }                                
+                                if field_value < *value {
+                                    check_sum = check_sum + 1;
+                                }
                             }
                             None => {}
                         }
                     }
-                    QueryPrm::String(value) => {
+                    QueryPrm::GreaterThanU64(value) => {
+                        match payload[key].as_u64() {
+                            Some(field_value) => {
+                                if field_value > *value {
+                                    check_sum = check_sum + 1;
+                                }                         
+                            }
+                            None => {}
+                        }
+                    }
+                    QueryPrm::EqualsString(value) => {
                         match payload[key].as_str() {
                             Some(field_value) => {
                                 if field_value == value {
@@ -328,7 +326,7 @@ impl Dc {
 
             for (key, value) in &prm {
                 match value {
-                    QueryPrm::I64(value) => {
+                    QueryPrm::EqualsI64(value) => {
                         match payload[key].as_i64() {
                             Some(field_value) => {
                                 if field_value == *value {
@@ -338,7 +336,7 @@ impl Dc {
                             None => {}
                         }
                     }
-                    QueryPrm::U64(value) => {
+                    QueryPrm::EqualsU64(value) => {
                         match payload[key].as_u64() {
                             Some(field_value) => {
                                 if field_value == *value {
@@ -348,26 +346,27 @@ impl Dc {
                             None => {}
                         }
                     }
-                    QueryPrm::U64Relation(relation, value) => {
+                    QueryPrm::LessThanU64(value) => {
                         match payload[key].as_u64() {
                             Some(field_value) => {
-                                match relation {
-                                    Relation::Less => {
-                                        if field_value < *value {
-                                            check_sum = check_sum + 1;
-                                        }
-                                    }
-                                    Relation::Greater => {
-                                        if field_value > *value {
-                                            check_sum = check_sum + 1;
-                                        }
-                                    }
-                                }                                
+                                if field_value < *value {
+                                    check_sum = check_sum + 1;
+                                }                            
                             }
                             None => {}
                         }
                     }
-                    QueryPrm::String(value) => {
+                    QueryPrm::GreaterThanU64(value) => {
+                        match payload[key].as_u64() {
+                            Some(field_value) => {
+                                if field_value > *value {
+                                    check_sum = check_sum + 1;
+                                }                            
+                            }
+                            None => {}
+                        }
+                    }
+                    QueryPrm::EqualsString(value) => {
                         match payload[key].as_str() {
                             Some(field_value) => {
                                 if field_value == value {
@@ -402,7 +401,7 @@ impl Dc {
 
             for (key, value) in &prm {
                 match value {
-                    QueryPrm::I64(value) => {
+                    QueryPrm::EqualsI64(value) => {
                         match payload[key].as_i64() {
                             Some(field_value) => {
                                 if field_value == *value {
@@ -412,7 +411,7 @@ impl Dc {
                             None => {}
                         }
                     }
-                    QueryPrm::U64(value) => {
+                    QueryPrm::EqualsU64(value) => {
                         match payload[key].as_u64() {
                             Some(field_value) => {
                                 if field_value == *value {
@@ -422,26 +421,27 @@ impl Dc {
                             None => {}
                         }
                     }
-                    QueryPrm::U64Relation(relation, value) => {
+                    QueryPrm::LessThanU64(value) => {
                         match payload[key].as_u64() {
                             Some(field_value) => {
-                                match relation {
-                                    Relation::Less => {
-                                        if field_value < *value {
-                                            check_sum = check_sum + 1;
-                                        }
-                                    }
-                                    Relation::Greater => {
-                                        if field_value > *value {
-                                            check_sum = check_sum + 1;
-                                        }
-                                    }
-                                }                                
+                                if field_value < *value {
+                                    check_sum = check_sum + 1;
+                                }
                             }
                             None => {}
                         }
                     }
-                    QueryPrm::String(value) => {
+                    QueryPrm::GreaterThanU64(value) => {
+                        match payload[key].as_u64() {
+                            Some(field_value) => {
+                                if field_value > *value {
+                                    check_sum = check_sum + 1;
+                                }                         
+                            }
+                            None => {}
+                        }
+                    }
+                    QueryPrm::EqualsString(value) => {
                         match payload[key].as_str() {
                             Some(field_value) => {
                                 if field_value == value {

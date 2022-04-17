@@ -317,7 +317,7 @@ where
                                 debug!("Client {} write rpc response succeded", mb.addr);
                             });                            
                         }
-                        MsgType::RpcResponse(_) => {
+                        MsgType::RpcResponse(_) | MsgType::ServerRpcResponse(_)=> {
                             debug!("Client got rpc response {}", msg_meta.display());
 
                             match rpc_inbound_tx2.send(RpcMsg::RpcDataRequest(msg_meta.correlation_id)) {
@@ -346,9 +346,8 @@ where
                             }                                
                         }
                         MsgType::ServerRpcRequest => {
-                        }
-                        MsgType::ServerRpcResponse(_) => {
-                        }
+                            warn!("ServerRpcRequest on client {}", msg_meta.display());
+                        }                        
                     }
                 }
                 ClientMsg::Frame(frame) => {

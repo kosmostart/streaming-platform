@@ -588,7 +588,7 @@ pub struct MsgSpec {
 }
 
 impl MagicBall {
-    pub fn new(addr: String, write_tx: UnboundedSender<WriteMsg>, rpc_inbound_tx: UnboundedSender<RpcMsg>) -> MagicBall {        
+    pub fn new(addr: String, write_tx: UnboundedSender<WriteMsg>, rpc_inbound_tx: UnboundedSender<RpcMsg>) -> MagicBall {
         let mut hash_buf = BytesMut::new();
 
         let addr_bytes = addr.as_bytes();
@@ -991,7 +991,36 @@ impl MagicBall {
         self.stream_id = self.get_stream_id();
         self.source_hash = get_addr_hash(&self.addr);
 
-        self.write_full_message(MsgType::RpcRequest.get_u8(), self.key_hash, self.stream_id, self.source_stream_id, self.source_hash, dto, msg_meta_size, payload_size, attachments_sizes, true).await?;       
+        self.write_full_message(MsgType::RpcRequest.get_u8(), self.key_hash, self.stream_id, self.source_stream_id, self.source_hash, dto, msg_meta_size, payload_size, attachments_sizes, true).await?;
+
+        let (msg_meta, payload, attachments_data) = timeout(Duration::from_millis(RPC_TIMEOUT_MS_AMOUNT), rpc_rx).await??;
+        let payload: R = from_slice(&payload)?;
+
+        Ok(Message {
+            meta: msg_meta, 
+            payload, 
+            attachments_data
+        })
+    }
+    pub async fn server_rpc<T, R>(&mut self, key: Key, payload: T) -> Result<Message<R>, ProcessError> where T: serde::Serialize, T: Debug, for<'de> R: serde::Deserialize<'de>, R: Debug {
+        let route = Route {
+            source: Participator::Service(self.addr.clone()),
+            spec: RouteSpec::Simple,
+            points: vec![Participator::Service(self.addr.to_owned())]
+        };
+
+		//info!("send_rpc, route {:?}, key {}, payload {:?}, ", route, key, payload);
+		
+        let (correlation_id, dto, msg_meta_size, payload_size, attachments_sizes) = rpc_dto_with_sizes(self.addr.clone(), key.clone(), payload, route, self.auth_token.clone(), self.auth_data.clone())?;
+        let (rpc_tx, rpc_rx) = oneshot::channel();
+        
+        self.rpc_inbound_tx.send(RpcMsg::AddRpc(correlation_id, rpc_tx))?;
+
+        self.key_hash = get_key_hash(&key);
+        self.stream_id = self.get_stream_id();
+        self.source_hash = get_addr_hash(&self.addr);
+
+        self.write_full_message(MsgType::ServerRpcRequest.get_u8(), self.key_hash, self.stream_id, self.source_stream_id, self.source_hash, dto, msg_meta_size, payload_size, attachments_sizes, true).await?;
 
         let (msg_meta, payload, attachments_data) = timeout(Duration::from_millis(RPC_TIMEOUT_MS_AMOUNT), rpc_rx).await??;
         let payload: R = from_slice(&payload)?;

@@ -392,9 +392,13 @@ async fn process_write_tcp_stream(tcp_stream: &mut TcpStream, state: &mut State,
                                         for (addr, keys) in new_rpc_subscribes {
                                             rpc_subscribes.insert(addr, keys);
                                         }
+
+                                        info!("Subscribes changed");
                                     }
-                                    _ => {}
-                                }              
+                                    _ => {
+                                        warn!("Incorrect server message key");
+                                    }
+                                }    
                             }
                         }
                     }

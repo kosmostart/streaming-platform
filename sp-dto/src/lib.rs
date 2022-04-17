@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::io::Cursor;
 use std::fmt::Debug;
 use bytes::{Buf, BufMut};
@@ -158,49 +157,62 @@ pub struct Key {
 }
 
 /// Parameters are as follows: event_subscribes, rpc_subscribes, rpc_response_subscribes
+#[derive(Debug, Serialize, Deserialize, Clone)] 
+pub struct SubscribeByAddr {
+    pub addr: String,
+    pub keys: Vec<Key>
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)] 
+pub struct SubscribeByKey {
+    pub key: Key,
+    pub addrs: Vec<String>
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum Subscribes {
-    ByAddr(HashMap<String, Vec<Key>>, HashMap<String, Vec<Key>>),
-    ByKey(HashMap<Key, Vec<String>>, HashMap<Key, Vec<String>>)
+    ByAddr(Vec<SubscribeByAddr>),
+    ByKey(Vec<SubscribeByKey>)
 }
 
 impl Subscribes {
-    pub fn traverse_to_keys(self) -> (HashMap<Key, Vec<String>>, HashMap<Key, Vec<String>>) {
+    pub fn new_by_addr(data: Vec<(&str, Vec<Key>)>) -> Subscribes {
+        Subscribes::ByAddr(data.into_iter().map(|(addr, keys)| SubscribeByAddr { addr: addr.to_owned(), keys }).collect())
+    }    
+    pub fn new_by_key(data: Vec<(Key, Vec<&str>)>) -> Subscribes {
+        Subscribes::ByKey(data.into_iter().map(|(key, addrs)| SubscribeByKey { key, addrs: addrs.into_iter().map(|addr| addr.to_owned()).collect() }).collect())
+    }
+}
+
+impl Subscribes {
+    pub fn traverse_to_keys(self) -> Vec<SubscribeByKey> {
         match self {
-            Subscribes::ByAddr(event_subscribes, rpc_subscribes) => {
-                let mut event_res: HashMap<_, Vec<String>> = HashMap::new();
+            Subscribes::ByAddr(subscribes) => {
+                let mut res: Vec<SubscribeByKey> = vec![];
 
-                for (addr, keys) in event_subscribes.into_iter() {
-                    for key in keys {
-                        match event_res.get_mut(&key) {
-                            Some(addrs) => {
-                                addrs.push(addr.clone());
+                for subscribe in subscribes {
+                    for key in subscribe.keys {
+                        match res.iter_mut().find(|sub_by_key| sub_by_key.key == key) {
+                            Some(sub_by_key) => {
+                                if !sub_by_key.addrs.iter().any(|addr| addr == &subscribe.addr) {
+                                    sub_by_key.addrs.push(subscribe.addr.clone());
+                                }
                             }
                             None => {
-                                event_res.insert(key, vec![addr.clone()]);
+                                res.push(SubscribeByKey { 
+                                    key: key.clone(), 
+                                    addrs: vec![
+                                        subscribe.addr.clone()
+                                    ]
+                                });
                             }
-                        }
+                        }                                                
                     }
-                }
+                }                
 
-                let mut rpc_res: HashMap<_, Vec<String>> = HashMap::new();
-
-                for (addr, keys) in rpc_subscribes.into_iter() {
-                    for key in keys {
-                        match rpc_res.get_mut(&key) {
-                            Some(addrs) => {
-                                addrs.push(addr.clone());
-                            }
-                            None => {
-                                rpc_res.insert(key, vec![addr.clone()]);
-                            }
-                        }
-                    }
-                }
-
-                (event_res, rpc_res)
+                res
             },
-            Subscribes::ByKey(event_subscribes, rpc_subscribes) => (event_subscribes, rpc_subscribes)
+            Subscribes::ByKey(subscribes) => subscribes
         }
     }
 }
@@ -305,7 +317,9 @@ pub struct MsgMeta {
 pub enum MsgType {
     Event,
     RpcRequest,
-    RpcResponse(RpcResult)
+    RpcResponse(RpcResult),
+    ServerRpcRequest,
+    ServerRpcResponse(RpcResult)
 }
 
 impl MsgType {
@@ -317,6 +331,13 @@ impl MsgType {
                 match rpc_result {
                     RpcResult::Ok => 2,
                     RpcResult::Err => 3
+                }
+            },
+            MsgType::ServerRpcRequest => 4,
+            MsgType::ServerRpcResponse(rpc_result) => {
+                match rpc_result {
+                    RpcResult::Ok => 5,
+                    RpcResult::Err => 6
                 }
             }
         }

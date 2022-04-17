@@ -317,7 +317,7 @@ where
                                 debug!("Client {} write rpc response succeded", mb.addr);
                             });                            
                         }
-                        MsgType::RpcResponse(_) => {           
+                        MsgType::RpcResponse(_) => {
                             debug!("Client got rpc response {}", msg_meta.display());
 
                             match rpc_inbound_tx2.send(RpcMsg::RpcDataRequest(msg_meta.correlation_id)) {
@@ -344,6 +344,10 @@ where
                                 }
                                 _ => error!("Client handler: wrong RpcMsg")
                             }                                
+                        }
+                        MsgType::ServerRpcRequest => {
+                        }
+                        MsgType::ServerRpcResponse(_) => {
                         }
                     }
                 }
@@ -613,7 +617,7 @@ async fn process_full_message_mode(mut write_tcp_stream: TcpStream, mut read_tcp
                                                         panic!("Client message send with read_tx in full message mode failed")
                                                     }
                                                 }
-                                            }											
+                                            }
                                         }
                                     }
                                 }

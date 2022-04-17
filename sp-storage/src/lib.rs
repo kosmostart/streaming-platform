@@ -26,7 +26,7 @@ fn dog(barry: &[u8]) -> Result<[u8; 8], Error> {
 
 #[derive(Clone)]
 pub struct Dc {
-    storage_path: String,
+    pub storage_path: String,
     path: String,
     user_id: u64,
     pub id: Option<u64>,

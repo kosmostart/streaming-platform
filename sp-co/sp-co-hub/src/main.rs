@@ -1,12 +1,4 @@
-use std::collections::HashMap;
-use streaming_platform::{
-	server::{
-		self, ServerConfig
-	}, 
-	sp_dto::{
-		Key, Subscribes
-	}
-};
+use streaming_platform::{server::{self, ServerConfig}, sp_dto::{Key, Subscribes}};
 
 fn main() {
     env_logger::init();
@@ -15,30 +7,28 @@ fn main() {
         host: "127.0.0.1:11002".to_owned()
     };
 
-    let mut event_subscribes = HashMap::new();
-    let mut rpc_subscribes = HashMap::new();
-
-	event_subscribes.insert("WebStream".to_owned(), vec![
-        Key::new("DeployStream", "Deploy", "Deploy")
+    let event_subscribes = Subscribes::new_by_addr(vec![
+        ("WebStream", vec![
+            Key::new("DeployStream", "Deploy", "Deploy")
+        ])        
     ]);
 
-    rpc_subscribes.insert("Auth".to_owned(), vec![
-        Key::new("Auth", "Auth", "Auth")
+    let rpc_subscribes = Subscribes::new_by_addr(vec![        
+        ("Auth", vec![
+            Key::new("Auth", "Auth", "Auth")
+        ]),
+        ("Build", vec![
+            Key::new("Deploy", "Deploy", "Deploy")
+        ]),
+        ("Pod", vec![
+            Key::new("DeployUnit", "Deploy", "Deploy")
+        ]),
+        ("Cfg", vec![
+            Key::new("AddCfg", "Cfg", "Cfg"),
+            Key::new("GetCfgDomain", "Cfg", "Cfg"),
+            Key::new("GetCfg", "Cfg", "Cfg")
+        ])        
     ]);
 
-    rpc_subscribes.insert("Build".to_owned(), vec![
-        Key::new("Deploy", "Deploy", "Deploy")
-    ]);
-
-    rpc_subscribes.insert("Pod".to_owned(), vec![
-        Key::new("DeployUnit", "Deploy", "Deploy")
-    ]);
-
-    rpc_subscribes.insert("Cfg".to_owned(), vec![
-        Key::new("AddCfg", "Cfg", "Cfg"),
-        Key::new("GetCfgDomain", "Cfg", "Cfg"),
-        Key::new("GetCfg", "Cfg", "Cfg")
-    ]);
-
-    server::start(config, Subscribes::ByAddr(event_subscribes, rpc_subscribes));
+    server::start(config, event_subscribes, rpc_subscribes);
 }

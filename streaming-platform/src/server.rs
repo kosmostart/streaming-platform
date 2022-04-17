@@ -3,11 +3,11 @@ use std::net::SocketAddr;
 use log::*;
 use siphasher::sip::SipHasher24;
 use serde_derive::Deserialize;
-use serde_json::from_slice;
+use serde_json::{from_slice, Value, from_value};
 use tokio::runtime::Runtime;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc::{self, UnboundedSender};
-use sp_dto::{Key, MsgMeta, MsgType, Subscribes};
+use sp_dto::{SubscribeByKey, MsgMeta, MsgType, Subscribes};
 use crate::proto::*;
 
 #[derive(Debug, Deserialize, Clone)]
@@ -21,24 +21,24 @@ pub struct Dir {
     pub path: String
 }
 
-fn to_hashed_subscribes(_key_hasher: &mut SipHasher24, subscribes: HashMap<Key, Vec<String>>) -> HashMap<u64, Vec<u64>> {
+fn to_hashed_subscribes(_key_hasher: &mut SipHasher24, subscribes: Vec<SubscribeByKey>) -> HashMap<u64, Vec<u64>> {
     let mut res = HashMap::new();    
 
-    for (key, addrs) in subscribes {
-        res.insert(get_key_hash(&key), addrs.iter().map(|a| get_addr_hash(a)).collect());
+    for subsribe in subscribes {
+        res.insert(get_key_hash(&subsribe.key), subsribe.addrs.iter().map(|a| get_addr_hash(a)).collect());
     }
 
     res
 }
 
 /// Starts the server based on provided ServerConfig struct. Creates new runtime and blocks.
-pub fn start(config: ServerConfig, subscribes: Subscribes) {
+pub fn start(config: ServerConfig, event_subscribes: Subscribes, rpc_subscribes: Subscribes) {
     let rt = Runtime::new().expect("failed to create runtime"); 
-    let _ = rt.block_on(start_future(config, subscribes));
+    let _ = rt.block_on(start_future(config, event_subscribes, rpc_subscribes));
 }
 
 /// Future for new server start based on provided ServerConfig struct, in case you want to create runtime by yourself.
-pub async fn start_future(config: ServerConfig, subscribes: Subscribes) -> Result<(), ProcessError> {
+pub async fn start_future(config: ServerConfig, event_subscribes: Subscribes, rpc_subscribes: Subscribes) -> Result<(), ProcessError> {
     let listener = TcpListener::bind(config.host.clone()).await?;
     let (server_tx, mut server_rx) = mpsc::unbounded_channel();
 
@@ -74,9 +74,14 @@ pub async fn start_future(config: ServerConfig, subscribes: Subscribes) -> Resul
         }
     });
 
-    let (event_subscribes, rpc_subscribes) = match subscribes {
-        Subscribes::ByAddr(_, _) => subscribes.traverse_to_keys(),
-        Subscribes::ByKey(event_subscribes, rpc_subscribes) => (event_subscribes, rpc_subscribes)
+    let event_subscribes = match event_subscribes {
+        Subscribes::ByAddr(_) => event_subscribes.traverse_to_keys(),
+        Subscribes::ByKey(event_subscribes) => event_subscribes
+    };
+
+    let rpc_subscribes = match rpc_subscribes {
+        Subscribes::ByAddr(_) => rpc_subscribes.traverse_to_keys(),
+        Subscribes::ByKey(rpc_subscribes) => rpc_subscribes
     };
 
     let mut client_states = HashMap::new();
@@ -227,7 +232,9 @@ async fn process_read_tcp_stream(addr: String, mut tcp_stream: TcpStream, client
     write_loop(client_rx, &mut tcp_stream).await
 }
 
-async fn process_write_tcp_stream(tcp_stream: &mut TcpStream, state: &mut State, _addr: String, event_subscribes: HashMap<u64, Vec<u64>>, rpc_subscribes: HashMap<u64, Vec<u64>>, _client_net_addr: SocketAddr, server_tx: UnboundedSender<ServerMsg>) -> Result<(), ProcessError> {
+async fn process_write_tcp_stream(tcp_stream: &mut TcpStream, state: &mut State, _addr: String, mut event_subscribes: HashMap<u64, Vec<u64>>, mut rpc_subscribes: HashMap<u64, Vec<u64>>, _client_net_addr: SocketAddr, server_tx: UnboundedSender<ServerMsg>) -> Result<(), ProcessError> {
+    let mut stream_layouts: HashMap<u64, StreamLayout> = HashMap::new();
+
 	loop {
 		match state.read_frame() {
 			ReadFrameResult::NotEnoughBytesForFrame => {
@@ -303,6 +310,96 @@ async fn process_write_tcp_stream(tcp_stream: &mut TcpStream, state: &mut State,
 					MsgType::RpcResponse(_) => {
                         debug!("Sending frame to source, addr hash {}", frame.source_hash);
                         server_tx.send(ServerMsg::Send(frame.source_hash, frame))?;
+                    }
+                    MsgType::ServerRpcRequest => {
+                        match frame.get_frame_type()? {
+                            FrameType::MsgMeta | FrameType::MsgMetaEnd => {
+                                match stream_layouts.get_mut(&frame.stream_id) {
+                                    Some(stream_layout) => {
+                                        match frame.payload {
+                                            Some(payload) => {
+                                                stream_layout.msg_meta.extend_from_slice(&payload[..frame.payload_size as usize]);
+                                            }
+                                            None => {}
+                                        }
+                                    }
+                                    None => {
+                                        stream_layouts.insert(frame.stream_id, StreamLayout {
+                                            id: frame.stream_id,
+                                            msg_meta: match frame.payload {
+                                                Some(payload) => payload[..frame.payload_size as usize].to_vec(),
+                                                None => vec![]
+                                            },
+                                            payload: vec![],
+                                            attachments_data: vec![]
+                                        });
+                                    }
+                                }
+                            }
+                            FrameType::Payload | FrameType::PayloadEnd => {
+                                match frame.payload {
+                                    Some(payload) => {
+                                        let stream_layout = stream_layouts.get_mut(&frame.stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
+                                        stream_layout.payload.extend_from_slice(&payload[..frame.payload_size as usize]);
+                                    }
+                                    None => {}
+                                }
+                            }
+                            FrameType::Attachment | FrameType::AttachmentEnd => {
+                                match frame.payload {
+                                    Some(payload) => {
+                                        let stream_layout = stream_layouts.get_mut(&frame.stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
+                                        stream_layout.attachments_data.extend_from_slice(&payload[..frame.payload_size as usize]);
+                                    }
+                                    None => {}
+                                }
+                            }
+                            FrameType::End => {
+                                let stream_layout = stream_layouts.remove(&frame.stream_id).ok_or(ProcessError::StreamLayoutNotFound)?;
+
+                                let msg_meta: MsgMeta = from_slice(&stream_layout.msg_meta)?;
+
+                                match msg_meta.key.action.as_ref() {
+                                    "LoadSubscribes" => {
+                                        let mut payload: Value = from_slice(&stream_layout.payload)?;
+
+                                        let new_event_subscribes: Subscribes = from_value(payload["event_subscribes"].take())?;
+                                        let new_rpc_subscribes: Subscribes = from_value(payload["rpc_subscribes"].take())?;
+
+                                        let new_event_subscribes = match new_event_subscribes {
+                                            Subscribes::ByAddr(_) => new_event_subscribes.traverse_to_keys(),
+                                            Subscribes::ByKey(new_event_subscribes) => new_event_subscribes
+                                        };
+
+                                        let new_rpc_subscribes = match new_rpc_subscribes {
+                                            Subscribes::ByAddr(_) => new_rpc_subscribes.traverse_to_keys(),
+                                            Subscribes::ByKey(new_rpc_subscribes) => new_rpc_subscribes
+                                        };
+                                                                    
+                                        let mut key_hasher = get_key_hasher();
+                                    
+                                        let new_event_subscribes = to_hashed_subscribes(&mut key_hasher, new_event_subscribes);
+                                        let new_rpc_subscribes = to_hashed_subscribes(&mut key_hasher, new_rpc_subscribes);
+                                    
+                                        event_subscribes.clear();
+
+                                        for (addr, keys) in new_event_subscribes {
+                                            event_subscribes.insert(addr, keys);
+                                        }
+
+                                        rpc_subscribes.clear();
+
+                                        for (addr, keys) in new_rpc_subscribes {
+                                            rpc_subscribes.insert(addr, keys);
+                                        }
+                                    }
+                                    _ => {}
+                                }              
+                            }
+                        }
+                    }
+                    MsgType::ServerRpcResponse(_) => {
+                        warn!("ServerRpcResponse frame received on server");
                     }
 				}
 			}

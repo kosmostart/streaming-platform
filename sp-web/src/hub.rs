@@ -13,26 +13,36 @@ pub async fn go(aca_origin: Option<String>, auth_token_key: String, cookie_heade
 					info!("{} hub: {:?}, {:?}, {:?}", mb.addr, msg_meta.msg_type, msg_meta.key, msg_meta.route.source);
 
                     match msg_meta.msg_type {
-                        MsgType::RpcRequest =>
+                        MsgType::RpcRequest => {
                             match mb.proxy_rpc_with_auth_data(mb.addr.clone(), auth_data, body.to_vec()).await {
                                 Ok((_, res_data)) => Some(res_data),
                                 Err(err) => {
                                     error!("{:?}", err);
                                     None                                 
                                 }
-                            }                        
+                            }                   
+                        }     
                         MsgType::RpcResponse(_) => {
                             warn!("Not implemented");
-                            None                                 
+                            None
                         }
-                        MsgType::Event => 
+                        MsgType::Event => {
                             match mb.proxy_event_with_auth_data(mb.addr.clone(), auth_data, body.to_vec()).await {
                                 Ok(_) => Some(to_vec("Ok friends").expect("Failed to serialize proxy event ok response")),
                                 Err(err) => {
                                     error!("{:?}", err);
                                     None
                                 }
-                            }                        
+                            }
+                        }
+                        MsgType::ServerRpcRequest => {
+                            warn!("Not implemented");
+                            None
+                        }
+                        MsgType::ServerRpcResponse(_) => {
+                            warn!("Not implemented");
+                            None
+                        }
                     }
 				}    
                 Err(err) => {

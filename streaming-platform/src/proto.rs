@@ -1341,6 +1341,100 @@ impl MagicBall {
     }
 }
 
+pub async fn write_full_message_server(tx: &UnboundedSender<ServerMsg>, target: u64, msg_type: u8, key_hash: u64, stream_id: u64, source_stream_id: u64, source_hash: u64, data: Vec<u8>, msg_meta_size: u64, payload_size: u64, attachments_sizes: Vec<u64>, send_end_frame: bool) -> Result<(), ProcessError> {
+    let msg_meta_offset = LEN_BUF_SIZE + msg_meta_size as usize;
+    let payload_offset = msg_meta_offset + payload_size as usize;
+    let mut data_buf = [0; MAX_FRAME_PAYLOAD_SIZE];
+
+    let mut source = &data[LEN_BUF_SIZE..msg_meta_offset];
+
+    let mut bytes_sent = 0;
+
+    loop {        
+        let n = source.read(&mut data_buf).await?;
+        match n {
+            0 => break,
+            _ => {
+                bytes_sent = bytes_sent + n as u64;
+
+                let frame_type = match bytes_sent == msg_meta_size {
+                    true => FrameType::MsgMetaEnd,
+                    false => FrameType::MsgMeta
+                };
+
+                tx.send(ServerMsg::Send(target, Frame::new(frame_type as u8, n as u16, msg_type, key_hash, stream_id, source_stream_id, source_hash, Some(data_buf))))?;
+            }
+        }
+    }
+
+    bytes_sent = 0;
+
+    match payload_size {
+        0 => {}
+        _ => {            
+            let mut source = &data[msg_meta_offset..payload_offset];
+
+            loop {        
+                let n = source.read(&mut data_buf).await?;
+
+                match n {
+                    0 => break,
+                    _ => {
+                        bytes_sent = bytes_sent + n as u64;
+
+                        let frame_type = match bytes_sent == payload_size {
+                            true => FrameType::PayloadEnd,
+                            false => FrameType::Payload
+                        };
+
+                        tx.send(ServerMsg::Send(target, Frame::new(frame_type as u8, n as u16, msg_type, key_hash, stream_id, source_stream_id, source_hash, Some(data_buf))))?;
+                    }
+                }
+            }
+        }
+    }
+
+    let mut prev = payload_offset as usize;
+
+    for attachment_size in attachments_sizes {
+        let attachment_offset = prev + attachment_size as usize;
+
+        bytes_sent = 0;
+
+        match attachment_size {
+            0 => {}
+            _ => {
+                let mut source = &data[prev..attachment_offset];
+
+                loop {        
+                    let n = source.read(&mut data_buf).await?;        
+                    match n {
+                        0 => break,
+                        _ => {
+                            bytes_sent = bytes_sent + n as u64;
+
+                            let frame_type = match bytes_sent == attachment_size {
+                                true => FrameType::AttachmentEnd,
+                                false => FrameType::Attachment
+                            };
+                            
+                            tx.send(ServerMsg::Send(target, Frame::new(frame_type as u8, n as u16, msg_type, key_hash, stream_id, source_stream_id, source_hash, Some(data_buf))))?
+                        }
+                    }
+                }                    
+            }
+        }            
+
+        prev = attachment_offset;
+    }
+
+    if send_end_frame {
+        tx.send(ServerMsg::Send(target, Frame::new(FrameType::End as u8, 0, msg_type, key_hash, stream_id, source_stream_id, source_hash, None)))?;
+    }
+
+    Ok(())
+}
+
 #[derive(Debug)]
 pub enum ProcessError {
     None,

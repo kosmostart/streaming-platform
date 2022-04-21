@@ -3,11 +3,11 @@ use std::net::SocketAddr;
 use log::*;
 use siphasher::sip::SipHasher24;
 use serde_derive::Deserialize;
-use serde_json::{from_slice, Value, from_value};
+use serde_json::{from_slice, Value, from_value, to_vec, json};
 use tokio::runtime::Runtime;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc::{self, UnboundedSender};
-use sp_dto::{SubscribeByKey, MsgMeta, MsgType, Subscribes};
+use sp_dto::{SubscribeByKey, MsgMeta, MsgType, RpcResult, Subscribes, rpc_response_dto2_sizes};
 use crate::proto::*;
 
 #[derive(Debug, Deserialize, Clone)]
@@ -72,24 +72,10 @@ pub async fn start_future(config: ServerConfig, event_subscribes: Subscribes, rp
                 }
             }     
         }
-    });
-
-    let event_subscribes = match event_subscribes {
-        Subscribes::ByAddr(_) => event_subscribes.traverse_to_keys(),
-        Subscribes::ByKey(event_subscribes) => event_subscribes
-    };
-
-    let rpc_subscribes = match rpc_subscribes {
-        Subscribes::ByAddr(_) => rpc_subscribes.traverse_to_keys(),
-        Subscribes::ByKey(rpc_subscribes) => rpc_subscribes
-    };
+    });    
 
     let mut client_states = HashMap::new();
-    let mut key_hasher = get_key_hasher();
-
-    let event_subscribes = to_hashed_subscribes(&mut key_hasher, event_subscribes);
-    let rpc_subscribes = to_hashed_subscribes(&mut key_hasher, rpc_subscribes);
-
+    
     info!("Started on {}", config.host);
 
     loop {                
@@ -119,7 +105,7 @@ pub async fn start_future(config: ServerConfig, event_subscribes: Subscribes, rp
                             let rpc_subscribes = rpc_subscribes.clone();
 
                             tokio::spawn(async move {                                
-                                match process_write_tcp_stream(&mut stream, &mut state, addr.clone(), event_subscribes, rpc_subscribes, client_net_addr, server_tx).await {
+                                match process_write_tcp_stream(addr.clone(), &mut stream, &mut state, event_subscribes, rpc_subscribes, client_net_addr, server_tx).await {
 									Ok(()) => info!("Write process ended, client addr {}", addr),
 									Err(e) => {
 										match e {
@@ -232,7 +218,23 @@ async fn process_read_tcp_stream(addr: String, mut tcp_stream: TcpStream, client
     write_loop(client_rx, &mut tcp_stream).await
 }
 
-async fn process_write_tcp_stream(tcp_stream: &mut TcpStream, state: &mut State, _addr: String, mut event_subscribes: HashMap<u64, Vec<u64>>, mut rpc_subscribes: HashMap<u64, Vec<u64>>, _client_net_addr: SocketAddr, server_tx: UnboundedSender<ServerMsg>) -> Result<(), ProcessError> {
+async fn process_write_tcp_stream(_addr: String, tcp_stream: &mut TcpStream, state: &mut State, mut initial_event_subscribes: Subscribes, mut initial_rpc_subscribes: Subscribes, _client_net_addr: SocketAddr, server_tx: UnboundedSender<ServerMsg>) -> Result<(), ProcessError> {
+
+    let event_subscribes = match initial_event_subscribes {
+        Subscribes::ByAddr(_) => initial_event_subscribes.clone().traverse_to_keys(),
+        Subscribes::ByKey(ref event_subscribes) => event_subscribes.clone()
+    };
+
+    let rpc_subscribes = match initial_rpc_subscribes {
+        Subscribes::ByAddr(_) => initial_rpc_subscribes.clone().traverse_to_keys(),
+        Subscribes::ByKey(ref rpc_subscribes) => rpc_subscribes.clone()
+    };
+
+    let mut key_hasher = get_key_hasher();
+
+    let mut event_subscribes = to_hashed_subscribes(&mut key_hasher, event_subscribes);
+    let mut rpc_subscribes = to_hashed_subscribes(&mut key_hasher, rpc_subscribes);
+
     let mut stream_layouts: HashMap<u64, StreamLayout> = HashMap::new();
 
 	loop {
@@ -359,12 +361,21 @@ async fn process_write_tcp_stream(tcp_stream: &mut TcpStream, state: &mut State,
 
                                 let msg_meta: MsgMeta = from_slice(&stream_layout.msg_meta)?;
 
-                                match msg_meta.key.action.as_ref() {
+                                let res = match msg_meta.key.action.as_ref() {
+                                    "GetSubscribes" => {
+                                        json!({
+                                            "event_subscribes": initial_event_subscribes,
+                                            "rpc_subscribes": initial_rpc_subscribes
+                                        })
+                                    }
                                     "LoadSubscribes" => {
                                         let mut payload: Value = from_slice(&stream_layout.payload)?;
 
                                         let new_event_subscribes: Subscribes = from_value(payload["event_subscribes"].take())?;
                                         let new_rpc_subscribes: Subscribes = from_value(payload["rpc_subscribes"].take())?;
+
+                                        initial_event_subscribes = new_event_subscribes.clone();
+                                        initial_rpc_subscribes = new_rpc_subscribes.clone();
 
                                         let new_event_subscribes = match new_event_subscribes {
                                             Subscribes::ByAddr(_) => new_event_subscribes.traverse_to_keys(),
@@ -393,12 +404,23 @@ async fn process_write_tcp_stream(tcp_stream: &mut TcpStream, state: &mut State,
                                             rpc_subscribes.insert(addr, keys);
                                         }
 
-                                        info!("Subscribes changed");
+                                        info!("Subscribes loaded");
+
+                                        json!({})
                                     }
+                                    "Hello" => json!({ "data": "hello" }),
                                     _ => {
                                         warn!("Incorrect server message key");
+
+                                        json!({})
                                     }
-                                }    
+                                };
+
+                                let (data, msg_meta_size, payload_size, attachments_sizes) = rpc_response_dto2_sizes("Server".to_owned(), msg_meta.key, msg_meta.correlation_id, to_vec(&res)?, vec![], vec![], RpcResult::Ok, msg_meta.route, None, None).expect("failed to create rpc reply");
+
+                                let stream_id = get_stream_id_onetime("Server");
+
+                                write_full_message_server(&server_tx, frame.source_hash, MsgType::ServerRpcResponse(RpcResult::Ok).get_u8(), frame.key_hash, stream_id, frame.source_stream_id, frame.source_hash, data, msg_meta_size, payload_size, attachments_sizes, true).await?;
                             }
                         }
                     }

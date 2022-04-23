@@ -7,7 +7,7 @@ use serde_json::{from_slice, Value, from_value, to_vec, json};
 use tokio::runtime::Runtime;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc::{self, UnboundedSender};
-use sp_dto::{SubscribeByAddr, SubscribeByKey, traverse_subscribes_to_keys, MsgMeta, MsgType, RpcResult, rpc_response_dto2_sizes};
+use sp_dto::{Key, SubscribeByAddr, SubscribeByKey, subscribes_map_to_keys, subscribes_vec_to_map, subscribes_vec_to_keys, MsgMeta, MsgType, RpcResult, rpc_response_dto2_sizes};
 use crate::proto::*;
 
 #[derive(Debug, Deserialize, Clone)]
@@ -101,11 +101,19 @@ pub async fn start_future(config: ServerConfig, event_subscribes: Vec<SubscribeB
                         if !client_state.has_writer {
                             client_state.has_writer = true;
 
-                            let event_subscribes = event_subscribes.clone();
-                            let rpc_subscribes = rpc_subscribes.clone();
+                            let mut event_map = HashMap::new();
+                            let mut rpc_map = HashMap::new();
+
+                            for sub in &event_subscribes {
+                                event_map.insert(sub.addr.clone(), sub.keys.clone());
+                            }
+
+                            for sub in &rpc_subscribes {
+                                rpc_map.insert(sub.addr.clone(), sub.keys.clone());
+                            }
 
                             tokio::spawn(async move {                                
-                                match process_write_tcp_stream(addr.clone(), &mut stream, &mut state, event_subscribes, rpc_subscribes, client_net_addr, server_tx).await {
+                                match process_write_tcp_stream(addr.clone(), &mut stream, &mut state, event_map, rpc_map, client_net_addr, server_tx).await {
 									Ok(()) => info!("Write process ended, client addr {}", addr),
 									Err(e) => {
 										match e {
@@ -218,10 +226,9 @@ async fn process_read_tcp_stream(addr: String, mut tcp_stream: TcpStream, client
     write_loop(client_rx, &mut tcp_stream).await
 }
 
-async fn process_write_tcp_stream(_addr: String, tcp_stream: &mut TcpStream, state: &mut State, mut initial_event_subscribes: Vec<SubscribeByAddr>, mut initial_rpc_subscribes: Vec<SubscribeByAddr>, _client_net_addr: SocketAddr, server_tx: UnboundedSender<ServerMsg>) -> Result<(), ProcessError> {
-
-    let event_subscribes = traverse_subscribes_to_keys(initial_event_subscribes.clone());
-    let rpc_subscribes = traverse_subscribes_to_keys(initial_rpc_subscribes.clone());
+async fn process_write_tcp_stream(_addr: String, tcp_stream: &mut TcpStream, state: &mut State, mut initial_event_subscribes: HashMap<String, Vec<Key>>, mut initial_rpc_subscribes: HashMap<String, Vec<Key>>, _client_net_addr: SocketAddr, server_tx: UnboundedSender<ServerMsg>) -> Result<(), ProcessError> {
+    let event_subscribes = subscribes_map_to_keys(initial_event_subscribes.clone());
+    let rpc_subscribes = subscribes_map_to_keys(initial_rpc_subscribes.clone());
 
     let mut key_hasher = get_key_hasher();
 
@@ -367,11 +374,11 @@ async fn process_write_tcp_stream(_addr: String, tcp_stream: &mut TcpStream, sta
                                         let new_event_subscribes: Vec<SubscribeByAddr> = from_value(payload["event_subscribes"].take())?;
                                         let new_rpc_subscribes: Vec<SubscribeByAddr> = from_value(payload["rpc_subscribes"].take())?;
 
-                                        initial_event_subscribes = new_event_subscribes.clone();
-                                        initial_rpc_subscribes = new_rpc_subscribes.clone();
+                                        initial_event_subscribes = subscribes_vec_to_map(new_event_subscribes.clone());
+                                        initial_rpc_subscribes = subscribes_vec_to_map(new_rpc_subscribes.clone());
 
-                                        let new_event_subscribes = traverse_subscribes_to_keys(new_event_subscribes);
-                                        let new_rpc_subscribes = traverse_subscribes_to_keys(new_rpc_subscribes);
+                                        let new_event_subscribes = subscribes_vec_to_keys(new_event_subscribes);
+                                        let new_rpc_subscribes = subscribes_vec_to_keys(new_rpc_subscribes);
                                                                     
                                         let mut key_hasher = get_key_hasher();
                                     
@@ -380,14 +387,14 @@ async fn process_write_tcp_stream(_addr: String, tcp_stream: &mut TcpStream, sta
                                     
                                         event_subscribes.clear();
 
-                                        for (addr, keys) in new_event_subscribes {
-                                            event_subscribes.insert(addr, keys);
+                                        for (key, addrs) in new_event_subscribes {
+                                            event_subscribes.insert(key, addrs);
                                         }
 
                                         rpc_subscribes.clear();
 
-                                        for (addr, keys) in new_rpc_subscribes {
-                                            rpc_subscribes.insert(addr, keys);
+                                        for (key, addrs) in new_rpc_subscribes {
+                                            rpc_subscribes.insert(key, addrs);
                                         }
 
                                         info!("Subscribes loaded");
@@ -397,14 +404,132 @@ async fn process_write_tcp_stream(_addr: String, tcp_stream: &mut TcpStream, sta
                                     "AddEventSubscribe" => {
                                         let mut payload: Value = from_slice(&stream_layout.payload)?;
                                         let subscribe: SubscribeByAddr = from_value(payload["subscribe"].take())?;
-                                        let new = traverse_subscribes_to_keys(vec![subscribe]);
 
-                                        json!({})
+                                        match initial_event_subscribes.contains_key(&subscribe.addr) {
+                                            true => {
+                                                warn!("Subscribe {:?} already present in event subscribes", subscribe);
+
+                                                json!({
+                                                    "result": "AlreadyPresent"
+                                                })
+                                            }
+                                            false => {
+                                                info!("Adding subscribe {:?} to event subscribes", subscribe);
+
+                                                initial_event_subscribes.insert(subscribe.addr.clone(), subscribe.keys.clone());
+
+                                                let new = subscribes_vec_to_keys(vec![subscribe]);
+
+                                                let mut key_hasher = get_key_hasher();
+                                    
+                                                let new = to_hashed_subscribes(&mut key_hasher, new);
+
+                                                for (key, addrs) in new {
+                                                    info!("Inserting key {} with addrs {:?} to event subscribes", key, addrs);
+                                                    event_subscribes.insert(key, addrs);
+                                                    info!("Done");
+                                                }
+                                                
+                                                info!("Subscribe added to event subscribes");
+
+                                                json!({
+                                                    "result": "Added"
+                                                })
+                                            }
+                                        }
                                     }
-                                    "RemoveSubscribe" => {
+                                    "RemoveEventSubscribe" => {
                                         let mut payload: Value = from_slice(&stream_layout.payload)?;
 
-                                        json!({})
+                                        let subscribe: SubscribeByAddr = from_value(payload["subscribe"].take())?;
+
+                                        match initial_event_subscribes.remove(&subscribe.addr) {
+                                            Some(removed_keys) => {
+                                                info!("Removing subscribe {} {:?} from event subscribes", &subscribe.addr, removed_keys);
+
+                                                for key in removed_keys {
+                                                    let key_hash = get_key_hash(&key);                                                    
+                                                    event_subscribes.remove(&key_hash);
+                                                    info!("Removed key {:?}, key hash {} with addr {} from event subscribes", key, key_hash, subscribe.addr);
+                                                }                                            
+
+                                                json!({
+                                                    "result": "Removed"
+                                                })                                                
+                                            }
+                                            None => {
+                                                warn!("Subscribe {:?} not found in event subscribes", subscribe);
+
+                                                json!({
+                                                    "result": "NotFound"
+                                                })                                                
+                                            }
+                                        }
+                                    }
+                                    "AddRpcSubscribe" => {
+                                        let mut payload: Value = from_slice(&stream_layout.payload)?;
+                                        let subscribe: SubscribeByAddr = from_value(payload["subscribe"].take())?;
+
+                                        match initial_rpc_subscribes.contains_key(&subscribe.addr) {
+                                            true => {
+                                                warn!("Subscribe {:?} already present in rpc subscribes", subscribe);
+
+                                                json!({
+                                                    "result": "AlreadyPresent"
+                                                })
+                                            }
+                                            false => {
+                                                info!("Adding subscribe {:?} to rpc subscribes", subscribe);
+
+                                                initial_rpc_subscribes.insert(subscribe.addr.clone(), subscribe.keys.clone());
+
+                                                let new = subscribes_vec_to_keys(vec![subscribe]);
+
+                                                let mut key_hasher = get_key_hasher();
+                                    
+                                                let new = to_hashed_subscribes(&mut key_hasher, new);
+
+                                                for (key, addrs) in new {
+                                                    info!("Inserting key {} with addrs {:?} to event subscribes", key, addrs);
+                                                    rpc_subscribes.insert(key, addrs);
+                                                    info!("Done");
+                                                }
+                                                
+                                                info!("Subscribe added to rpc subscribes");
+
+                                                json!({
+                                                    "result": "Added"
+                                                })
+                                            }
+                                        }
+                                    }
+                                    "RemoveRpcSubscribe" => {
+                                        let mut payload: Value = from_slice(&stream_layout.payload)?;
+
+                                        let subscribe: SubscribeByAddr = from_value(payload["subscribe"].take())?;
+
+                                        match initial_rpc_subscribes.remove(&subscribe.addr) {
+                                            Some(removed_keys) => {
+                                                info!("Removing subscribe {} {:?} from rpc subscribes", &subscribe.addr, removed_keys);
+
+                                                for key in removed_keys {
+                                                    let key_hash = get_key_hash(&key);                                                    
+                                                    rpc_subscribes.remove(&key_hash);
+                                                    info!("Removed key {:?}, key hash {} with addr {} from rpc subscribes", key, key_hash, subscribe.addr);
+                                                }                                            
+
+                                                json!({
+                                                    "result": "Removed"
+                                                })                                                
+                                            }
+                                            None => {
+                                                warn!("Subscribe {:?} not found in rpc subscribes", subscribe);
+
+                                                json!({
+                                                    "result": "NotFound"
+                                                })                                                
+                                            }
+                                        }
                                     }
                                     "Hello" => json!({ "data": "hello" }),
                                     _ => {

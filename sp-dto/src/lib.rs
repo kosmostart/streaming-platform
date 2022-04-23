@@ -1,5 +1,6 @@
 use std::io::Cursor;
 use std::fmt::Debug;
+use std::collections::HashMap;
 use bytes::{Buf, BufMut};
 use serde_derive::{Serialize, Deserialize};
 use serde_json::{Value, Error};
@@ -176,7 +177,7 @@ pub fn new_subscribes_by_key(data: Vec<(Key, Vec<&str>)>) -> Vec<SubscribeByKey>
     data.into_iter().map(|(key, addrs)| SubscribeByKey { key, addrs: addrs.into_iter().map(|addr| addr.to_owned()).collect() }).collect()
 }
 
-pub fn traverse_subscribes_to_keys(subscribes: Vec<SubscribeByAddr>) -> Vec<SubscribeByKey> {
+pub fn subscribes_vec_to_keys(subscribes: Vec<SubscribeByAddr>) -> Vec<SubscribeByKey> {
     let mut res: Vec<SubscribeByKey> = vec![];
 
     for subscribe in subscribes {
@@ -198,6 +199,42 @@ pub fn traverse_subscribes_to_keys(subscribes: Vec<SubscribeByAddr>) -> Vec<Subs
             }           
         }
     }                
+
+    res
+}
+
+pub fn subscribes_map_to_keys(subscribes: HashMap<String, Vec<Key>>) -> Vec<SubscribeByKey> {
+    let mut res: Vec<SubscribeByKey> = vec![];
+
+    for (sub_addr, sub_keys) in subscribes {
+        for key in sub_keys {
+            match res.iter_mut().find(|sub_by_key| sub_by_key.key == key) {
+                Some(sub_by_key) => {
+                    if !sub_by_key.addrs.iter().any(|addr| addr == &sub_addr) {
+                        sub_by_key.addrs.push(sub_addr.clone());
+                    }
+                }
+                None => {
+                    res.push(SubscribeByKey { 
+                        key: key.clone(), 
+                        addrs: vec![
+                            sub_addr.clone()
+                        ]
+                    });
+                }
+            }           
+        }
+    }                
+
+    res
+}
+
+pub fn subscribes_vec_to_map(subscribes: Vec<SubscribeByAddr>) -> HashMap<String, Vec<Key>> {
+    let mut res = HashMap::new();
+
+    for sub in subscribes {
+        res.insert(sub.addr, sub.keys);
+    }
 
     res
 }

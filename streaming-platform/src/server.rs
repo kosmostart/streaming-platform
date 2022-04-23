@@ -7,7 +7,7 @@ use serde_json::{from_slice, Value, from_value, to_vec, json};
 use tokio::runtime::Runtime;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc::{self, UnboundedSender};
-use sp_dto::{SubscribeByKey, MsgMeta, MsgType, RpcResult, Subscribes, rpc_response_dto2_sizes};
+use sp_dto::{SubscribeByAddr, SubscribeByKey, traverse_subscribes_to_keys, MsgMeta, MsgType, RpcResult, rpc_response_dto2_sizes};
 use crate::proto::*;
 
 #[derive(Debug, Deserialize, Clone)]
@@ -32,13 +32,13 @@ fn to_hashed_subscribes(_key_hasher: &mut SipHasher24, subscribes: Vec<Subscribe
 }
 
 /// Starts the server based on provided ServerConfig struct. Creates new runtime and blocks.
-pub fn start(config: ServerConfig, event_subscribes: Subscribes, rpc_subscribes: Subscribes) {
+pub fn start(config: ServerConfig, event_subscribes: Vec<SubscribeByAddr>, rpc_subscribes: Vec<SubscribeByAddr>) {
     let rt = Runtime::new().expect("failed to create runtime"); 
     let _ = rt.block_on(start_future(config, event_subscribes, rpc_subscribes));
 }
 
 /// Future for new server start based on provided ServerConfig struct, in case you want to create runtime by yourself.
-pub async fn start_future(config: ServerConfig, event_subscribes: Subscribes, rpc_subscribes: Subscribes) -> Result<(), ProcessError> {
+pub async fn start_future(config: ServerConfig, event_subscribes: Vec<SubscribeByAddr>, rpc_subscribes: Vec<SubscribeByAddr>) -> Result<(), ProcessError> {
     let listener = TcpListener::bind(config.host.clone()).await?;
     let (server_tx, mut server_rx) = mpsc::unbounded_channel();
 
@@ -218,17 +218,10 @@ async fn process_read_tcp_stream(addr: String, mut tcp_stream: TcpStream, client
     write_loop(client_rx, &mut tcp_stream).await
 }
 
-async fn process_write_tcp_stream(_addr: String, tcp_stream: &mut TcpStream, state: &mut State, mut initial_event_subscribes: Subscribes, mut initial_rpc_subscribes: Subscribes, _client_net_addr: SocketAddr, server_tx: UnboundedSender<ServerMsg>) -> Result<(), ProcessError> {
+async fn process_write_tcp_stream(_addr: String, tcp_stream: &mut TcpStream, state: &mut State, mut initial_event_subscribes: Vec<SubscribeByAddr>, mut initial_rpc_subscribes: Vec<SubscribeByAddr>, _client_net_addr: SocketAddr, server_tx: UnboundedSender<ServerMsg>) -> Result<(), ProcessError> {
 
-    let event_subscribes = match initial_event_subscribes {
-        Subscribes::ByAddr(_) => initial_event_subscribes.clone().traverse_to_keys(),
-        Subscribes::ByKey(ref event_subscribes) => event_subscribes.clone()
-    };
-
-    let rpc_subscribes = match initial_rpc_subscribes {
-        Subscribes::ByAddr(_) => initial_rpc_subscribes.clone().traverse_to_keys(),
-        Subscribes::ByKey(ref rpc_subscribes) => rpc_subscribes.clone()
-    };
+    let event_subscribes = traverse_subscribes_to_keys(initial_event_subscribes.clone());
+    let rpc_subscribes = traverse_subscribes_to_keys(initial_rpc_subscribes.clone());
 
     let mut key_hasher = get_key_hasher();
 
@@ -371,21 +364,14 @@ async fn process_write_tcp_stream(_addr: String, tcp_stream: &mut TcpStream, sta
                                     "LoadSubscribes" => {
                                         let mut payload: Value = from_slice(&stream_layout.payload)?;
 
-                                        let new_event_subscribes: Subscribes = from_value(payload["event_subscribes"].take())?;
-                                        let new_rpc_subscribes: Subscribes = from_value(payload["rpc_subscribes"].take())?;
+                                        let new_event_subscribes: Vec<SubscribeByAddr> = from_value(payload["event_subscribes"].take())?;
+                                        let new_rpc_subscribes: Vec<SubscribeByAddr> = from_value(payload["rpc_subscribes"].take())?;
 
                                         initial_event_subscribes = new_event_subscribes.clone();
                                         initial_rpc_subscribes = new_rpc_subscribes.clone();
 
-                                        let new_event_subscribes = match new_event_subscribes {
-                                            Subscribes::ByAddr(_) => new_event_subscribes.traverse_to_keys(),
-                                            Subscribes::ByKey(new_event_subscribes) => new_event_subscribes
-                                        };
-
-                                        let new_rpc_subscribes = match new_rpc_subscribes {
-                                            Subscribes::ByAddr(_) => new_rpc_subscribes.traverse_to_keys(),
-                                            Subscribes::ByKey(new_rpc_subscribes) => new_rpc_subscribes
-                                        };
+                                        let new_event_subscribes = traverse_subscribes_to_keys(new_event_subscribes);
+                                        let new_rpc_subscribes = traverse_subscribes_to_keys(new_rpc_subscribes);
                                                                     
                                         let mut key_hasher = get_key_hasher();
                                     
@@ -405,6 +391,18 @@ async fn process_write_tcp_stream(_addr: String, tcp_stream: &mut TcpStream, sta
                                         }
 
                                         info!("Subscribes loaded");
+
+                                        json!({})
+                                    }
+                                    "AddEventSubscribe" => {
+                                        let mut payload: Value = from_slice(&stream_layout.payload)?;
+                                        let subscribe: SubscribeByAddr = from_value(payload["subscribe"].take())?;
+                                        let new = traverse_subscribes_to_keys(vec![subscribe]);
+
+                                        json!({})
+                                    }
+                                    "RemoveSubscribe" => {
+                                        let mut payload: Value = from_slice(&stream_layout.payload)?;
 
                                         json!({})
                                     }

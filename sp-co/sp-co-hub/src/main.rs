@@ -1,4 +1,4 @@
-use streaming_platform::{server::{self, ServerConfig}, sp_dto::{Key, Subscribes}};
+use streaming_platform::{server::{self, ServerConfig}, sp_dto::{Key, new_subscribes_by_addr}};
 
 fn main() {
     env_logger::init();
@@ -7,13 +7,13 @@ fn main() {
         host: "127.0.0.1:11002".to_owned()
     };
 
-    let event_subscribes = Subscribes::new_by_addr(vec![
+    let event_subscribes = new_subscribes_by_addr(vec![
         ("WebStream", vec![
             Key::new("DeployStream", "Deploy", "Deploy")
         ])        
     ]);
 
-    let rpc_subscribes = Subscribes::new_by_addr(vec![        
+    let rpc_subscribes = new_subscribes_by_addr(vec![        
         ("Auth", vec![
             Key::new("Auth", "Auth", "Auth")
         ]),

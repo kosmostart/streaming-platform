@@ -169,52 +169,37 @@ pub struct SubscribeByKey {
     pub addrs: Vec<String>
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub enum Subscribes {
-    ByAddr(Vec<SubscribeByAddr>),
-    ByKey(Vec<SubscribeByKey>)
+pub fn new_subscribes_by_addr(data: Vec<(&str, Vec<Key>)>) -> Vec<SubscribeByAddr> {
+    data.into_iter().map(|(addr, keys)| SubscribeByAddr { addr: addr.to_owned(), keys }).collect()
+}    
+pub fn new_subscribes_by_key(data: Vec<(Key, Vec<&str>)>) -> Vec<SubscribeByKey> {
+    data.into_iter().map(|(key, addrs)| SubscribeByKey { key, addrs: addrs.into_iter().map(|addr| addr.to_owned()).collect() }).collect()
 }
 
-impl Subscribes {
-    pub fn new_by_addr(data: Vec<(&str, Vec<Key>)>) -> Subscribes {
-        Subscribes::ByAddr(data.into_iter().map(|(addr, keys)| SubscribeByAddr { addr: addr.to_owned(), keys }).collect())
-    }    
-    pub fn new_by_key(data: Vec<(Key, Vec<&str>)>) -> Subscribes {
-        Subscribes::ByKey(data.into_iter().map(|(key, addrs)| SubscribeByKey { key, addrs: addrs.into_iter().map(|addr| addr.to_owned()).collect() }).collect())
-    }
-}
+pub fn traverse_subscribes_to_keys(subscribes: Vec<SubscribeByAddr>) -> Vec<SubscribeByKey> {
+    let mut res: Vec<SubscribeByKey> = vec![];
 
-impl Subscribes {
-    pub fn traverse_to_keys(self) -> Vec<SubscribeByKey> {
-        match self {
-            Subscribes::ByAddr(subscribes) => {
-                let mut res: Vec<SubscribeByKey> = vec![];
-
-                for subscribe in subscribes {
-                    for key in subscribe.keys {
-                        match res.iter_mut().find(|sub_by_key| sub_by_key.key == key) {
-                            Some(sub_by_key) => {
-                                if !sub_by_key.addrs.iter().any(|addr| addr == &subscribe.addr) {
-                                    sub_by_key.addrs.push(subscribe.addr.clone());
-                                }
-                            }
-                            None => {
-                                res.push(SubscribeByKey { 
-                                    key: key.clone(), 
-                                    addrs: vec![
-                                        subscribe.addr.clone()
-                                    ]
-                                });
-                            }
-                        }                                                
+    for subscribe in subscribes {
+        for key in subscribe.keys {
+            match res.iter_mut().find(|sub_by_key| sub_by_key.key == key) {
+                Some(sub_by_key) => {
+                    if !sub_by_key.addrs.iter().any(|addr| addr == &subscribe.addr) {
+                        sub_by_key.addrs.push(subscribe.addr.clone());
                     }
-                }                
-
-                res
-            },
-            Subscribes::ByKey(subscribes) => subscribes
+                }
+                None => {
+                    res.push(SubscribeByKey { 
+                        key: key.clone(), 
+                        addrs: vec![
+                            subscribe.addr.clone()
+                        ]
+                    });
+                }
+            }           
         }
-    }
+    }                
+
+    res
 }
 
 impl Key {

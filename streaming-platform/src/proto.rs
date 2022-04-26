@@ -143,10 +143,14 @@ impl Frame {
             1 => MsgType::RpcRequest,
             2 => MsgType::RpcResponse(RpcResult::Ok),
             3 => MsgType::RpcResponse(RpcResult::Err),
+            4 => MsgType::ServerRpcRequest,
+            5 => MsgType::ServerRpcResponse(RpcResult::Ok),
+            6 => MsgType::ServerRpcResponse(RpcResult::Err),
             _ => return Err(ProcessError::IncorrectMsgType)
         })
     }
 }
+
 pub struct State {
 	frame_reading_status: FrameReadingStatus,
     bytes_read: usize,

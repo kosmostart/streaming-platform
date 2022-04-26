@@ -7,7 +7,7 @@ use serde_json::{from_slice, Value, from_value, to_vec, json};
 use tokio::runtime::Runtime;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc::{self, UnboundedSender};
-use sp_dto::{Key, SubscribeByAddr, SubscribeByKey, subscribes_map_to_keys, subscribes_vec_to_map, subscribes_vec_to_keys, MsgMeta, MsgType, RpcResult, rpc_response_dto2_sizes};
+use sp_dto::{Subscribe, MsgMeta, MsgType, RpcResult, rpc_response_dto2_sizes};
 use crate::proto::*;
 
 #[derive(Debug, Deserialize, Clone)]
@@ -21,24 +21,36 @@ pub struct Dir {
     pub path: String
 }
 
-fn to_hashed_subscribes(_key_hasher: &mut SipHasher24, subscribes: Vec<SubscribeByKey>) -> HashMap<u64, Vec<u64>> {
-    let mut res = HashMap::new();    
+fn to_hashed_subscribes(_key_hasher: &mut SipHasher24, subscribes: Vec<Subscribe>) -> HashMap<u64, Vec<u64>> {
+    let mut res: HashMap<u64, Vec<u64>> = HashMap::new();
 
-    for subsribe in subscribes {
-        res.insert(get_key_hash(&subsribe.key), subsribe.addrs.iter().map(|a| get_addr_hash(a)).collect());
+    for subscribe in subscribes {
+        let key_hash = get_key_hash(&subscribe.key);
+        let addr_hash = get_addr_hash(&subscribe.addr);
+
+        match res.get_mut(&key_hash) {
+            Some(addrs) => {
+                if !addrs.iter().any(|a_h| *a_h == addr_hash) {
+                    addrs.push(addr_hash);
+                }
+            }
+            None => {
+                res.insert(key_hash, vec![addr_hash]);
+            }
+        }        
     }
 
     res
 }
 
 /// Starts the server based on provided ServerConfig struct. Creates new runtime and blocks.
-pub fn start(config: ServerConfig, event_subscribes: Vec<SubscribeByAddr>, rpc_subscribes: Vec<SubscribeByAddr>) {
+pub fn start(config: ServerConfig, event_subscribes: Vec<Subscribe>, rpc_subscribes: Vec<Subscribe>) {
     let rt = Runtime::new().expect("failed to create runtime"); 
     let _ = rt.block_on(start_future(config, event_subscribes, rpc_subscribes));
 }
 
 /// Future for new server start based on provided ServerConfig struct, in case you want to create runtime by yourself.
-pub async fn start_future(config: ServerConfig, event_subscribes: Vec<SubscribeByAddr>, rpc_subscribes: Vec<SubscribeByAddr>) -> Result<(), ProcessError> {
+pub async fn start_future(config: ServerConfig, event_subscribes: Vec<Subscribe>, rpc_subscribes: Vec<Subscribe>) -> Result<(), ProcessError> {
     let listener = TcpListener::bind(config.host.clone()).await?;
     let (server_tx, mut server_rx) = mpsc::unbounded_channel();
 
@@ -101,19 +113,11 @@ pub async fn start_future(config: ServerConfig, event_subscribes: Vec<SubscribeB
                         if !client_state.has_writer {
                             client_state.has_writer = true;
 
-                            let mut event_map = HashMap::new();
-                            let mut rpc_map = HashMap::new();
-
-                            for sub in &event_subscribes {
-                                event_map.insert(sub.addr.clone(), sub.keys.clone());
-                            }
-
-                            for sub in &rpc_subscribes {
-                                rpc_map.insert(sub.addr.clone(), sub.keys.clone());
-                            }
+                            let event_subscribes = event_subscribes.clone();
+                            let rpc_subscribes = rpc_subscribes.clone();
 
                             tokio::spawn(async move {                                
-                                match process_write_tcp_stream(addr.clone(), &mut stream, &mut state, event_map, rpc_map, client_net_addr, server_tx).await {
+                                match process_write_tcp_stream(addr.clone(), &mut stream, &mut state, event_subscribes, rpc_subscribes, client_net_addr, server_tx).await {
 									Ok(()) => info!("Write process ended, client addr {}", addr),
 									Err(e) => {
 										match e {
@@ -226,14 +230,11 @@ async fn process_read_tcp_stream(addr: String, mut tcp_stream: TcpStream, client
     write_loop(client_rx, &mut tcp_stream).await
 }
 
-async fn process_write_tcp_stream(_addr: String, tcp_stream: &mut TcpStream, state: &mut State, mut initial_event_subscribes: HashMap<String, Vec<Key>>, mut initial_rpc_subscribes: HashMap<String, Vec<Key>>, _client_net_addr: SocketAddr, server_tx: UnboundedSender<ServerMsg>) -> Result<(), ProcessError> {
-    let event_subscribes = subscribes_map_to_keys(initial_event_subscribes.clone());
-    let rpc_subscribes = subscribes_map_to_keys(initial_rpc_subscribes.clone());
-
+async fn process_write_tcp_stream(_addr: String, tcp_stream: &mut TcpStream, state: &mut State, mut event_subscribes: Vec<Subscribe>, mut rpc_subscribes: Vec<Subscribe>, _client_net_addr: SocketAddr, server_tx: UnboundedSender<ServerMsg>) -> Result<(), ProcessError> {    
     let mut key_hasher = get_key_hasher();
 
-    let mut event_subscribes = to_hashed_subscribes(&mut key_hasher, event_subscribes);
-    let mut rpc_subscribes = to_hashed_subscribes(&mut key_hasher, rpc_subscribes);
+    let mut hashed_event_subscribes = to_hashed_subscribes(&mut key_hasher, event_subscribes.clone());
+    let mut hashed_rpc_subscribes = to_hashed_subscribes(&mut key_hasher, rpc_subscribes.clone());
 
     let mut stream_layouts: HashMap<u64, StreamLayout> = HashMap::new();
 
@@ -248,7 +249,7 @@ async fn process_write_tcp_stream(_addr: String, tcp_stream: &mut TcpStream, sta
 
 				match frame.get_msg_type()? {
 					MsgType::Event => {
-                        match event_subscribes.get(&frame.key_hash) {
+                        match hashed_event_subscribes.get(&frame.key_hash) {
                             Some(targets) => {
                                 match targets.len() {
                                     0 => {
@@ -279,7 +280,7 @@ async fn process_write_tcp_stream(_addr: String, tcp_stream: &mut TcpStream, sta
                         }
                     }
 					MsgType::RpcRequest => {
-                        match rpc_subscribes.get(&frame.key_hash) {
+                        match hashed_rpc_subscribes.get(&frame.key_hash) {
                             Some(targets) => {
                                 match targets.len() {
                                     0 => {
@@ -362,40 +363,28 @@ async fn process_write_tcp_stream(_addr: String, tcp_stream: &mut TcpStream, sta
                                 let msg_meta: MsgMeta = from_slice(&stream_layout.msg_meta)?;
 
                                 let res = match msg_meta.key.action.as_ref() {
-                                    "GetSubscribes" => {
+                                    "GetSubscribes" => {                                    
                                         json!({
-                                            "event_subscribes": initial_event_subscribes,
-                                            "rpc_subscribes": initial_rpc_subscribes
+                                            "event_subscribes": event_subscribes,
+                                            "rpc_subscribes": rpc_subscribes
                                         })
                                     }
                                     "LoadSubscribes" => {
                                         let mut payload: Value = from_slice(&stream_layout.payload)?;
 
-                                        let new_event_subscribes: Vec<SubscribeByAddr> = from_value(payload["event_subscribes"].take())?;
-                                        let new_rpc_subscribes: Vec<SubscribeByAddr> = from_value(payload["rpc_subscribes"].take())?;
-
-                                        initial_event_subscribes = subscribes_vec_to_map(new_event_subscribes.clone());
-                                        initial_rpc_subscribes = subscribes_vec_to_map(new_rpc_subscribes.clone());
-
-                                        let new_event_subscribes = subscribes_vec_to_keys(new_event_subscribes);
-                                        let new_rpc_subscribes = subscribes_vec_to_keys(new_rpc_subscribes);
-                                                                    
+                                        let new_event_subscribes: Vec<Subscribe> = from_value(payload["event_subscribes"].take())?;
+                                        let new_rpc_subscribes: Vec<Subscribe> = from_value(payload["rpc_subscribes"].take())?;
+                                                                                                            
                                         let mut key_hasher = get_key_hasher();
                                     
-                                        let new_event_subscribes = to_hashed_subscribes(&mut key_hasher, new_event_subscribes);
-                                        let new_rpc_subscribes = to_hashed_subscribes(&mut key_hasher, new_rpc_subscribes);
+                                        let new_hashed_event_subscribes = to_hashed_subscribes(&mut key_hasher, new_event_subscribes.clone());
+                                        let new_hashed_rpc_subscribes = to_hashed_subscribes(&mut key_hasher, new_rpc_subscribes.clone());
                                     
-                                        event_subscribes.clear();
+                                        event_subscribes = new_event_subscribes;
+                                        rpc_subscribes = new_rpc_subscribes;
 
-                                        for (key, addrs) in new_event_subscribes {
-                                            event_subscribes.insert(key, addrs);
-                                        }
-
-                                        rpc_subscribes.clear();
-
-                                        for (key, addrs) in new_rpc_subscribes {
-                                            rpc_subscribes.insert(key, addrs);
-                                        }
+                                        hashed_event_subscribes = new_hashed_event_subscribes;
+                                        hashed_rpc_subscribes = new_hashed_rpc_subscribes;
 
                                         info!("Subscribes loaded");
 
@@ -403,9 +392,9 @@ async fn process_write_tcp_stream(_addr: String, tcp_stream: &mut TcpStream, sta
                                     }
                                     "AddEventSubscribe" => {
                                         let mut payload: Value = from_slice(&stream_layout.payload)?;
-                                        let subscribe: SubscribeByAddr = from_value(payload["subscribe"].take())?;
+                                        let subscribe: Subscribe = from_value(payload["subscribe"].take())?;
 
-                                        match initial_event_subscribes.contains_key(&subscribe.addr) {
+                                        match event_subscribes.iter().any(|sub| sub.key == subscribe.key && sub.addr == subscribe.addr) {
                                             true => {
                                                 warn!("Subscribe {:?} already present in event subscribes", subscribe);
 
@@ -416,17 +405,14 @@ async fn process_write_tcp_stream(_addr: String, tcp_stream: &mut TcpStream, sta
                                             false => {
                                                 info!("Adding subscribe {:?} to event subscribes", subscribe);
 
-                                                initial_event_subscribes.insert(subscribe.addr.clone(), subscribe.keys.clone());
-
-                                                let new = subscribes_vec_to_keys(vec![subscribe]);
+                                                event_subscribes.push(subscribe.clone());                                                
 
                                                 let mut key_hasher = get_key_hasher();
-                                    
-                                                let new = to_hashed_subscribes(&mut key_hasher, new);
+                                                let new = to_hashed_subscribes(&mut key_hasher, vec![subscribe]);
 
                                                 for (key, addrs) in new {
                                                     info!("Inserting key {} with addrs {:?} to event subscribes", key, addrs);
-                                                    event_subscribes.insert(key, addrs);
+                                                    hashed_event_subscribes.insert(key, addrs);
                                                     info!("Done");
                                                 }
                                                 
@@ -440,17 +426,46 @@ async fn process_write_tcp_stream(_addr: String, tcp_stream: &mut TcpStream, sta
                                     }
                                     "RemoveEventSubscribe" => {
                                         let mut payload: Value = from_slice(&stream_layout.payload)?;
+                                        let subscribe: Subscribe = from_value(payload["subscribe"].take())?;
 
-                                        let subscribe: SubscribeByAddr = from_value(payload["subscribe"].take())?;
+                                        match event_subscribes.iter().position(|sub| sub.key == subscribe.key && sub.addr == subscribe.addr) {
+                                            Some(index) => {
+                                                info!("Removing subscribe {:?} from event subscribes", subscribe);
 
-                                        match initial_event_subscribes.remove(&subscribe.addr) {
-                                            Some(removed_keys) => {
-                                                info!("Removing subscribe {} {:?} from event subscribes", &subscribe.addr, removed_keys);
+                                                event_subscribes.remove(index);
 
-                                                for key in removed_keys {
-                                                    let key_hash = get_key_hash(&key);                                                    
-                                                    event_subscribes.remove(&key_hash);
-                                                    info!("Removed key {:?}, key hash {} with addr {} from event subscribes", key, key_hash, subscribe.addr);
+                                                let mut key_hasher = get_key_hasher();
+                                                let current = to_hashed_subscribes(&mut key_hasher, vec![subscribe]);
+
+                                                for (key, addrs) in current {                                                                                                        
+                                                    match hashed_event_subscribes.get_mut(&key) {
+                                                        Some(edit) => {                                                            
+                                                            for addr in addrs {
+                                                                match edit.iter().position(|e_a| *e_a == addr) {
+                                                                    Some(addr_index) => {
+                                                                        edit.remove(addr_index);
+                                                                        info!("Removed event subscribe by key hash {} and addr hash {}", key, addr);
+                                                                    }
+                                                                    None => {
+                                                                        warn!("Failed to remove event subscribe because addr was not found by key hash {} and addr hash {}", key, addr);
+                                                                    }
+                                                                }
+                                                            }
+
+                                                            match edit.is_empty() {
+                                                                true => {
+                                                                    hashed_event_subscribes.remove(&key);
+                                                                    info!("Completely remove event subscribe with key hash {}", key);
+                                                                }
+                                                                false => {
+                                                                    info!("Addrs left in event subscribe with key hash {}, amount is {}", key, edit.len());
+                                                                }                                                                
+                                                            }
+                                                        }
+                                                        None => {
+                                                            warn!("Failed to remove event subscribe because it was not found by key hash {}", key);
+                                                        }
+                                                    }                                                                                                                                                        
                                                 }                                            
 
                                                 json!({
@@ -468,9 +483,9 @@ async fn process_write_tcp_stream(_addr: String, tcp_stream: &mut TcpStream, sta
                                     }
                                     "AddRpcSubscribe" => {
                                         let mut payload: Value = from_slice(&stream_layout.payload)?;
-                                        let subscribe: SubscribeByAddr = from_value(payload["subscribe"].take())?;
+                                        let subscribe: Subscribe = from_value(payload["subscribe"].take())?;
 
-                                        match initial_rpc_subscribes.contains_key(&subscribe.addr) {
+                                        match rpc_subscribes.iter().any(|sub| sub.key == subscribe.key && sub.addr == subscribe.addr) {
                                             true => {
                                                 warn!("Subscribe {:?} already present in rpc subscribes", subscribe);
 
@@ -481,17 +496,14 @@ async fn process_write_tcp_stream(_addr: String, tcp_stream: &mut TcpStream, sta
                                             false => {
                                                 info!("Adding subscribe {:?} to rpc subscribes", subscribe);
 
-                                                initial_rpc_subscribes.insert(subscribe.addr.clone(), subscribe.keys.clone());
+                                                rpc_subscribes.push(subscribe.clone());
 
-                                                let new = subscribes_vec_to_keys(vec![subscribe]);
-
-                                                let mut key_hasher = get_key_hasher();
-                                    
-                                                let new = to_hashed_subscribes(&mut key_hasher, new);
+                                                let mut key_hasher = get_key_hasher();                                    
+                                                let new = to_hashed_subscribes(&mut key_hasher, vec![subscribe]);
 
                                                 for (key, addrs) in new {
-                                                    info!("Inserting key {} with addrs {:?} to event subscribes", key, addrs);
-                                                    rpc_subscribes.insert(key, addrs);
+                                                    info!("Inserting key {} with addrs {:?} to rpc subscribes", key, addrs);
+                                                    hashed_rpc_subscribes.insert(key, addrs);
                                                     info!("Done");
                                                 }
                                                 
@@ -505,17 +517,46 @@ async fn process_write_tcp_stream(_addr: String, tcp_stream: &mut TcpStream, sta
                                     }
                                     "RemoveRpcSubscribe" => {
                                         let mut payload: Value = from_slice(&stream_layout.payload)?;
+                                        let subscribe: Subscribe = from_value(payload["subscribe"].take())?;
 
-                                        let subscribe: SubscribeByAddr = from_value(payload["subscribe"].take())?;
+                                        match rpc_subscribes.iter().position(|sub| sub.key == subscribe.key && sub.addr == subscribe.addr) {
+                                            Some(index) => {
+                                                info!("Removing subscribe {:?} from rpc subscribes", subscribe);
 
-                                        match initial_rpc_subscribes.remove(&subscribe.addr) {
-                                            Some(removed_keys) => {
-                                                info!("Removing subscribe {} {:?} from rpc subscribes", &subscribe.addr, removed_keys);
+                                                rpc_subscribes.remove(index);
 
-                                                for key in removed_keys {
-                                                    let key_hash = get_key_hash(&key);                                                    
-                                                    rpc_subscribes.remove(&key_hash);
-                                                    info!("Removed key {:?}, key hash {} with addr {} from rpc subscribes", key, key_hash, subscribe.addr);
+                                                let mut key_hasher = get_key_hasher();
+                                                let current = to_hashed_subscribes(&mut key_hasher, vec![subscribe]);
+
+                                                for (key, addrs) in current {                                                                                                        
+                                                    match hashed_rpc_subscribes.get_mut(&key) {
+                                                        Some(edit) => {                                                            
+                                                            for addr in addrs {
+                                                                match edit.iter().position(|e_a| *e_a == addr) {
+                                                                    Some(addr_index) => {
+                                                                        edit.remove(addr_index);
+                                                                        info!("Removed rpc subscribe by key hash {} and addr hash {}", key, addr);
+                                                                    }
+                                                                    None => {
+                                                                        warn!("Failed to remove rpc subscribe because addr was not found by key hash {} and addr hash {}", key, addr);
+                                                                    }
+                                                                }
+                                                            }
+
+                                                            match edit.is_empty() {
+                                                                true => {
+                                                                    hashed_rpc_subscribes.remove(&key);
+                                                                    info!("Completely remove rpc subscribe with key hash {}", key);
+                                                                }
+                                                                false => {
+                                                                    info!("Addrs left in rpc subscribe with key hash {}, amount is {}", key, edit.len());
+                                                                }                                                                
+                                                            }
+                                                        }
+                                                        None => {
+                                                            warn!("Failed to remove prc subscribe because it was not found by key hash {}", key);
+                                                        }
+                                                    }                                                                                                                                                        
                                                 }                                            
 
                                                 json!({

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::env::current_dir;
 use log::*;
-use serde_json::{Value, from_slice, json};
+use serde_json::{Value, from_slice, json, from_value};
 use warp::{Filter, http::{Response, header::SET_COOKIE}, hyper::{self, body::Bytes}};
 use streaming_platform::{MagicBall, tokio::{io::AsyncReadExt}};
 use streaming_platform::sp_dto::{uuid::Uuid, MsgMeta};
@@ -10,7 +10,7 @@ use streaming_platform::{
 	client::stream_mode, ClientMsg, FrameType, StreamCompletion, 
 	tokio::{self, sync::{mpsc::{self, UnboundedReceiver, UnboundedSender}, oneshot}}, 
 	sp_dto::{
-        Message, resp
+        Key, Message, resp
     }, 
 	RestreamMsg, StreamLayout, ProcessError, Frame
 };
@@ -33,7 +33,7 @@ pub async fn process_rpc(_config: Value, mut _mb: MagicBall, _msg: Message<Value
 pub async fn startup2(_initial_config: Value, _target_config: Value, _mb: MagicBall, _startup_data: Option<Value>, _: ()) {	
 }
 
-pub async fn startup(initial_config: Value, target_config: Value, mb: MagicBall, startup_data: Option<Value>, _: ()) {
+pub async fn startup(initial_config: Value, target_config: Value, mut mb: MagicBall, startup_data: Option<Value>, _: ()) {
 	let (restream_tx, restream_rx) = mpsc::unbounded_channel();
     let restream_tx2 = restream_tx.clone();
     
@@ -69,8 +69,34 @@ pub async fn startup(initial_config: Value, target_config: Value, mb: MagicBall,
     let mut app_indexes = HashMap::new();
     let mut app_paths = HashMap::new();
 
+    let mut main_page = None;
+
     match startup_data {
-        Some(startup_data) =>
+        Some(mut startup_data) => {
+            match startup_data["main_page_request"].as_object_mut() {
+                Some(req) => {
+                    let key: Key = from_value(req["key"].take()).expect("Failed to deserialze key on main page request");
+
+                    match mb.rpc::<_, Value>(key, req["payload"].take()).await {
+                        Ok(msg) => {
+                            match msg.payload["data"].as_str() {
+                                Some(data) => {
+                                    main_page = Some(data.to_owned());
+                                }
+                                None => panic!("Failed to get main page from message")
+                            }
+                        }
+                        Err(e) => panic!("Failed to get main page, {:?}", e)
+                    }
+                }
+                None => {
+                    match startup_data["main_page_static"].as_str() {
+                        Some(data) => main_page = Some(data.to_owned()),
+                        None => {}
+                    }
+                }
+            }            
+
             match startup_data["apps"].as_array() {
                 Some(apps) => {                    
                     for app in apps {
@@ -95,6 +121,7 @@ pub async fn startup(initial_config: Value, target_config: Value, mb: MagicBall,
                 }
                 None => {}
             }
+        }
         None => {}
     };
 
@@ -103,13 +130,26 @@ pub async fn startup(initial_config: Value, target_config: Value, mb: MagicBall,
         None => current_dir().expect("failed to get current dir").to_str().expect("failed to get current dir str (for deploy path)").to_owned()
     };
 
-    let routes =                    
+    let routes =
+        warp::path::end()
+                .map(move || {
+                    match main_page.clone() {
+                        Some(data) => Response::builder()
+                            .header("content-type", "text/html")
+                            .body(data),
+                        None => Response::builder()
+                            .header("content-type", "text/html")
+                            .body("".to_owned())
+                    }
+                })
+        .or(
         warp::path("hi")
             .map(move || {
                 Response::builder()
                     .header("content-type", "text/html")
                     .body("hi")
             })
+        )
         .or(
             warp::path("authorize")
                 .and(warp::post())                
@@ -239,7 +279,7 @@ pub async fn startup(initial_config: Value, target_config: Value, mb: MagicBall,
                     crate::downstream::go(aca_origin, auth_token_key, cookie_header, restream_tx)
                 }
             )
-        )		
+        )        
     ;
 
     if cert_path.is_some() && key_path.is_some() {

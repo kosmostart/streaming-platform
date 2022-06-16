@@ -9,7 +9,7 @@ pub async fn process_rpc(_config: Value, _mb: MagicBall, _msg: Message<Value>, _
     resp(json!({}))
 }
 
-pub async fn startup(_initial_config: Value, _target_config: Value, mut mb: MagicBall, _startup_data: Option<Value>, _: ()) {
+pub async fn startup(_initial_config: Value, _target_config: Value, mut mb: MagicBall, _startup_data: Option<Value>, _: (), _: ()) {
     let _ = mb.send_event(Key::simple("HiEvent"), json!({
         "data": "Hi event"
     })).await;	
@@ -30,5 +30,5 @@ pub fn main() {
         "access_key": ""
     });    
  
-    client::start_full_message(config, process_event, process_rpc, startup, None, (), None);
+    client::start_full_message(config, process_event, process_rpc, startup, None, None, (), ());
  }

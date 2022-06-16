@@ -1,4 +1,4 @@
-use streaming_platform::{sp_dto::{Key, Subscribe}, server::{self, ServerConfig}};
+use streaming_platform::{sp_dto::Subscribe, server::{self, ServerConfig}};
 
 pub fn main() {
     env_logger::init();

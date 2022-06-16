@@ -30,10 +30,10 @@ pub async fn process_rpc(_config: Value, mut _mb: MagicBall, _msg: Message<Value
     resp(json!({}))    
 }
 
-pub async fn startup2(_initial_config: Value, _target_config: Value, _mb: MagicBall, _startup_data: Option<Value>, _: ()) {	
+pub async fn startup2(_initial_config: Value, _target_config: Value, _mb: MagicBall, _startup_data: Option<Value>, _: (), _: ()) {	
 }
 
-pub async fn startup(initial_config: Value, target_config: Value, mut mb: MagicBall, startup_data: Option<Value>, _: ()) {
+pub async fn startup(initial_config: Value, target_config: Value, mut mb: MagicBall, startup_data: Option<Value>, _: (), _: ()) {
 	let (restream_tx, restream_rx) = mpsc::unbounded_channel();
     let restream_tx2 = restream_tx.clone();
     
@@ -44,7 +44,7 @@ pub async fn startup(initial_config: Value, target_config: Value, mut mb: MagicB
     });	
 
     tokio::spawn(async move {
-        stream_mode(web_stream_config, process_stream, startup2, None, Some(restream_tx2), Some(restream_rx), ()).await;
+        stream_mode(web_stream_config, process_stream, startup2, None, Some(restream_tx2), Some(restream_rx), (), ()).await;
     });
 	
     let listen_addr = target_config["listen_addr"].as_str().expect("Missing listen_addr config value");

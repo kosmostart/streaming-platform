@@ -22,5 +22,6 @@ pub fn main() {
         "cfg_token": "Web"
     });
  
-    client::start_full_message(config, sp_web::process_event, sp_web::process_rpc, sp_web::startup, None, (), None);
+    client::start_full_message(config, sp_web::process_event, sp_web::process_rpc, sp_web::startup, None, None, (), ());
  }
+ 

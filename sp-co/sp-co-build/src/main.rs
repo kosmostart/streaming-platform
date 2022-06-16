@@ -176,7 +176,7 @@ pub async fn process_rpc(_config: Value, mut mb: MagicBall, msg: Message<Value>,
     resp(res)
 }
 
-pub async fn startup(_initial_config: Value, _target_config: Value, _mb: MagicBall, _startup_data: Option<Value>, _: ()) {
+pub async fn startup(_initial_config: Value, _target_config: Value, _mb: MagicBall, _startup_data: Option<Value>, _: (), _: ()) {
 }
 
 async fn deploy_unit(mut mb: MagicBall, path: &str, deploy_unit_name: &str, run_config: Option<RunConfig>) -> Result<Message<Value>, Error> {
@@ -224,7 +224,7 @@ pub fn main() {
         "cfg_token": "Build"
     });
  
-    client::start_full_message(config, process_event, process_rpc, startup, None, (), None);
+    client::start_full_message(config, process_event, process_rpc, startup, None, None, (), ());
  }
  
 #[derive(Debug)]

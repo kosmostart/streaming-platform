@@ -15,7 +15,7 @@ pub async fn process_rpc(_config: Value, _mb: MagicBall, msg: Message<Value>, _:
     }))
 }
 
-pub async fn startup(_initial_config: Value, _target_config: Value, _mb: MagicBall, _startup_data: Option<Value>, _: ()) {
+pub async fn startup(_initial_config: Value, _target_config: Value, _mb: MagicBall, _startup_data: Option<Value>, _: (), _: ()) {
 }
 
 pub fn main() {
@@ -27,5 +27,5 @@ pub fn main() {
         "access_key": ""
     });    
  
-    client::start_full_message(config, process_event, process_rpc, startup, None, (), None);
+    client::start_full_message(config, process_event, process_rpc, startup, None, None, (), ());
  }

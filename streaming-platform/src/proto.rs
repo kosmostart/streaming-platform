@@ -375,7 +375,7 @@ pub type ProcessEvent<T, R, D> = fn(Value, MagicBall, Message<R>, D, UnboundedRe
 /// Type for function called on rpc processing with json payload
 pub type ProcessRpc<T, R, D> = fn(Value, MagicBall, Message<R>, D, UnboundedReceiver<Frame>) -> T;
 /// Type for function called on client starting
-pub type Startup<T, D> = fn(Value, Value, MagicBall, Option<Value>, D) -> T;
+pub type Startup<T, D, U> = fn(Value, Value, MagicBall, Option<Value>, D, U) -> T;
 
 /// Messages received from client
 pub enum ClientMsg {    

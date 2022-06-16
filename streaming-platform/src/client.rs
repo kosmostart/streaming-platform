@@ -17,14 +17,15 @@ use crate::proto::*;
 /// restream_rx can be used for restreaming data somewhere else, for example returning data for incoming web request
 /// dependency is w/e clonable dependency needed when processing data.
 /// The protocol message format is in sp-dto crate.
-pub fn start_stream<T: 'static, R: 'static, D: 'static>(config: Value, process_stream: ProcessStream<T, D>, startup: Startup<R, D>, startup_data: Option<Value>, restream_tx: Option<UnboundedSender<RestreamMsg>>, restream_rx: Option<UnboundedReceiver<RestreamMsg>>, dependency: D) 
+pub fn start_stream<T: 'static, R: 'static, D: 'static, U: 'static>(config: Value, process_stream: ProcessStream<T, D>, startup: Startup<R, D, U>, startup_data: Option<Value>, restream_tx: Option<UnboundedSender<RestreamMsg>>, restream_rx: Option<UnboundedReceiver<RestreamMsg>>, clonable_dependency: D, non_clonable_dependency: U)
 where 
     T: Future<Output = ()> + Send,
     R: Future<Output = ()> + Send,
-    D: Clone + Send + Sync
+    D: Clone + Send + Sync,
+    U: Send + Sync
 {        
     let rt = Runtime::new().expect("Failed to create runtime");
-    rt.block_on(stream_mode(config, process_stream, startup, startup_data, restream_tx, restream_rx, dependency));
+    rt.block_on(stream_mode(config, process_stream, startup, startup_data, restream_tx, restream_rx, clonable_dependency, non_clonable_dependency));
 }
 
 /// Starts a message based client based on provided config. Creates new runtime and blocks.
@@ -34,15 +35,16 @@ where
 /// startup is executed on the start of this function.
 /// dependency is w/e clonable dependency needed when processing data.
 /// The protocol message format is in sp-dto crate.
-pub fn start_full_message<T: 'static, Q: 'static, R: 'static, D: 'static>(config: Value, process_event: ProcessEvent<T, Value, D>, process_rpc: ProcessRpc<Q, Value, D>, startup: Startup<R, D>, startup_data: Option<Value>, dependency: D, emittable_keys: Option<Vec<Key>>) 
+pub fn start_full_message<T: 'static, Q: 'static, R: 'static, D: 'static, U: 'static>(config: Value, process_event: ProcessEvent<T, Value, D>, process_rpc: ProcessRpc<Q, Value, D>, startup: Startup<R, D, U>, startup_data: Option<Value>, emittable_keys: Option<Vec<Key>>, clonable_dependency: D, non_clonable_dependency: U) 
 where 
     T: Future<Output = Result<(), Box<dyn Error>>> + Send,
     Q: Future<Output = Result<Response<Value>, Box<dyn Error>>> + Send,
     R: Future<Output = ()> + Send,
-    D: Clone + Send + Sync
+    D: Clone + Send + Sync,
+    U: Send + Sync
 {    
     let rt = Runtime::new().expect("Failed to create runtime");
-    rt.block_on(full_message_mode(config, process_event, process_rpc, startup, startup_data, dependency, emittable_keys));
+    rt.block_on(full_message_mode(config, process_event, process_rpc, startup, startup_data, emittable_keys, clonable_dependency, non_clonable_dependency));
 }
 
 /// Future for stream based client based on provided config.
@@ -54,11 +56,12 @@ where
 /// restream_rx can be used for restreaming data somewhere else, for example returning data for incoming web request
 /// dependency is w/e clonable dependency needed when processing data.
 /// The protocol message format is in sp-dto crate.
-pub async fn stream_mode<T: 'static, R: 'static, D: 'static>(config: Value, process_stream: ProcessStream<T, D>, startup: Startup<R, D>, startup_data: Option<Value>, restream_tx: Option<UnboundedSender<RestreamMsg>>, restream_rx: Option<UnboundedReceiver<RestreamMsg>>, dependency: D)
+pub async fn stream_mode<T: 'static, R: 'static, D: 'static, U: 'static>(config: Value, process_stream: ProcessStream<T, D>, startup: Startup<R, D, U>, startup_data: Option<Value>, restream_tx: Option<UnboundedSender<RestreamMsg>>, restream_rx: Option<UnboundedReceiver<RestreamMsg>>, clonable_dependency: D, non_clonable_dependency: U)
 where 
     T: Future<Output = ()> + Send,
     R: Future<Output = ()> + Send,
-    D: Clone + Send + Sync
+    D: Clone + Send + Sync,
+    U: Send + Sync
 {
 	let initial_config = config.clone();
     let target_config = match config["cfg_host"].as_str() {
@@ -132,8 +135,8 @@ where
     });
 
     let mb = MagicBall::new(addr.to_owned(), write_tx, rpc_inbound_tx);
-    tokio::spawn(process_stream(target_config.clone(), mb.clone(), read_rx, restream_tx, restream_rx, dependency.clone()));
-    tokio::spawn(startup(initial_config, target_config, mb, startup_data, dependency));
+    tokio::spawn(process_stream(target_config.clone(), mb.clone(), read_rx, restream_tx, restream_rx, clonable_dependency.clone()));
+    tokio::spawn(startup(initial_config, target_config, mb, startup_data, clonable_dependency, non_clonable_dependency));
     connect_stream_future(CompleteCondition::Never, host, addr.to_owned(), access_key.to_owned(), read_tx, write_rx).await;
 }
 
@@ -145,13 +148,14 @@ where
 /// restream_rx can be used for restreaming data somewhere else, for example returning data for incoming web request
 /// dependency is w/e clonable dependency needed when processing data.
 /// The protocol message format is in sp-dto crate.
-pub async fn full_message_mode<P: 'static, T: 'static, Q: 'static, R: 'static, D: 'static>(config: Value, process_event: ProcessEvent<T, P, D>, process_rpc: ProcessRpc<Q, P, D>, startup: Startup<R, D>, startup_data: Option<Value>, dependency: D, emittable_keys: Option<Vec<Key>>)
+pub async fn full_message_mode<P: 'static, T: 'static, Q: 'static, R: 'static, D: 'static, U: 'static>(config: Value, process_event: ProcessEvent<T, P, D>, process_rpc: ProcessRpc<Q, P, D>, startup: Startup<R, D, U>, startup_data: Option<Value>, emittable_keys: Option<Vec<Key>>, clonable_dependency: D, non_clonable_dependency: U)
 where 
     T: Future<Output = Result<(), Box<dyn Error>>> + Send,
     Q: Future<Output = Result<Response<P>, Box<dyn Error>>> + Send,
     R: Future<Output = ()> + Send,
     P: serde::Serialize, for<'de> P: serde::Deserialize<'de> + Send,
-    D: Clone + Send + Sync
+    D: Clone + Send + Sync,
+    U: Send + Sync
 {
 	let initial_config = config.clone();
     let target_config = match config["cfg_host"].as_str() {
@@ -237,7 +241,7 @@ where
     tokio::spawn(async move {		
         let mb = MagicBall::new(addr2, write_tx, rpc_inbound_tx);				
 
-        tokio::spawn(startup(initial_config, target_config.clone(), mb.clone(), startup_data, dependency.clone()));
+        tokio::spawn(startup(initial_config, target_config.clone(), mb.clone(), startup_data, clonable_dependency.clone(), non_clonable_dependency));
 
 		let mut emittables = HashMap::new();
 
@@ -251,7 +255,7 @@ where
             };
             let mut mb = mb.clone();
             let config = target_config.clone();
-            let dependency = dependency.clone();
+            let clonable_dependency = clonable_dependency.clone();
 
             match msg {
                 ClientMsg::Message(source_stream_id, msg_meta, payload, attachments_data) => {
@@ -267,7 +271,7 @@ where
 								let addr = mb.addr.clone();
                                 let key = msg_meta.key.clone();
                                 let payload: P = from_slice(&payload).expect("Failed to deserialize event payload");                                								
-                                if let Err(e) = process_event(config, mb, Message {meta: msg_meta, payload, attachments_data}, dependency, emittable_rx).await {
+                                if let Err(e) = process_event(config, mb, Message {meta: msg_meta, payload, attachments_data}, clonable_dependency, emittable_rx).await {
                                     error!("Process event error {}, {:?}, {:?}", addr, key, e);
                                 }
                                 debug!("Client {} process_event succeeded", addr);
@@ -287,7 +291,7 @@ where
                                 let payload: P = from_slice(&payload).expect("failed to deserialize rpc request payload");
 								let source_hash = get_addr_hash(&msg_meta.tx);
 
-                                let (payload, attachments, attachments_data, rpc_result) = match process_rpc(config.clone(), mb.clone(), Message {meta: msg_meta, payload, attachments_data}, dependency, emittable_rx).await {
+                                let (payload, attachments, attachments_data, rpc_result) = match process_rpc(config.clone(), mb.clone(), Message {meta: msg_meta, payload, attachments_data}, clonable_dependency, emittable_rx).await {
                                     Ok(res) => {
                                         debug!("Client {} process_rpc succeeded", mb.addr);
                                         let (res, attachments, attachments_data) = match res {

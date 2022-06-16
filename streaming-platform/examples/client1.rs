@@ -1,32 +1,28 @@
-use std::collections::HashMap;
-use serde_json::{json, Value, from_value};
-use streaming_platform::{client, MagicBall, sp_dto::{MsgMeta, Message, Response, resp}};
+use serde_json::{json, Value};
+use streaming_platform::{client, MagicBall, Frame, tokio::sync::mpsc::UnboundedReceiver, sp_dto::{Message, Response, resp}};
 
-pub async fn process_event(config: HashMap<String, String>, mut mb: MagicBall, msg: Message<Value>, _: ()) -> Result<(), Box<dyn std::error::Error>>  {
+pub async fn process_event(_config: Value, _mb: MagicBall, msg: Message<Value>, _: (), _emittable_rx: UnboundedReceiver<Frame>) -> Result<(), Box<dyn std::error::Error>> {
     println!("{:#?}", msg);
     
     Ok(())
 }
 
-pub async fn process_rpc(config: HashMap<String, String>, mut mb: MagicBall, msg: Message<Value>, _: ()) -> Result<Response<Value>, Box<dyn std::error::Error>> {   
-    println!("{:#?}", msg);
-
-    resp(json!({
-        "data": "hi"
+pub async fn process_rpc(_config: Value, _mb: MagicBall, msg: Message<Value>, _: (), _emittable_rx: UnboundedReceiver<Frame>) -> Result<Response<Value>, Box<dyn std::error::Error>> {    
+    resp(json!({        
     }))
 }
 
-pub async fn startup(config: HashMap<String, String>, mut mb: MagicBall, startup_data: Option<Value>, _: ()) {
+pub async fn startup(_initial_config: Value, _target_config: Value, _mb: MagicBall, _startup_data: Option<Value>, _: ()) {
 }
 
 pub fn main() {
     env_logger::init();
 
-    let mut config = HashMap::new();
-
-    config.insert("addr".to_owned(), "Client1".to_owned());
-    config.insert("host".to_owned(), "127.0.0.1:11001".to_owned());
-    config.insert("access_key".to_owned(), "".to_owned());
+    let config = json!({
+        "host": "127.0.0.1:11001",
+        "addr": "Client1",
+        "access_key": ""
+    });    
  
-    client::start_full_message(config, process_event, process_rpc, startup, None, ());
+    client::start_full_message(config, process_event, process_rpc, startup, None, (), None);
  }

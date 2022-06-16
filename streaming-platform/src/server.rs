@@ -54,7 +54,7 @@ pub async fn start_future(config: ServerConfig, event_subscribes: Vec<Subscribe>
     let listener = TcpListener::bind(config.host.clone()).await?;
     let (server_tx, mut server_rx) = mpsc::unbounded_channel();
 
-    tokio::spawn(async move {        
+    tokio::spawn(async move {
         let mut clients = HashMap::new();
 
         loop {
@@ -84,7 +84,7 @@ pub async fn start_future(config: ServerConfig, event_subscribes: Vec<Subscribe>
                 }
             }     
         }
-    });    
+    });
 
     let mut client_states = HashMap::new();
     

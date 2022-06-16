@@ -21,8 +21,8 @@ pub fn start_stream<T: 'static, R: 'static, D: 'static, U: 'static>(config: Valu
 where 
     T: Future<Output = ()> + Send,
     R: Future<Output = ()> + Send,
-    D: Clone + Send + Sync,
-    U: Send + Sync
+    D: Clone + Send,
+    U: Send
 {        
     let rt = Runtime::new().expect("Failed to create runtime");
     rt.block_on(stream_mode(config, process_stream, startup, startup_data, restream_tx, restream_rx, clonable_dependency, non_clonable_dependency));
@@ -40,8 +40,8 @@ where
     T: Future<Output = Result<(), Box<dyn Error>>> + Send,
     Q: Future<Output = Result<Response<Value>, Box<dyn Error>>> + Send,
     R: Future<Output = ()> + Send,
-    D: Clone + Send + Sync,
-    U: Send + Sync
+    D: Clone + Send,
+    U: Send
 {    
     let rt = Runtime::new().expect("Failed to create runtime");
     rt.block_on(full_message_mode(config, process_event, process_rpc, startup, startup_data, emittable_keys, clonable_dependency, non_clonable_dependency));
@@ -60,8 +60,8 @@ pub async fn stream_mode<T: 'static, R: 'static, D: 'static, U: 'static>(config:
 where 
     T: Future<Output = ()> + Send,
     R: Future<Output = ()> + Send,
-    D: Clone + Send + Sync,
-    U: Send + Sync
+    D: Clone + Send,
+    U: Send
 {
 	let initial_config = config.clone();
     let target_config = match config["cfg_host"].as_str() {
@@ -154,8 +154,8 @@ where
     Q: Future<Output = Result<Response<P>, Box<dyn Error>>> + Send,
     R: Future<Output = ()> + Send,
     P: serde::Serialize, for<'de> P: serde::Deserialize<'de> + Send,
-    D: Clone + Send + Sync,
-    U: Send + Sync
+    D: Clone + Send,
+    U: Send
 {
 	let initial_config = config.clone();
     let target_config = match config["cfg_host"].as_str() {

@@ -33,7 +33,7 @@ pub async fn process_rpc(_config: Value, mut _mb: MagicBall, _msg: Message<Value
 pub async fn startup2(_initial_config: Value, _target_config: Value, _mb: MagicBall, _startup_data: Option<Value>, _: (), _: ()) {	
 }
 
-pub async fn startup(initial_config: Value, target_config: Value, mut mb: MagicBall, startup_data: Option<Value>, _: (), _: ()) {
+pub async fn startup(initial_config: Value, mut target_config: Value, mut mb: MagicBall, mut startup_data: Option<Value>, _: (), _: ()) {
 	let (restream_tx, restream_rx) = mpsc::unbounded_channel();
     let restream_tx2 = restream_tx.clone();
     
@@ -46,7 +46,11 @@ pub async fn startup(initial_config: Value, target_config: Value, mut mb: MagicB
     tokio::spawn(async move {
         stream_mode(web_stream_config, process_stream, startup2, None, Some(restream_tx2), Some(restream_rx), (), ()).await;
     });
-	
+
+    if startup_data.is_none() && target_config["startup_data"].is_object() {        
+        startup_data = Some(target_config["startup_data"].take());
+    }
+    	
     let listen_addr = target_config["listen_addr"].as_str().expect("Missing listen_addr config value");
     let cert_path = target_config["cert_path"].as_str();
     let key_path = target_config["key_path"].as_str();
@@ -69,7 +73,7 @@ pub async fn startup(initial_config: Value, target_config: Value, mut mb: MagicB
     let mut app_indexes = HashMap::new();
     let mut app_paths = HashMap::new();
 
-    let mut main_page = None;
+    let mut main_page = None;    
 
     match startup_data {
         Some(mut startup_data) => {

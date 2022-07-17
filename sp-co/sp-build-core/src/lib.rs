@@ -167,3 +167,11 @@ fn decompress(from: &str, to: &str) -> Result<(), Error> {
 
     Ok(())
 }
+
+fn encrypt() {
+
+}
+
+fn decrypt() {
+
+}

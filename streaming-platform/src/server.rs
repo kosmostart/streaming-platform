@@ -6,7 +6,7 @@ use serde_derive::Deserialize;
 use serde_json::{from_slice, Value, from_value, to_vec, json};
 use tokio::runtime::Runtime;
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::mpsc::{self, UnboundedSender};
+use tokio::sync::mpsc::{self, UnboundedSender, UnboundedReceiver};
 use sp_dto::{Subscribe, MsgMeta, MsgType, RpcResult, rpc_response_dto2_sizes};
 use crate::proto::*;
 
@@ -53,6 +53,7 @@ pub fn start(config: ServerConfig, event_subscribes: Vec<Subscribe>, rpc_subscri
 pub async fn start_future(config: ServerConfig, event_subscribes: Vec<Subscribe>, rpc_subscribes: Vec<Subscribe>) -> Result<(), ProcessError> {
     let listener = TcpListener::bind(config.host.clone()).await?;
     let (server_tx, mut server_rx) = mpsc::unbounded_channel();
+    let (settings_tx, mut settings_rx) = mpsc::unbounded_channel();
 
     tokio::spawn(async move {
         let mut clients = HashMap::new();
@@ -86,6 +87,41 @@ pub async fn start_future(config: ServerConfig, event_subscribes: Vec<Subscribe>
         }
     });
 
+    tokio::spawn(async move {
+        let mut client_settings = HashMap::new();
+
+        loop {
+            let msg = settings_rx.recv().await.expect("SettingsMsg receive failed");
+            
+            match msg {
+                SettingsMsg::AddClientSettings(addr, addr_hash, subscribes, tx) => {
+                    let settings = ClientSettings {
+                        addr,
+                        addr_hash,
+                        subscribes,
+                        tx
+                    };
+
+                    client_settings.insert(addr_hash, settings);
+                }
+                SettingsMsg::GetClientSubscribes(addr_hash) => {
+                    match client_settings.get_mut(&addr_hash) {
+                        Some(settings) => {
+                            match settings.tx.send(SettingsMsg2::ClientSubscribes(settings.subscribes.clone())) {
+                                Ok(()) => {}
+                                Err(_msg) => panic!("ServerMsg::Send processing failed - send error, client addr hash {}", addr_hash)
+                            }
+                        }
+                        None => error!("No client with addr hash {} for sending subscribes", addr_hash)
+                    }
+                }
+                SettingsMsg::RemoveClientSettings(addr_hash) => {
+                    let _ = client_settings.remove(&addr_hash);
+                }
+            }            
+        }
+    });
+
     let mut client_states = HashMap::new();
     
     info!("Started on {}", config.host);
@@ -97,6 +133,7 @@ pub async fn start_future(config: ServerConfig, event_subscribes: Vec<Subscribe>
 
         let config = config.clone();
         let server_tx = server_tx.clone();
+        let settings_tx = settings_tx.clone();        
         let mut state = State::new();
 
         match auth_tcp_stream(&mut stream, &mut state, client_net_addr, &config).await {
@@ -116,8 +153,16 @@ pub async fn start_future(config: ServerConfig, event_subscribes: Vec<Subscribe>
                             let event_subscribes = event_subscribes.clone();
                             let rpc_subscribes = rpc_subscribes.clone();
 
+                            let (settings_per_client_tx, mut settings_per_client_rx) = mpsc::unbounded_channel();
+                            let addr_hash = get_addr_hash(&addr);
+
+                            match settings_tx.send(SettingsMsg::AddClientSettings(addr.clone(), addr_hash, vec![], settings_per_client_tx)) {
+                                Ok(()) => {}
+                                Err(_msg) => panic!("SettingsMsg::AddClientSettings send error, client addr {}, client addr hash {}", addr, addr_hash)
+                            }
+
                             tokio::spawn(async move {                                
-                                match process_write_tcp_stream(addr.clone(), &mut stream, &mut state, event_subscribes, rpc_subscribes, client_net_addr, server_tx).await {
+                                match process_write_tcp_stream(addr.clone(), &mut stream, &mut state, event_subscribes, rpc_subscribes, client_net_addr, server_tx, settings_tx, settings_per_client_rx).await {
 									Ok(()) => info!("Write process ended, client addr {}", addr),
 									Err(e) => {
 										match e {
@@ -230,7 +275,7 @@ async fn process_read_tcp_stream(addr: String, mut tcp_stream: TcpStream, client
     write_loop(client_rx, &mut tcp_stream).await
 }
 
-async fn process_write_tcp_stream(_addr: String, tcp_stream: &mut TcpStream, state: &mut State, mut event_subscribes: Vec<Subscribe>, mut rpc_subscribes: Vec<Subscribe>, _client_net_addr: SocketAddr, server_tx: UnboundedSender<ServerMsg>) -> Result<(), ProcessError> {    
+async fn process_write_tcp_stream(_addr: String, tcp_stream: &mut TcpStream, state: &mut State, mut event_subscribes: Vec<Subscribe>, mut rpc_subscribes: Vec<Subscribe>, _client_net_addr: SocketAddr, server_tx: UnboundedSender<ServerMsg>, settings_tx: UnboundedSender<SettingsMsg>, settings_per_client_rx: UnboundedReceiver<SettingsMsg2>) -> Result<(), ProcessError> {
     let mut key_hasher = get_key_hasher();
 
     let mut hashed_event_subscribes = to_hashed_subscribes(&mut key_hasher, event_subscribes.clone());
@@ -280,6 +325,7 @@ async fn process_write_tcp_stream(_addr: String, tcp_stream: &mut TcpStream, sta
                         }
                     }
 					MsgType::RpcRequest => {
+                        info!("{:#?}", hashed_rpc_subscribes);
                         match hashed_rpc_subscribes.get(&frame.key_hash) {
                             Some(targets) => {
                                 match targets.len() {
@@ -505,9 +551,11 @@ async fn process_write_tcp_stream(_addr: String, tcp_stream: &mut TcpStream, sta
                                                     info!("Inserting key {} with addrs {:?} to rpc subscribes", key, addrs);
                                                     hashed_rpc_subscribes.insert(key, addrs);
                                                     info!("Done");
-                                                }
+                                                }                                                
                                                 
                                                 info!("Subscribe added to rpc subscribes");
+
+                                                info!("{:#?}", hashed_rpc_subscribes);
 
                                                 json!({
                                                     "result": "Added"

@@ -362,10 +362,27 @@ pub struct Client {
     pub tx: UnboundedSender<WriteMsg>
 }
 
+pub struct ClientSettings {
+    pub addr: String,
+    pub addr_hash: u64,
+    pub subscribes: Vec<u64>,
+    pub tx: UnboundedSender<SettingsMsg2>
+}
+
 pub enum ServerMsg {
     AddClient(String, SocketAddr, UnboundedSender<WriteMsg>),
     RemoveClient(u64),
     Send(u64, Frame)
+}
+
+pub enum SettingsMsg {
+    AddClientSettings(String, u64, Vec<u64>, UnboundedSender<SettingsMsg2>),
+    GetClientSubscribes(u64),
+    RemoveClientSettings(u64)
+}
+
+pub enum SettingsMsg2 {
+    ClientSubscribes(Vec<u64>)
 }
 
 /// Type for function called on data stream processing

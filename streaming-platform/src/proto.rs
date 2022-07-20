@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{Debug, Display};
 use std::io::Cursor;
@@ -364,8 +365,7 @@ pub struct Client {
 
 pub struct ClientSettings {
     pub addr: String,
-    pub addr_hash: u64,
-    pub subscribes: Vec<u64>,
+    pub addr_hash: u64,    
     pub tx: UnboundedSender<SettingsMsg2>
 }
 
@@ -376,13 +376,13 @@ pub enum ServerMsg {
 }
 
 pub enum SettingsMsg {
-    AddClientSettings(String, u64, Vec<u64>, UnboundedSender<SettingsMsg2>),
-    GetClientSubscribes(u64),
+    AddClient(String, u64, UnboundedSender<SettingsMsg2>),
+    GetSubscribes(u64),
     RemoveClientSettings(u64)
 }
 
 pub enum SettingsMsg2 {
-    ClientSubscribes(Vec<u64>)
+    Subscribes(HashMap<u64, ()>, HashMap<u64, ()>)
 }
 
 /// Type for function called on data stream processing

@@ -114,7 +114,7 @@ pub async fn start_future(config: ServerConfig, event_subscribes: Vec<Subscribe>
                 SettingsMsg::GetSubscribes(addr_hash) => {
                     match client_settings.get_mut(&addr_hash) {
                         Some(settings) => {
-                            match settings.tx.send(SettingsMsg2::Subscribes(hashed_event_subscribes.clone(), hashed_rpc_subscribes.clone())) {
+                            match settings.tx.send(SettingsMsg2::Subscribes(event_subscribes, rpc_subscribes, hashed_event_subscribes.clone(), hashed_rpc_subscribes.clone())) {
                                 Ok(()) => {}
                                 Err(_msg) => panic!("ServerMsg::Send processing failed - send error, client addr hash {}", addr_hash)
                             }
@@ -169,7 +169,7 @@ pub async fn start_future(config: ServerConfig, event_subscribes: Vec<Subscribe>
                             }
 
                             tokio::spawn(async move {                                
-                                match process_write_tcp_stream(addr.clone(), &mut stream, &mut state, event_subscribes, rpc_subscribes, client_net_addr, server_tx, settings_tx, settings_per_client_rx).await {
+                                match process_write_tcp_stream(addr.clone(), &mut stream, &mut state, client_net_addr, server_tx, settings_tx, settings_per_client_rx).await {
 									Ok(()) => info!("Write process ended, client addr {}", addr),
 									Err(e) => {
 										match e {
@@ -282,7 +282,7 @@ async fn process_read_tcp_stream(addr: String, mut tcp_stream: TcpStream, client
     write_loop(client_rx, &mut tcp_stream).await
 }
 
-async fn process_write_tcp_stream(_addr: String, tcp_stream: &mut TcpStream, state: &mut State, _client_net_addr: SocketAddr, server_tx: UnboundedSender<ServerMsg>, settings_tx: UnboundedSender<SettingsMsg>, settings_per_client_rx: UnboundedReceiver<SettingsMsg2>) -> Result<(), ProcessError> {
+async fn process_write_tcp_stream(_addr: String, tcp_stream: &mut TcpStream, state: &mut State, _client_net_addr: SocketAddr, server_tx: UnboundedSender<ServerMsg>, settings_tx: UnboundedSender<SettingsMsg>, mut settings_per_client_rx: UnboundedReceiver<SettingsMsg2>) -> Result<(), ProcessError> {
     let mut stream_layouts: HashMap<u64, StreamLayout> = HashMap::new();
 
     let (event_subscribes, rpc_subscribes, hashed_event_subscribes, hashed_rpc_subscribes) = match settings_per_client_rx.recv().await.expect("SettingsMsg2 receive failed") {
@@ -419,27 +419,6 @@ async fn process_write_tcp_stream(_addr: String, tcp_stream: &mut TcpStream, sta
                                             "event_subscribes": event_subscribes,
                                             "rpc_subscribes": rpc_subscribes
                                         })
-                                    }
-                                    "LoadSubscribes" => {
-                                        let mut payload: Value = from_slice(&stream_layout.payload)?;
-
-                                        let new_event_subscribes: Vec<Subscribe> = from_value(payload["event_subscribes"].take())?;
-                                        let new_rpc_subscribes: Vec<Subscribe> = from_value(payload["rpc_subscribes"].take())?;
-                                                                                                            
-                                        let mut key_hasher = get_key_hasher();
-                                    
-                                        let new_hashed_event_subscribes = to_hashed_subscribes(&mut key_hasher, new_event_subscribes.clone());
-                                        let new_hashed_rpc_subscribes = to_hashed_subscribes(&mut key_hasher, new_rpc_subscribes.clone());
-                                    
-                                        event_subscribes = new_event_subscribes;
-                                        rpc_subscribes = new_rpc_subscribes;
-
-                                        hashed_event_subscribes = new_hashed_event_subscribes;
-                                        hashed_rpc_subscribes = new_hashed_rpc_subscribes;
-
-                                        info!("Subscribes loaded");
-
-                                        json!({})
                                     }
                                     "AddEventSubscribe" => {
                                         let mut payload: Value = from_slice(&stream_layout.payload)?;

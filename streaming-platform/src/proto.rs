@@ -378,6 +378,10 @@ pub enum ServerMsg {
 pub enum SettingsMsg {
     AddClient(String, u64, UnboundedSender<SettingsMsg2>),
     GetSubscribes(u64),
+    AddEventSubscribe(Subscribe, u64),
+    RemoveEventSubscribe,
+    AddRpcSubscribe,
+    RemoveRpcSubscribe,
     RemoveClientSettings(u64)
 }
 

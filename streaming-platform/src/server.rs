@@ -163,9 +163,9 @@ pub async fn start_future(config: ServerConfig, event_subscribes: Vec<Subscribe>
                             let (settings_per_client_tx, settings_per_client_rx) = mpsc::unbounded_channel();
                             let addr_hash = get_addr_hash(&addr);
 
-                            match settings_tx.send(SettingsMsg::AddClientSettings(addr.clone(), addr_hash, settings_per_client_tx)) {
+                            match settings_tx.send(SettingsMsg::AddClient(addr.clone(), addr_hash, settings_per_client_tx)) {
                                 Ok(()) => {}
-                                Err(_msg) => panic!("SettingsMsg::AddClientSettings send error, client addr {}, client addr hash {}", addr, addr_hash)
+                                Err(_msg) => panic!("SettingsMsg::AddClient send error, client addr {}, client addr hash {}", addr, addr_hash)
                             }
 
                             tokio::spawn(async move {                                
@@ -254,9 +254,9 @@ async fn auth_tcp_stream(tcp_stream: &mut TcpStream, state: &mut State, client_n
                                     None => {}
                                 }								
 							}
-							FrameType::End => {								
+							FrameType::End => {
 								break;
-							}							
+							}
 						}
 
 					}
@@ -282,8 +282,12 @@ async fn process_read_tcp_stream(addr: String, mut tcp_stream: TcpStream, client
     write_loop(client_rx, &mut tcp_stream).await
 }
 
-async fn process_write_tcp_stream(_addr: String, tcp_stream: &mut TcpStream, state: &mut State, mut hashed_event_subscribes: HashMap<u64, HashMap<u64, ()>>, mut rpc_subscribes: HashMap<u64, HashMap<u64, ()>>, _client_net_addr: SocketAddr, server_tx: UnboundedSender<ServerMsg>, settings_tx: UnboundedSender<SettingsMsg>, settings_per_client_rx: UnboundedReceiver<SettingsMsg2>) -> Result<(), ProcessError> {
+async fn process_write_tcp_stream(_addr: String, tcp_stream: &mut TcpStream, state: &mut State, _client_net_addr: SocketAddr, server_tx: UnboundedSender<ServerMsg>, settings_tx: UnboundedSender<SettingsMsg>, settings_per_client_rx: UnboundedReceiver<SettingsMsg2>) -> Result<(), ProcessError> {
     let mut stream_layouts: HashMap<u64, StreamLayout> = HashMap::new();
+
+    let (event_subscribes, rpc_subscribes, hashed_event_subscribes, hashed_rpc_subscribes) = match settings_per_client_rx.recv().await.expect("SettingsMsg2 receive failed") {
+        SettingsMsg2::Subscribes(events, rpcs, hashed_events, hashed_rpcs) => (events, rpcs, hashed_events, hashed_rpcs)
+    };
 
 	loop {
 		match state.read_frame() {
@@ -326,8 +330,7 @@ async fn process_write_tcp_stream(_addr: String, tcp_stream: &mut TcpStream, sta
                             None => warn!("No subscribes found for key hash {}, msg_type {:?}", frame.key_hash, frame.get_msg_type())
                         }
                     }
-					MsgType::RpcRequest => {
-                        info!("{:#?}", hashed_rpc_subscribes);
+					MsgType::RpcRequest => {                        
                         match hashed_rpc_subscribes.get(&frame.key_hash) {
                             Some(targets) => {
                                 match targets.len() {

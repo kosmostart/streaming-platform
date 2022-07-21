@@ -382,7 +382,7 @@ pub enum SettingsMsg {
 }
 
 pub enum SettingsMsg2 {
-    Subscribes(HashMap<u64, ()>, HashMap<u64, ()>)
+    Subscribes(Vec<Subscribe>, Vec<Subscribe>, HashMap<u64, Vec<u64>>, HashMap<u64, Vec<u64>>)
 }
 
 /// Type for function called on data stream processing

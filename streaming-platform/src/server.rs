@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::ops::IndexMut;
 use log::*;
 use siphasher::sip::SipHasher24;
 use serde_derive::Deserialize;
@@ -21,7 +22,7 @@ pub struct Dir {
     pub path: String
 }
 
-fn to_hashed_subscribes(_key_hasher: &mut SipHasher24, subscribes: Vec<Subscribe>) -> HashMap<u64, Vec<u64>> {
+fn to_hashed_subscribes(subscribes: Vec<Subscribe>) -> HashMap<u64, Vec<u64>> {
     let mut res: HashMap<u64, Vec<u64>> = HashMap::new();
 
     for subscribe in subscribes {
@@ -43,6 +44,13 @@ fn to_hashed_subscribes(_key_hasher: &mut SipHasher24, subscribes: Vec<Subscribe
     res
 }
 
+fn to_hashed_subscribe(subscribe: &Subscribe) -> (u64, u64) {    
+    let addr_hash = get_addr_hash(&subscribe.addr);
+    let key_hash = get_key_hash(&subscribe.key);    
+
+    (addr_hash, key_hash)
+}
+
 /// Starts the server based on provided ServerConfig struct. Creates new runtime and blocks.
 pub fn start(config: ServerConfig, event_subscribes: Vec<Subscribe>, rpc_subscribes: Vec<Subscribe>) {
     let rt = Runtime::new().expect("failed to create runtime"); 
@@ -50,12 +58,10 @@ pub fn start(config: ServerConfig, event_subscribes: Vec<Subscribe>, rpc_subscri
 }
 
 /// Future for new server start based on provided ServerConfig struct, in case you want to create runtime by yourself.
-pub async fn start_future(config: ServerConfig, event_subscribes: Vec<Subscribe>, rpc_subscribes: Vec<Subscribe>) -> Result<(), ProcessError> {
+pub async fn start_future(config: ServerConfig, mut event_subscribes: Vec<Subscribe>, mut rpc_subscribes: Vec<Subscribe>) -> Result<(), ProcessError> {
     let listener = TcpListener::bind(config.host.clone()).await?;
     let (server_tx, mut server_rx) = mpsc::unbounded_channel();
     let (settings_tx, mut settings_rx) = mpsc::unbounded_channel();
-
-    let mut key_hasher = get_key_hasher();
 
     tokio::spawn(async move {
         let mut clients = HashMap::new();
@@ -89,8 +95,8 @@ pub async fn start_future(config: ServerConfig, event_subscribes: Vec<Subscribe>
         }
     });
 
-    let hashed_event_subscribes = to_hashed_subscribes(&mut key_hasher, event_subscribes.clone());
-    let hashed_rpc_subscribes = to_hashed_subscribes(&mut key_hasher, rpc_subscribes.clone());
+    let mut hashed_event_subscribes = to_hashed_subscribes(event_subscribes.clone());
+    let mut hashed_rpc_subscribes = to_hashed_subscribes(rpc_subscribes.clone());
 
     tokio::spawn(async move {
         let mut client_settings = HashMap::new();
@@ -100,6 +106,11 @@ pub async fn start_future(config: ServerConfig, event_subscribes: Vec<Subscribe>
             
             match msg {
                 SettingsMsg::AddClient(addr, addr_hash, tx) => {
+                    match tx.send(SettingsMsg2::Subscribes(event_subscribes.clone(), rpc_subscribes.clone(), hashed_event_subscribes.clone(), hashed_rpc_subscribes.clone())) {
+                        Ok(()) => {}
+                        Err(_msg) => panic!("ServerMsg::Send processing on client connect failed - send error, client addr hash {}", addr_hash)
+                    }
+
                     let settings = ClientSettings {
                         addr,
                         addr_hash,                        
@@ -113,7 +124,7 @@ pub async fn start_future(config: ServerConfig, event_subscribes: Vec<Subscribe>
                         Some(settings) => {
                             match settings.tx.send(SettingsMsg2::Subscribes(event_subscribes.clone(), rpc_subscribes.clone(), hashed_event_subscribes.clone(), hashed_rpc_subscribes.clone())) {
                                 Ok(()) => {}
-                                Err(_msg) => panic!("ServerMsg::Send processing failed - send error, client addr hash {}", addr_hash)
+                                Err(_msg) => panic!("SettingsMsg::Send processing failed - send error, client addr hash {}", addr_hash)
                             }
                         }
                         None => error!("No client with addr hash {} for sending subscribes", addr_hash)
@@ -122,7 +133,101 @@ pub async fn start_future(config: ServerConfig, event_subscribes: Vec<Subscribe>
                 SettingsMsg::RemoveClientSettings(addr_hash) => {
                     let _ = client_settings.remove(&addr_hash);
                 }
-            }            
+                SettingsMsg::AddEventSubscribe(subscribe, addr_hash, key_hash) => {
+                    info!("Adding event subscribe to settings, {:?}, addr_hash {}, key_hash {}", subscribe, addr_hash, key_hash);
+
+                    event_subscribes.push(subscribe);
+
+                    match hashed_event_subscribes.get_mut(&key_hash) {
+                        Some(addrs) => {
+                            addrs.push(addr_hash);
+                        }
+                        None => {
+                            hashed_event_subscribes.insert(key_hash, vec![addr_hash]);
+                        }
+                    }
+                    
+                    info!("Done");
+                }
+                SettingsMsg::AddRpcSubscribe(subscribe, addr_hash, key_hash) => {
+                    info!("Adding rpc subscribe to settings, {:?}, addr_hash {}, key_hash {}", subscribe, addr_hash, key_hash);
+
+                    rpc_subscribes.push(subscribe);
+
+                    match hashed_rpc_subscribes.get_mut(&key_hash) {
+                        Some(addrs) => {
+                            addrs.push(addr_hash);
+                        }
+                        None => {
+                            hashed_rpc_subscribes.insert(key_hash, vec![addr_hash]);
+                        }
+                    }
+
+                    info!("Done");
+                }
+                SettingsMsg::RemoveEventSubscribe(subscribe, addr_hash, key_hash) => {                    
+                    match event_subscribes.iter().position(|sub| sub.key == subscribe.key && sub.addr == subscribe.addr) {
+                        Some(index) => {
+                            info!("Removing event subscribe from settings, {:?}, addr_hash {}, key_hash {}", subscribe, addr_hash, key_hash);
+                            event_subscribes.remove(index);
+
+                            match hashed_event_subscribes.get_mut(&key_hash) {
+                                Some(addrs) => {
+                                    match addrs.iter().position(|addr| *addr == addr_hash) {
+                                        Some(addr_hash_index) => {
+                                            addrs.remove(addr_hash_index);
+                                        }
+                                        None => {
+                                            error!("Addr hash not found for remove from settings in hashed, {:?}, addr_hash {}, key_hash {}", subscribe, addr_hash, key_hash);
+                                        }                                        
+                                    }
+
+                                    if addrs.is_empty() {
+                                        hashed_event_subscribes.remove(&key_hash);
+                                    }
+                                }
+                                None => {
+                                    error!("Event subscribe not found by key hash in hashed for remove from settings, {:?}, addr_hash {}, key_hash {}", subscribe, addr_hash, key_hash);
+                                }
+                            }
+                        }
+                        None => {
+                            error!("Event subscribe not found for remove from settings, {:?}, addr_hash {}, key_hash {}", subscribe, addr_hash, key_hash);
+                        }
+                    };
+                }
+                SettingsMsg::RemoveRpcSubscribe(subscribe, addr_hash, key_hash) => {
+                    match rpc_subscribes.iter().position(|sub| sub.key == subscribe.key && sub.addr == subscribe.addr) {
+                        Some(index) => {
+                            info!("Removing rpc subscribe from settings, {:?}, addr_hash {}, key_hash {}", subscribe, addr_hash, key_hash);
+                            rpc_subscribes.remove(index);
+
+                            match hashed_rpc_subscribes.get_mut(&key_hash) {
+                                Some(addrs) => {
+                                    match addrs.iter().position(|addr| *addr == addr_hash) {
+                                        Some(addr_hash_index) => {
+                                            addrs.remove(addr_hash_index);
+                                        }
+                                        None => {
+                                            error!("Addr hash not found for remove from settings in hashed, {:?}, addr_hash {}, key_hash {}", subscribe, addr_hash, key_hash);
+                                        }                                        
+                                    }
+
+                                    if addrs.is_empty() {
+                                        hashed_rpc_subscribes.remove(&key_hash);
+                                    }
+                                }
+                                None => {
+                                    error!("Rpc subscribe not found by key hash in hashed for remove from settings, {:?}, addr_hash {}, key_hash {}", subscribe, addr_hash, key_hash);
+                                }
+                            }
+                        }
+                        None => {
+                            error!("Rpc subscribe not found for remove from settings, {:?}, addr_hash {}, key_hash {}", subscribe, addr_hash, key_hash);
+                        }
+                    };
+                }
+            }
         }
     });
 
@@ -276,12 +381,14 @@ async fn process_read_tcp_stream(addr: String, mut tcp_stream: TcpStream, client
     write_loop(client_rx, &mut tcp_stream).await
 }
 
-async fn process_write_tcp_stream(_addr: String, tcp_stream: &mut TcpStream, state: &mut State, _client_net_addr: SocketAddr, server_tx: UnboundedSender<ServerMsg>, settings_tx: UnboundedSender<SettingsMsg>, mut settings_per_client_rx: UnboundedReceiver<SettingsMsg2>) -> Result<(), ProcessError> {
-    let mut stream_layouts: HashMap<u64, StreamLayout> = HashMap::new();
-
+async fn process_write_tcp_stream(addr: String, tcp_stream: &mut TcpStream, state: &mut State, _client_net_addr: SocketAddr, server_tx: UnboundedSender<ServerMsg>, settings_tx: UnboundedSender<SettingsMsg>, mut settings_per_client_rx: UnboundedReceiver<SettingsMsg2>) -> Result<(), ProcessError> {    
     let (mut event_subscribes, mut rpc_subscribes, mut hashed_event_subscribes, mut hashed_rpc_subscribes) = match settings_per_client_rx.recv().await.expect("SettingsMsg2 receive failed") {
         SettingsMsg2::Subscribes(events, rpcs, hashed_events, hashed_rpcs) => (events, rpcs, hashed_events, hashed_rpcs)
     };
+
+    info!("{} {:#?}", addr, rpc_subscribes);
+
+    let mut stream_layouts: HashMap<u64, StreamLayout> = HashMap::new();
 
 	loop {
 		match state.read_frame() {
@@ -430,15 +537,19 @@ async fn process_write_tcp_stream(_addr: String, tcp_stream: &mut TcpStream, sta
                                                 info!("Adding subscribe {:?} to event subscribes", subscribe);
 
                                                 event_subscribes.push(subscribe.clone());                                                
+                 
+                                                let (addr_hash, key_hash) = to_hashed_subscribe(&subscribe);
 
-                                                let mut key_hasher = get_key_hasher();
-                                                let new = to_hashed_subscribes(&mut key_hasher, vec![subscribe]);
-
-                                                for (key, addrs) in new {
-                                                    info!("Inserting key {} with addrs {:?} to event subscribes", key, addrs);
-                                                    hashed_event_subscribes.insert(key, addrs);
-                                                    info!("Done");
+                                                match hashed_event_subscribes.get_mut(&key_hash) {
+                                                    Some(addrs) => {
+                                                        addrs.push(addr_hash);
+                                                    }
+                                                    None => {
+                                                        hashed_event_subscribes.insert(key_hash, vec![addr_hash]);
+                                                    }
                                                 }
+
+                                                settings_tx.send(SettingsMsg::AddEventSubscribe(subscribe, addr_hash, key_hash))?;
                                                 
                                                 info!("Subscribe added to event subscribes");
 
@@ -451,57 +562,46 @@ async fn process_write_tcp_stream(_addr: String, tcp_stream: &mut TcpStream, sta
                                     "RemoveEventSubscribe" => {
                                         let mut payload: Value = from_slice(&stream_layout.payload)?;
                                         let subscribe: Subscribe = from_value(payload["subscribe"].take())?;
+                                        let (addr_hash, key_hash) = to_hashed_subscribe(&subscribe);
 
                                         match event_subscribes.iter().position(|sub| sub.key == subscribe.key && sub.addr == subscribe.addr) {
                                             Some(index) => {
-                                                info!("Removing subscribe {:?} from event subscribes", subscribe);
-
+                                                info!("Removing event subscribe from settings, {:?}, addr_hash {}, key_hash {}", subscribe, addr_hash, key_hash);
                                                 event_subscribes.remove(index);
-
-                                                let mut key_hasher = get_key_hasher();
-                                                let current = to_hashed_subscribes(&mut key_hasher, vec![subscribe]);
-
-                                                for (key, addrs) in current {                                                                                                        
-                                                    match hashed_event_subscribes.get_mut(&key) {
-                                                        Some(edit) => {                                                            
-                                                            for addr in addrs {
-                                                                match edit.iter().position(|e_a| *e_a == addr) {
-                                                                    Some(addr_index) => {
-                                                                        edit.remove(addr_index);
-                                                                        info!("Removed event subscribe by key hash {} and addr hash {}", key, addr);
-                                                                    }
-                                                                    None => {
-                                                                        warn!("Failed to remove event subscribe because addr was not found by key hash {} and addr hash {}", key, addr);
-                                                                    }
-                                                                }
+                    
+                                                match hashed_event_subscribes.get_mut(&key_hash) {
+                                                    Some(addrs) => {
+                                                        match addrs.iter().position(|addr| *addr == addr_hash) {
+                                                            Some(addr_hash_index) => {
+                                                                addrs.remove(addr_hash_index);
                                                             }
+                                                            None => {
+                                                                error!("Addr hash not found for remove from settings in hashed, {:?}, addr_hash {}, key_hash {}", subscribe, addr_hash, key_hash);
+                                                            }                                        
+                                                        }
+                    
+                                                        if addrs.is_empty() {
+                                                            hashed_event_subscribes.remove(&key_hash);
+                                                        }
+                                                    }
+                                                    None => {
+                                                        error!("Event subscribe not found by key hash in hashed for remove from settings, {:?}, addr_hash {}, key_hash {}", subscribe, addr_hash, key_hash);
+                                                    }
+                                                }
 
-                                                            match edit.is_empty() {
-                                                                true => {
-                                                                    hashed_event_subscribes.remove(&key);
-                                                                    info!("Completely remove event subscribe with key hash {}", key);
-                                                                }
-                                                                false => {
-                                                                    info!("Addrs left in event subscribe with key hash {}, amount is {}", key, edit.len());
-                                                                }                                                                
-                                                            }
-                                                        }
-                                                        None => {
-                                                            warn!("Failed to remove event subscribe because it was not found by key hash {}", key);
-                                                        }
-                                                    }                                                                                                                                                        
-                                                }                                            
+                                                settings_tx.send(SettingsMsg::RemoveEventSubscribe(subscribe, addr_hash, key_hash))?;
+                                                
+                                                info!("Subscribe removed from event subscribes");
 
                                                 json!({
                                                     "result": "Removed"
-                                                })                                                
+                                                })
                                             }
                                             None => {
-                                                warn!("Subscribe {:?} not found in event subscribes", subscribe);
-
+                                                error!("Event subscribe not found for remove from settings, {:?}, addr_hash {}, key_hash {}", subscribe, addr_hash, key_hash);
                                                 json!({
-                                                    "result": "NotFound"
-                                                })                                                
+                                                    "result": "NotFound"                                                    
+                                                })
                                             }
                                         }
                                     }
@@ -520,20 +620,22 @@ async fn process_write_tcp_stream(_addr: String, tcp_stream: &mut TcpStream, sta
                                             false => {
                                                 info!("Adding subscribe {:?} to rpc subscribes", subscribe);
 
-                                                rpc_subscribes.push(subscribe.clone());
+                                                rpc_subscribes.push(subscribe.clone());                                                
+                                                
+                                                let (addr_hash, key_hash) = to_hashed_subscribe(&subscribe);
 
-                                                let mut key_hasher = get_key_hasher();                                    
-                                                let new = to_hashed_subscribes(&mut key_hasher, vec![subscribe]);
+                                                match hashed_rpc_subscribes.get_mut(&key_hash) {
+                                                    Some(addrs) => {
+                                                        addrs.push(addr_hash);
+                                                    }
+                                                    None => {
+                                                        hashed_rpc_subscribes.insert(key_hash, vec![addr_hash]);
+                                                    }
+                                                }
 
-                                                for (key, addrs) in new {
-                                                    info!("Inserting key {} with addrs {:?} to rpc subscribes", key, addrs);
-                                                    hashed_rpc_subscribes.insert(key, addrs);
-                                                    info!("Done");
-                                                }                                                
+                                                settings_tx.send(SettingsMsg::AddRpcSubscribe(subscribe, addr_hash, key_hash))?;
                                                 
                                                 info!("Subscribe added to rpc subscribes");
-
-                                                info!("{:#?}", hashed_rpc_subscribes);
 
                                                 json!({
                                                     "result": "Added"
@@ -544,57 +646,46 @@ async fn process_write_tcp_stream(_addr: String, tcp_stream: &mut TcpStream, sta
                                     "RemoveRpcSubscribe" => {
                                         let mut payload: Value = from_slice(&stream_layout.payload)?;
                                         let subscribe: Subscribe = from_value(payload["subscribe"].take())?;
+                                        let (addr_hash, key_hash) = to_hashed_subscribe(&subscribe);
 
                                         match rpc_subscribes.iter().position(|sub| sub.key == subscribe.key && sub.addr == subscribe.addr) {
                                             Some(index) => {
-                                                info!("Removing subscribe {:?} from rpc subscribes", subscribe);
-
+                                                info!("Removing rpc subscribe from settings, {:?}, addr_hash {}, key_hash {}", subscribe, addr_hash, key_hash);
                                                 rpc_subscribes.remove(index);
-
-                                                let mut key_hasher = get_key_hasher();
-                                                let current = to_hashed_subscribes(&mut key_hasher, vec![subscribe]);
-
-                                                for (key, addrs) in current {                                                                                                        
-                                                    match hashed_rpc_subscribes.get_mut(&key) {
-                                                        Some(edit) => {                                                            
-                                                            for addr in addrs {
-                                                                match edit.iter().position(|e_a| *e_a == addr) {
-                                                                    Some(addr_index) => {
-                                                                        edit.remove(addr_index);
-                                                                        info!("Removed rpc subscribe by key hash {} and addr hash {}", key, addr);
-                                                                    }
-                                                                    None => {
-                                                                        warn!("Failed to remove rpc subscribe because addr was not found by key hash {} and addr hash {}", key, addr);
-                                                                    }
-                                                                }
+                    
+                                                match hashed_rpc_subscribes.get_mut(&key_hash) {
+                                                    Some(addrs) => {
+                                                        match addrs.iter().position(|addr| *addr == addr_hash) {
+                                                            Some(addr_hash_index) => {
+                                                                addrs.remove(addr_hash_index);
                                                             }
+                                                            None => {
+                                                                error!("Addr hash not found for remove from settings in hashed, {:?}, addr_hash {}, key_hash {}", subscribe, addr_hash, key_hash);
+                                                            }                                        
+                                                        }
+                    
+                                                        if addrs.is_empty() {
+                                                            hashed_rpc_subscribes.remove(&key_hash);
+                                                        }
+                                                    }
+                                                    None => {
+                                                        error!("Rpc subscribe not found by key hash in hashed for remove from settings, {:?}, addr_hash {}, key_hash {}", subscribe, addr_hash, key_hash);
+                                                    }
+                                                }
 
-                                                            match edit.is_empty() {
-                                                                true => {
-                                                                    hashed_rpc_subscribes.remove(&key);
-                                                                    info!("Completely remove rpc subscribe with key hash {}", key);
-                                                                }
-                                                                false => {
-                                                                    info!("Addrs left in rpc subscribe with key hash {}, amount is {}", key, edit.len());
-                                                                }                                                                
-                                                            }
-                                                        }
-                                                        None => {
-                                                            warn!("Failed to remove prc subscribe because it was not found by key hash {}", key);
-                                                        }
-                                                    }                                                                                                                                                        
-                                                }                                            
+                                                settings_tx.send(SettingsMsg::RemoveRpcSubscribe(subscribe, addr_hash, key_hash))?;
+                                                
+                                                info!("Subscribe removed from rpc subscribes");
 
                                                 json!({
                                                     "result": "Removed"
-                                                })                                                
+                                                })
                                             }
                                             None => {
-                                                warn!("Subscribe {:?} not found in rpc subscribes", subscribe);
-
+                                                error!("Event subscribe not found for remove from settings, {:?}, addr_hash {}, key_hash {}", subscribe, addr_hash, key_hash);
                                                 json!({
-                                                    "result": "NotFound"
-                                                })                                                
+                                                    "result": "NotFound"                                                    
+                                                })
                                             }
                                         }
                                     }

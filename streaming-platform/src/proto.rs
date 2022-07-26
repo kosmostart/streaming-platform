@@ -378,10 +378,10 @@ pub enum ServerMsg {
 pub enum SettingsMsg {
     AddClient(String, u64, UnboundedSender<SettingsMsg2>),
     GetSubscribes(u64),
-    AddEventSubscribe(Subscribe, u64),
-    RemoveEventSubscribe,
-    AddRpcSubscribe,
-    RemoveRpcSubscribe,
+    AddEventSubscribe(Subscribe, u64, u64),
+    RemoveEventSubscribe(Subscribe, u64, u64),
+    AddRpcSubscribe(Subscribe, u64, u64),
+    RemoveRpcSubscribe(Subscribe, u64, u64),
     RemoveClientSettings(u64)
 }
 
@@ -1470,6 +1470,7 @@ pub enum ProcessError {
     WriteChannelDropped,        
     SendWriteMsgError,
     SendServerMsgError,
+    SendSettingsMsgError,
     SendRpcMsgError,
     OneshotRecvError(oneshot::error::RecvError),
     Timeout,
@@ -1509,6 +1510,12 @@ impl From<SendError<WriteMsg>> for ProcessError {
 impl From<SendError<ServerMsg>> for ProcessError {
 	fn from(_: SendError<ServerMsg>) -> ProcessError {
 		ProcessError::SendServerMsgError
+	}
+}
+
+impl From<SendError<SettingsMsg>> for ProcessError {
+	fn from(_: SendError<SettingsMsg>) -> ProcessError {
+		ProcessError::SendSettingsMsgError
 	}
 }
 

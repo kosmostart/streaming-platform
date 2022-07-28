@@ -1,8 +1,6 @@
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::ops::IndexMut;
 use log::*;
-use siphasher::sip::SipHasher24;
 use serde_derive::Deserialize;
 use serde_json::{from_slice, Value, from_value, to_vec, json};
 use tokio::runtime::Runtime;
@@ -78,7 +76,7 @@ pub async fn start_future(config: ServerConfig, mut event_subscribes: Vec<Subscr
                     };
                     clients.insert(get_addr_hash(&client.addr), client);
                 }
-                ServerMsg::Send(addr_hash, frame) => {
+                ServerMsg::Send(addr_hash, frame) => {                    
                     match clients.get_mut(&addr_hash) {
                         Some(client) => {
                             match client.tx.send(WriteMsg::Frame(frame)) {
@@ -155,7 +153,7 @@ pub async fn start_future(config: ServerConfig, mut event_subscribes: Vec<Subscr
 
                     info!("Sending notification to clients");
 
-                    let (_, frames) = event_msg_as_frames("Server", Key::new("ReloadSubscribes", "", ""), json!({})).await.expect("Failed to create server event msg as frames");
+                    let (_, frames) = server_event_msg_as_frames("Server", Key::new("ReloadSubscribes", "", ""), json!({})).await.expect("Failed to create server event msg as frames");
 
                     for client_addr_hash in client_settings.keys() {
                         if *client_addr_hash != sender_addr_hash {
@@ -187,19 +185,18 @@ pub async fn start_future(config: ServerConfig, mut event_subscribes: Vec<Subscr
 
                     info!("Done");
 
-                    info!("Sending notification to clients");
+                    info!("Sending server event to clients");
 
-                    let (_, frames) = event_msg_as_frames("Server", Key::new("ReloadSubscribes", "", ""), json!({})).await.expect("Failed to create server event msg as frames");
+                    let (_, frames) = server_event_msg_as_frames("Server", Key::new("ReloadSubscribes", "", ""), json!({})).await.expect("Failed to create server event msg as frames");
 
-                    for client_addr_hash in client_settings.keys() {
+                    for (client_addr_hash, settings) in client_settings.iter() {
                         if *client_addr_hash != sender_addr_hash {
                             for frame in frames.clone() {
                                 match server_tx_for_settings_loop.send(ServerMsg::Send(*client_addr_hash, frame)) {
                                     Ok(_) => {}
                                     Err(_) => panic!("ServerMsg::Send send failed for notification message from server")
-                                }
-                            }
-                            
+                                }                                
+                            }                            
                         }
                     }
 
@@ -228,7 +225,7 @@ pub async fn start_future(config: ServerConfig, mut event_subscribes: Vec<Subscr
 
                                     info!("Sending notification to clients");
 
-                                    let (_, frames) = event_msg_as_frames("Server", Key::new("ReloadSubscribes", "", ""), json!({})).await.expect("Failed to create server event msg as frames");
+                                    let (_, frames) = server_event_msg_as_frames("Server", Key::new("ReloadSubscribes", "", ""), json!({})).await.expect("Failed to create server event msg as frames");
 
                                     for client_addr_hash in client_settings.keys() {
                                         if *client_addr_hash != sender_addr_hash {
@@ -237,8 +234,7 @@ pub async fn start_future(config: ServerConfig, mut event_subscribes: Vec<Subscr
                                                     Ok(_) => {}
                                                     Err(_) => panic!("ServerMsg::Send send failed for notification message from server")
                                                 }
-                                            }
-                                            
+                                            }                                            
                                         }
                                     }
 
@@ -277,7 +273,7 @@ pub async fn start_future(config: ServerConfig, mut event_subscribes: Vec<Subscr
 
                                     info!("Sending notification to clients");
 
-                                    let (_, frames) = event_msg_as_frames("Server", Key::new("ReloadSubscribes", "", ""), json!({})).await.expect("Failed to create server event msg as frames");
+                                    let (_, frames) = server_event_msg_as_frames("Server", Key::new("ReloadSubscribes", "", ""), json!({})).await.expect("Failed to create server event msg as frames");
 
                                     for client_addr_hash in client_settings.keys() {
                                         if *client_addr_hash != sender_addr_hash {
@@ -286,8 +282,7 @@ pub async fn start_future(config: ServerConfig, mut event_subscribes: Vec<Subscr
                                                     Ok(_) => {}
                                                     Err(_) => panic!("ServerMsg::Send send failed for notification message from server")
                                                 }
-                                            }
-                                            
+                                            }                                            
                                         }
                                     }
 

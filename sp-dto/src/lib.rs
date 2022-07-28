@@ -359,7 +359,7 @@ impl MsgMeta {
     }
     /// Short display of message meta data
     pub fn display(&self) -> String {
-        format!("{}, {:#?} {:?}", self.tx, self.key, self.msg_type)
+        format!("addr: {}, key: {:?}, message type: {:?}", self.tx, self.key, self.msg_type)
     }
     /// Get key part, index is zero based, . is used as a separator.
     pub fn action_part(&self, index: usize) -> Result<&str, String> {
@@ -505,6 +505,31 @@ pub fn event_dto_with_sizes<T>(tx: String, key: Key, payload: T, route: Route, a
         tx,        
         key,
         msg_type: MsgType::Event,
+        correlation_id,
+        route,
+        payload_size: payload.len() as u64,
+        auth_token,
+        auth_data,
+		attachments: vec![]
+    };
+    let payload_size = msg_meta.payload_size;
+    let attachments_sizes = msg_meta.attachments_sizes();
+    let mut msg_meta = serde_json::to_vec(&msg_meta)?;    
+    let msg_meta_size = msg_meta.len() as u64;
+    let mut buf = vec![];
+    buf.put_u32(msg_meta.len() as u32);
+    buf.append(&mut msg_meta);
+    buf.append(&mut payload);    
+    Ok((correlation_id, buf, msg_meta_size, payload_size, attachments_sizes))
+}
+
+pub fn server_event_dto_with_sizes<T>(tx: String, key: Key, payload: T, route: Route, auth_token: Option<String>, auth_data: Option<Value>) -> Result<(Uuid, Vec<u8>, u64, u64, Vec<u64>), Error> where T: Debug, T: serde::Serialize {
+    let mut payload = serde_json::to_vec(&payload)?;
+    let correlation_id = Uuid::new_v4();
+    let msg_meta = MsgMeta {
+        tx,        
+        key,
+        msg_type: MsgType::ServerEvent,
         correlation_id,
         route,
         payload_size: payload.len() as u64,

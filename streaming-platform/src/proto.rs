@@ -657,20 +657,20 @@ pub async fn msg_data_to_frames(msg_type: u8, key_hash: u64, stream_id: u64, sou
     Ok(res)
 }
 
-pub async fn event_msg_as_frames<T>(addr: &str, key: Key, payload: T) -> Result<(Uuid, Vec<Frame>), ProcessError> where T: serde::Serialize, for<'de> T: serde::Deserialize<'de>, T: Debug {
+pub async fn server_event_msg_as_frames<T>(addr: &str, key: Key, payload: T) -> Result<(Uuid, Vec<Frame>), ProcessError> where T: serde::Serialize, for<'de> T: serde::Deserialize<'de>, T: Debug {
     let route = Route {
         source: Participator::Service(addr.to_owned()),
         spec: RouteSpec::Simple,
         points: vec![Participator::Service(addr.to_owned())]
     };
 
-    let (correlation_id, dto, msg_meta_size, payload_size, attachments_sizes) = event_dto_with_sizes(addr.to_owned(), key.clone(), payload, route, None, None)?;
+    let (correlation_id, dto, msg_meta_size, payload_size, attachments_sizes) = server_event_dto_with_sizes(addr.to_owned(), key.clone(), payload, route, None, None)?;
 
     let key_hash = get_key_hash(&key);
     let stream_id = get_stream_id_onetime(addr);
     let source_hash = get_addr_hash(addr);
 
-    let res = msg_data_to_frames(MsgType::Event.get_u8(), key_hash, stream_id, 0, source_hash, dto, msg_meta_size, payload_size, attachments_sizes, true).await?;
+    let res = msg_data_to_frames(MsgType::ServerEvent.get_u8(), key_hash, stream_id, 0, source_hash, dto, msg_meta_size, payload_size, attachments_sizes, true).await?;
     
     Ok((correlation_id, res))
 }

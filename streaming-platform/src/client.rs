@@ -258,7 +258,7 @@ where
             let clonable_dependency = clonable_dependency.clone();
 
             match msg {
-                ClientMsg::Message(source_stream_id, msg_meta, payload, attachments_data) => {
+                ClientMsg::Message(source_stream_id, msg_meta, payload, attachments_data) => {                    
                     match msg_meta.msg_type {
                         MsgType::Event => {          
                             debug!("Client got event {}", msg_meta.display());
@@ -350,17 +350,19 @@ where
                             }                                
                         }
                         MsgType::ServerEvent => {
-                            info!("Here comes server event");
+                            info!("Here comes server event {}", msg_meta.display());
 
-                            match msg_meta.key.action.as_ref() {
-                                "ReloadSubscribes" => {                                    
-                                    let msg = mb.server_rpc::<_, Value>(Key::new("ReloadSubscribes", "Server", "Server"), json!({                                        
-                                    })).await.expect("Subscribe reload failed");
-                                
-                                    info!("{:#?}", msg.payload);                                    
+                            tokio::spawn(async move {
+                                match msg_meta.key.action.as_ref() {
+                                    "ReloadSubscribes" => {                                    
+                                        let msg = mb.server_rpc::<_, Value>(Key::new("ReloadSubscribes", "Server", "Server"), json!({                                        
+                                        })).await.expect("Subscribe reload failed");
+                                    
+                                        info!("{:#?}", msg.payload);                                    
+                                    }
+                                    _ => {}
                                 }
-                                _ => {}
-                            }
+                            });                          
                         }
                         MsgType::ServerRpcRequest => {
                             warn!("ServerRpcRequest on client {}", msg_meta.display());

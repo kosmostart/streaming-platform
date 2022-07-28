@@ -278,6 +278,7 @@ pub enum MsgType {
     Event,
     RpcRequest,
     RpcResponse(RpcResult),
+    ServerEvent,
     ServerRpcRequest,
     ServerRpcResponse(RpcResult)
 }
@@ -293,13 +294,28 @@ impl MsgType {
                     RpcResult::Err => 3
                 }
             },
-            MsgType::ServerRpcRequest => 4,
+            MsgType::ServerEvent => 4,
+            MsgType::ServerRpcRequest => 5,
             MsgType::ServerRpcResponse(rpc_result) => {
                 match rpc_result {
-                    RpcResult::Ok => 5,
-                    RpcResult::Err => 6
+                    RpcResult::Ok => 6,
+                    RpcResult::Err => 7
                 }
             }
+        }
+    }
+    
+    pub fn from_u8(data: u8) -> MsgType {
+        match data {
+            0 => MsgType::Event,
+            1 => MsgType::RpcRequest,
+            2 => MsgType::RpcResponse(RpcResult::Ok),
+            3 => MsgType::RpcResponse(RpcResult::Err),
+            4 => MsgType::ServerEvent,
+            5 => MsgType::ServerRpcRequest,
+            6 => MsgType::ServerRpcResponse(RpcResult::Ok),
+            7 => MsgType::ServerRpcResponse(RpcResult::Err),
+            _ => panic!("Incorrect u8 for MsgType, u8: {}", data)
         }
     }
 }

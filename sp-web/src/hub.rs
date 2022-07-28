@@ -35,6 +35,10 @@ pub async fn go(aca_origin: Option<String>, auth_token_key: String, cookie_heade
                                 }
                             }
                         }
+                        MsgType::ServerEvent => {
+                            warn!("Not implemented");
+                            None
+                        }
                         MsgType::ServerRpcRequest => {
                             warn!("Not implemented");
                             None

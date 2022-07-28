@@ -137,19 +137,7 @@ impl Frame {
 			6 => FrameType::End,			
             _ => return Err(ProcessError::IncorrectFrameType)
         })
-    }
-    pub fn get_msg_type(&self) -> Result<MsgType, ProcessError> {
-        Ok(match self.msg_type {
-            0 => MsgType::Event,
-            1 => MsgType::RpcRequest,
-            2 => MsgType::RpcResponse(RpcResult::Ok),
-            3 => MsgType::RpcResponse(RpcResult::Err),
-            4 => MsgType::ServerRpcRequest,
-            5 => MsgType::ServerRpcResponse(RpcResult::Ok),
-            6 => MsgType::ServerRpcResponse(RpcResult::Err),
-            _ => return Err(ProcessError::IncorrectMsgType)
-        })
-    }
+    }    
 }
 
 pub struct State {
@@ -378,10 +366,10 @@ pub enum ServerMsg {
 pub enum SettingsMsg {
     AddClient(String, u64, UnboundedSender<SettingsMsg2>),
     GetSubscribes(u64),
-    AddEventSubscribe(Subscribe, u64, u64),
-    RemoveEventSubscribe(Subscribe, u64, u64),
-    AddRpcSubscribe(Subscribe, u64, u64),
-    RemoveRpcSubscribe(Subscribe, u64, u64),
+    AddEventSubscribe(u64, Subscribe, u64, u64),
+    RemoveEventSubscribe(u64, Subscribe, u64, u64),
+    AddRpcSubscribe(u64, Subscribe, u64, u64),
+    RemoveRpcSubscribe(u64, Subscribe, u64, u64),
     RemoveClientSettings(u64)
 }
 
@@ -479,7 +467,7 @@ pub async fn write_loop(mut client_rx: UnboundedReceiver<WriteMsg>, tcp_stream: 
 	Ok(())
 }
 
-// Use this only for single message or parts of it
+/// Use this only for single message or parts of it
 pub async fn write_to_tcp_stream(tcp_stream: &mut TcpStream, msg_type: u8, key_hash: u64, stream_id: u64, source_stream_id: u64, source_hash: u64, data: Vec<u8>, msg_meta_size: u64, payload_size: u64, attachments_sizes: Vec<u64>, send_end_frame: bool) -> Result<(), ProcessError> {
     let msg_meta_offset = LEN_BUF_SIZE + msg_meta_size as usize;
     let payload_offset = msg_meta_offset + payload_size as usize;
@@ -572,6 +560,121 @@ pub async fn write_to_tcp_stream(tcp_stream: &mut TcpStream, msg_type: u8, key_h
 
     Ok(())
 }
+
+/// Use this only for single message or parts of it
+pub async fn msg_data_to_frames(msg_type: u8, key_hash: u64, stream_id: u64, source_stream_id: u64, source_hash: u64, data: Vec<u8>, msg_meta_size: u64, payload_size: u64, attachments_sizes: Vec<u64>, send_end_frame: bool) -> Result<Vec<Frame>, ProcessError> {
+    let msg_meta_offset = LEN_BUF_SIZE + msg_meta_size as usize;
+    let payload_offset = msg_meta_offset + payload_size as usize;
+    let mut data_buf = [0; MAX_FRAME_PAYLOAD_SIZE];
+
+    let mut source = &data[LEN_BUF_SIZE..msg_meta_offset];
+
+	let mut bytes_sent = 0;
+
+    let mut res = vec![];
+
+    loop {        
+        let n = source.read(&mut data_buf).await?;
+        match n {
+            0 => break,
+            _ => {
+				bytes_sent = bytes_sent + n as u64;
+
+				let _frame_type = match bytes_sent == msg_meta_size {
+					true => FrameType::MsgMetaEnd,
+					false => FrameType::MsgMeta
+				};
+
+				res.push(Frame::new(FrameType::MsgMeta as u8, n as u16, msg_type, key_hash, stream_id, source_stream_id, source_hash, Some(data_buf)));
+			}
+        }
+    }
+
+	bytes_sent = 0;
+
+    match payload_size {
+        0 => {}
+        _ => {            
+            let mut source = &data[msg_meta_offset..payload_offset];
+
+            loop {        
+                let n = source.read(&mut data_buf).await?;        
+                match n {
+                    0 => break,
+                    _ => {
+						bytes_sent = bytes_sent + n as u64;
+
+						let _frame_type = match bytes_sent == payload_size {
+							true => FrameType::PayloadEnd,
+							false => FrameType::Payload
+						};
+
+						res.push(Frame::new(FrameType::Payload as u8, n as u16, msg_type, key_hash, stream_id, source_stream_id, source_hash, Some(data_buf)));
+					}
+                }
+            }
+        }
+    }
+
+    let mut prev = payload_offset as usize;
+
+    for attachment_size in attachments_sizes {
+        let attachment_offset = prev + attachment_size as usize;
+
+		bytes_sent = 0;
+
+        match attachment_size {
+            0 => {}
+            _ => {
+                let mut source = &data[prev..attachment_offset];
+
+                loop {        
+                    let n = source.read(&mut data_buf).await?;        
+                    match n {
+                        0 => break,
+                        _ => {
+							bytes_sent = bytes_sent + n as u64;
+
+							let _frame_type = match bytes_sent == attachment_size {
+								true => FrameType::AttachmentEnd,
+								false => FrameType::Attachment
+							};
+
+							res.push(Frame::new(FrameType::Attachment as u8, n as u16, msg_type, key_hash, stream_id, source_stream_id, source_hash, Some(data_buf)));
+						}
+                    }
+                }                    
+            }
+        }            
+
+        prev = attachment_offset;
+    }
+
+    if send_end_frame {
+		res.push(Frame::new(FrameType::End as u8, 0, msg_type, key_hash, stream_id, source_stream_id, source_hash, None));
+	}
+
+    Ok(res)
+}
+
+pub async fn event_msg_as_frames<T>(addr: &str, key: Key, payload: T) -> Result<(Uuid, Vec<Frame>), ProcessError> where T: serde::Serialize, for<'de> T: serde::Deserialize<'de>, T: Debug {
+    let route = Route {
+        source: Participator::Service(addr.to_owned()),
+        spec: RouteSpec::Simple,
+        points: vec![Participator::Service(addr.to_owned())]
+    };
+
+    let (correlation_id, dto, msg_meta_size, payload_size, attachments_sizes) = event_dto_with_sizes(addr.to_owned(), key.clone(), payload, route, None, None)?;
+
+    let key_hash = get_key_hash(&key);
+    let stream_id = get_stream_id_onetime(addr);
+    let source_hash = get_addr_hash(addr);
+
+    let res = msg_data_to_frames(MsgType::Event.get_u8(), key_hash, stream_id, 0, source_hash, dto, msg_meta_size, payload_size, attachments_sizes, true).await?;
+    
+    Ok((correlation_id, res))
+}
+
 
 // Used for RPC implementation
 pub enum RpcMsg {

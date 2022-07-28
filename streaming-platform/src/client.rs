@@ -349,6 +349,19 @@ where
                                 _ => error!("Client handler: wrong RpcMsg")
                             }                                
                         }
+                        MsgType::ServerEvent => {
+                            info!("Here comes server event");
+
+                            match msg_meta.key.action.as_ref() {
+                                "ReloadSubscribes" => {                                    
+                                    let msg = mb.server_rpc::<_, Value>(Key::new("ReloadSubscribes", "Server", "Server"), json!({                                        
+                                    })).await.expect("Subscribe reload failed");
+                                
+                                    info!("{:#?}", msg.payload);                                    
+                                }
+                                _ => {}
+                            }
+                        }
                         MsgType::ServerRpcRequest => {
                             warn!("ServerRpcRequest on client {}", msg_meta.display());
                         }                        

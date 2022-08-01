@@ -49,13 +49,7 @@ fn to_hashed_subscribe(subscribe: &Subscribe) -> (u64, u64) {
     (addr_hash, key_hash)
 }
 
-/// Starts the server based on provided ServerConfig struct. Creates new runtime and blocks.
-pub fn start(config: ServerConfig, event_subscribes: Vec<Subscribe>, rpc_subscribes: Vec<Subscribe>) {
-    let rt = Runtime::new().expect("failed to create runtime"); 
-    let _ = rt.block_on(start_future(config, event_subscribes, rpc_subscribes));
-}
-
-/// Future for new server start based on provided ServerConfig struct, in case you want to create runtime by yourself.
+/// Future for new server start based on provided ServerConfig struct
 pub async fn start_future(config: ServerConfig, mut event_subscribes: Vec<Subscribe>, mut rpc_subscribes: Vec<Subscribe>) -> Result<(), ProcessError> {
     let listener = TcpListener::bind(config.host.clone()).await?;
     let (server_tx, mut server_rx) = mpsc::unbounded_channel();
@@ -134,6 +128,32 @@ pub async fn start_future(config: ServerConfig, mut event_subscribes: Vec<Subscr
                 }
                 SettingsMsg::RemoveClientSettings(addr_hash) => {
                     let _ = client_settings.remove(&addr_hash);
+                }
+                SettingsMsg::LoadSubscribes(new_event_subscribes, new_rpc_subscribes) => {
+                    info!("Loading new subscribes");
+
+                    hashed_event_subscribes = to_hashed_subscribes(new_event_subscribes.clone());
+                    hashed_rpc_subscribes = to_hashed_subscribes(new_rpc_subscribes.clone());
+
+                    event_subscribes = new_event_subscribes;
+                    rpc_subscribes = new_rpc_subscribes;
+
+                    info!("Done");
+
+                    info!("Sending notification to clients");
+
+                    let (_, frames) = server_event_msg_as_frames("Server", Key::new("ReloadSubscribes", "", ""), json!({})).await.expect("Failed to create server event msg as frames");
+
+                    for client_addr_hash in client_settings.keys() {
+                        for frame in frames.clone() {
+                            match server_tx_for_settings_loop.send(ServerMsg::Send(*client_addr_hash, frame)) {
+                                Ok(_) => {}
+                                Err(_) => panic!("ServerMsg::Send send failed for notification message from server")
+                            }
+                        }
+                    }
+
+                    info!("Done");
                 }
                 SettingsMsg::AddEventSubscribe(sender_addr_hash, subscribe, addr_hash, key_hash) => {
                     info!("Adding event subscribe to settings, {:?}, addr_hash {}, key_hash {}", subscribe, addr_hash, key_hash);
@@ -606,6 +626,18 @@ async fn process_write_tcp_stream(addr: String, addr_hash: u64, tcp_stream: &mut
                                             "result": "Reloaded"
                                         })
                                     }
+                                    "LoadSubscribes" => {
+                                        let mut payload: Value = from_slice(&stream_layout.payload)?;
+                                        let new_event_subscribes: Vec<Subscribe> = from_value(payload["event_subscribes"].take())?;
+                                        let new_rpc_subscribes: Vec<Subscribe> = from_value(payload["rpc_subscribes"].take())?;
+
+                                        settings_tx.send(SettingsMsg::LoadSubscribes(new_event_subscribes, new_rpc_subscribes))?;
+
+                                        json!({
+                                            "result": "Loaded"
+                                        })
+                                    }
+
                                     "AddEventSubscribe" => {
                                         let mut payload: Value = from_slice(&stream_layout.payload)?;
                                         let subscribe: Subscribe = from_value(payload["subscribe"].take())?;

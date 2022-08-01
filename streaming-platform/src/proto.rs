@@ -366,6 +366,7 @@ pub enum ServerMsg {
 pub enum SettingsMsg {
     AddClient(String, u64, UnboundedSender<SettingsMsg2>),
     GetSubscribes(u64),
+    LoadSubscribes(Vec<Subscribe>, Vec<Subscribe>),
     AddEventSubscribe(u64, Subscribe, u64, u64),
     RemoveEventSubscribe(u64, Subscribe, u64, u64),
     AddRpcSubscribe(u64, Subscribe, u64, u64),

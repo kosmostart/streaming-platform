@@ -1,3 +1,4 @@
+use tokio::runtime::Runtime;
 use streaming_platform::{sp_dto::Subscribe, server::{self, ServerConfig}};
 
 pub fn main() {
@@ -16,5 +17,6 @@ pub fn main() {
         Subscribe::new("Client2", "HiRpc", "", "")
     ];
 
-    server::start(config, event_subscribes, rpc_subscribes);
+    let rt = Runtime::new().expect("Failed to create runtime");
+    rt.block_on(server::start_future(config, event_subscribes, rpc_subscribes));
 }

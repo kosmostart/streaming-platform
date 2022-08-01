@@ -9,44 +9,6 @@ use serde_json::{json, Value, from_slice, to_vec};
 use sp_dto::*;
 use crate::proto::*;
 
-/// Starts a stream based client based on provided config. Creates new runtime and blocks.
-/// Config must have "addr" key, this will be used as address for endpoint, and "host" key - network addr for the server (in host:port format)
-/// Config must have "access_key" key, this will be send for optional authorization, more information about this feature will be provided later.
-/// process_stream is used for stream of incoming data processing.
-/// startup is executed on the start of this function.
-/// restream_rx can be used for restreaming data somewhere else, for example returning data for incoming web request
-/// dependency is w/e clonable dependency needed when processing data.
-/// The protocol message format is in sp-dto crate.
-pub fn start_stream<T: 'static, R: 'static, D: 'static, U: 'static>(config: Value, process_stream: ProcessStream<T, D>, startup: Startup<R, D, U>, startup_data: Option<Value>, restream_tx: Option<UnboundedSender<RestreamMsg>>, restream_rx: Option<UnboundedReceiver<RestreamMsg>>, clonable_dependency: D, non_clonable_dependency: U)
-where 
-    T: Future<Output = ()> + Send,
-    R: Future<Output = ()> + Send,
-    D: Clone + Send,
-    U: Send
-{        
-    let rt = Runtime::new().expect("Failed to create runtime");
-    rt.block_on(stream_mode(config, process_stream, startup, startup_data, restream_tx, restream_rx, clonable_dependency, non_clonable_dependency));
-}
-
-/// Starts a message based client based on provided config. Creates new runtime and blocks.
-/// Config must have "addr" key, this will be used as address for endpoint, and "host" key - network addr for the server (in host:port format)
-/// process_event is used for processing incoming message, which are marked as events via message msg_type.
-/// process_rpc is used for processing incoming message, which are marked as rpc request via message msg_type.
-/// startup is executed on the start of this function.
-/// dependency is w/e clonable dependency needed when processing data.
-/// The protocol message format is in sp-dto crate.
-pub fn start_full_message<T: 'static, Q: 'static, R: 'static, D: 'static, U: 'static>(config: Value, process_event: ProcessEvent<T, Value, D>, process_rpc: ProcessRpc<Q, Value, D>, startup: Startup<R, D, U>, startup_data: Option<Value>, emittable_keys: Option<Vec<Key>>, clonable_dependency: D, non_clonable_dependency: U) 
-where 
-    T: Future<Output = Result<(), Box<dyn Error>>> + Send,
-    Q: Future<Output = Result<Response<Value>, Box<dyn Error>>> + Send,
-    R: Future<Output = ()> + Send,
-    D: Clone + Send,
-    U: Send
-{    
-    let rt = Runtime::new().expect("Failed to create runtime");
-    rt.block_on(full_message_mode(config, process_event, process_rpc, startup, startup_data, emittable_keys, clonable_dependency, non_clonable_dependency));
-}
-
 /// Future for stream based client based on provided config.
 /// "addr" value will be used as address for endpoint, "host" value - network addr for the server (in host:port format)
 /// "access_key" value will be send for optional authorization, more information about this feature will be provided later.

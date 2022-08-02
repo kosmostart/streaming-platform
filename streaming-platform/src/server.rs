@@ -475,9 +475,7 @@ async fn process_read_tcp_stream(addr: String, mut tcp_stream: TcpStream, client
 async fn process_write_tcp_stream(addr: String, addr_hash: u64, tcp_stream: &mut TcpStream, state: &mut State, _client_net_addr: SocketAddr, server_tx: UnboundedSender<ServerMsg>, settings_tx: UnboundedSender<SettingsMsg>, mut settings_per_client_rx: UnboundedReceiver<SettingsMsg2>) -> Result<(), ProcessError> {    
     let (mut event_subscribes, mut rpc_subscribes, mut hashed_event_subscribes, mut hashed_rpc_subscribes) = match settings_per_client_rx.recv().await.expect("SettingsMsg2 receive failed") {
         SettingsMsg2::Subscribes(events, rpcs, hashed_events, hashed_rpcs) => (events, rpcs, hashed_events, hashed_rpcs)
-    };
-
-    info!("{} {:#?}", addr, rpc_subscribes);
+    };    
 
     let mut stream_layouts: HashMap<u64, StreamLayout> = HashMap::new();
 

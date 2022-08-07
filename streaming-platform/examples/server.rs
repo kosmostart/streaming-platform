@@ -18,5 +18,5 @@ pub fn main() {
     ];
 
     let rt = Runtime::new().expect("Failed to create runtime");
-    rt.block_on(server::start_future(config, event_subscribes, rpc_subscribes));
+    let _ = rt.block_on(server::start_future(config, event_subscribes, rpc_subscribes));
 }

@@ -130,13 +130,15 @@ pub async fn start_future(config: ServerConfig, mut event_subscribes: Vec<Subscr
                     let _ = client_settings.remove(&addr_hash);
                 }
                 SettingsMsg::LoadSubscribes(new_event_subscribes, new_rpc_subscribes) => {
-                    info!("Loading new subscribes");
+                    info!("Loading new subscribes");                    
 
                     hashed_event_subscribes = to_hashed_subscribes(new_event_subscribes.clone());
                     hashed_rpc_subscribes = to_hashed_subscribes(new_rpc_subscribes.clone());
 
                     event_subscribes = new_event_subscribes;
                     rpc_subscribes = new_rpc_subscribes;
+
+                    info!("Server has event subscribes: {}, has rpc subscribes: {}", event_subscribes.len(), rpc_subscribes.len());
 
                     info!("Done");
 
@@ -209,7 +211,7 @@ pub async fn start_future(config: ServerConfig, mut event_subscribes: Vec<Subscr
 
                     let (_, frames) = server_event_msg_as_frames("Server", Key::new("ReloadSubscribes", "", ""), json!({})).await.expect("Failed to create server event msg as frames");
 
-                    for (client_addr_hash, settings) in client_settings.iter() {
+                    for (client_addr_hash, _settings) in client_settings.iter() {
                         if *client_addr_hash != sender_addr_hash {
                             for frame in frames.clone() {
                                 match server_tx_for_settings_loop.send(ServerMsg::Send(*client_addr_hash, frame)) {
@@ -620,6 +622,8 @@ async fn process_write_tcp_stream(addr: String, addr_hash: u64, tcp_stream: &mut
                                             SettingsMsg2::Subscribes(events, rpcs, hashed_events, hashed_rpcs) => (events, rpcs, hashed_events, hashed_rpcs)
                                         };
 
+                                        info!("Addr {}, {}, has event subscribes: {}, has rpc subscribes: {}", addr, addr_hash, event_subscribes.len(), rpc_subscribes.len());
+
                                         json!({
                                             "result": "Reloaded"
                                         })
@@ -628,6 +632,8 @@ async fn process_write_tcp_stream(addr: String, addr_hash: u64, tcp_stream: &mut
                                         let mut payload: Value = from_slice(&stream_layout.payload)?;
                                         let new_event_subscribes: Vec<Subscribe> = from_value(payload["event_subscribes"].take())?;
                                         let new_rpc_subscribes: Vec<Subscribe> = from_value(payload["rpc_subscribes"].take())?;
+
+                                        info!("Loading subscribes to settings");
 
                                         settings_tx.send(SettingsMsg::LoadSubscribes(new_event_subscribes, new_rpc_subscribes))?;
 

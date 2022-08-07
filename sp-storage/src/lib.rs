@@ -223,6 +223,10 @@ impl Dc {
         Ok(res)
     }
 
+    pub fn len(&self) -> u64 {
+        self.tree.len() as u64
+    }
+
     pub fn count(&self, condition: impl Fn(&Value) -> bool) -> Result<u64, Error> {
         let mut res = 0;
 

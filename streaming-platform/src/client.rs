@@ -320,7 +320,7 @@ where
                                         let msg = mb.server_rpc::<_, Value>(Key::new("ReloadSubscribes", "Server", "Server"), json!({                                        
                                         })).await.expect("Subscribe reload failed");
                                     
-                                        info!("{:#?}", msg.payload);                                    
+                                        info!("{}: {:#?}", mb.addr, msg.payload);
                                     }
                                     _ => {}
                                 }

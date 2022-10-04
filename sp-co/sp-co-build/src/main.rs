@@ -1,15 +1,11 @@
 use std::io::Read;
-use serde_json::{
-	json, Value, from_value
-};
+use serde_json::{json, Value, from_value};
 use log::*;
 use streaming_platform::{
-	MAX_FRAME_PAYLOAD_SIZE, tokio::{self, fs::File, io::AsyncReadExt, sync::mpsc::UnboundedReceiver}, 
+	MAX_FRAME_PAYLOAD_SIZE, tokio::{self, runtime::Runtime, fs::File, io::AsyncReadExt, sync::mpsc::UnboundedReceiver}, 
 	client, MagicBall, sp_dto::{Key, Message, Response, resp}, Frame
 };
-use sp_build_core::{
-	pack, DeployConfig, RunConfig
-};
+use sp_build_core::{pack, DeployConfig, RunConfig};
 
 pub async fn process_event(_config: Value, _mb: MagicBall, _msg: Message<Value>, _: (), _emittable_rx: UnboundedReceiver<Frame>) -> Result<(), Box<dyn std::error::Error>>  {
     //info!("{:#?}", msg);
@@ -223,8 +219,9 @@ pub fn main() {
 		"cfg_domain": "Cfg",
         "cfg_token": "Build"
     });
- 
-    client::start_full_message(config, process_event, process_rpc, startup, None, None, (), ());
+
+    let rt = Runtime::new().expect("Failed to create runtime");
+    let _ = rt.block_on(client::full_message_mode(config, process_event, process_rpc, startup, None, None, (), ()));    
  }
  
 #[derive(Debug)]

@@ -1,4 +1,4 @@
-use streaming_platform::{server::{self, ServerConfig}, sp_dto::Subscribe};
+use streaming_platform::{tokio::runtime::Runtime, server::{self, ServerConfig}, sp_dto::Subscribe};
 
 fn main() {
     env_logger::init();
@@ -20,5 +20,6 @@ fn main() {
         Subscribe::new("Cfg", "GetCfg", "Cfg", "Cfg")
     ];
 
-    server::start(config, event_subscribes, rpc_subscribes);
+    let rt = Runtime::new().expect("Failed to create runtime");
+    let _ = rt.block_on(server::start_future(config, event_subscribes, rpc_subscribes));
 }

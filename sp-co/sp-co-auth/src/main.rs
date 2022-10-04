@@ -1,14 +1,7 @@
 use base64::encode;
-use serde_json::{
-	json, Value, to_vec
-};
+use serde_json::{json, Value, to_vec};
 use sp_auth::create_auth_token;
-use streaming_platform::{
-	client, MagicBall, sp_dto::{
-		Message, Response, resp
-	},
-	tokio::sync::mpsc::UnboundedReceiver, Frame
-};
+use streaming_platform::{tokio::runtime::Runtime, client, MagicBall, sp_dto::{Message, Response, resp},	tokio::sync::mpsc::UnboundedReceiver, Frame};
 
 #[derive(Debug)]
 enum Error {
@@ -67,7 +60,8 @@ pub fn main() {
 		"cfg_domain": "Cfg",
         "cfg_token": "Auth"
     });
- 
-    client::start_full_message(config, process_event, process_rpc, startup, None, None, (), ());
+
+    let rt = Runtime::new().expect("Failed to create runtime");
+    let _ = rt.block_on(client::full_message_mode(config, process_event, process_rpc, startup, None, None, (), ()));
  }
  

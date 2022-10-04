@@ -3,7 +3,6 @@ use std::net::SocketAddr;
 use log::*;
 use serde_derive::Deserialize;
 use serde_json::{from_slice, Value, from_value, to_vec, json};
-use tokio::runtime::Runtime;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc::{self, UnboundedSender, UnboundedReceiver};
 use sp_dto::{Key, Subscribe, MsgMeta, MsgType, RpcResult, rpc_response_dto2_sizes};

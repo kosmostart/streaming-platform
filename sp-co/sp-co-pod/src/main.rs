@@ -1,26 +1,12 @@
 use std::collections::HashMap;
 use log::*;
-use serde_json::{
-	json, Value, from_slice, to_string, from_value
-};
-use tokio::{
-	io::AsyncWriteExt, fs::File, sync::mpsc::{
-		UnboundedSender, UnboundedReceiver
-	}
-};
-use sysinfo::{
-	ProcessExt, SystemExt, PidExt
-};
+use serde_json::{json, Value, from_slice, to_string, from_value};
+use sysinfo::{ProcessExt, SystemExt, PidExt};
 use streaming_platform::{
-	ClientMsg, FrameType, MagicBall, ProcessError, RestreamMsg, StreamLayout, client, 
-	sp_dto::{
-		MsgMeta//, RpcResult
-	},
-	tokio
+    ClientMsg, FrameType, MagicBall, ProcessError, RestreamMsg, StreamLayout, client, sp_dto::MsgMeta,
+	tokio::{self, runtime::Runtime, io::AsyncWriteExt, fs::File, sync::mpsc::{UnboundedSender, UnboundedReceiver}}
 };
-use sp_build_core::{
-	unpack, RunConfig
-};
+use sp_build_core::{unpack, RunConfig};
 
 struct FileStreamLayout {
     layout: StreamLayout,
@@ -39,8 +25,9 @@ fn main() {
 		"cfg_domain": "Cfg",
         "cfg_token": "Pod"
     });
-
-    client::start_stream(config, process_stream, startup, None, None, None, (), ());
+    
+    let rt = Runtime::new().expect("Failed to create runtime");
+    let _ = rt.block_on(client::stream_mode(config, process_stream, startup, None, None, None, (), ()));
 }
 
 pub async fn startup(_initial_config: Value, _target_config: Value, mut _mb: MagicBall, _startup_data: Option<Value>, _: (), _: ()) {

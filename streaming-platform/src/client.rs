@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::error::Error;
 use log::*;
-use tokio::runtime::Runtime;
 use tokio::net::TcpStream;
 use tokio::sync::{mpsc::{self, UnboundedSender, UnboundedReceiver}};
 use serde_json::{json, Value, from_slice, to_vec};

@@ -1,5 +1,5 @@
 use serde_json::json;
-use sp_web::streaming_platform::client;
+use sp_web::streaming_platform::{tokio::runtime::Runtime, client};
 
 pub fn main() {
     env_logger::init();
@@ -21,7 +21,8 @@ pub fn main() {
 		"cfg_domain": "Cfg",
         "cfg_token": "Web"
     });
- 
-    client::start_full_message(config, sp_web::process_event, sp_web::process_rpc, sp_web::startup, None, None, (), ());
+
+    let rt = Runtime::new().expect("Failed to create runtime");
+    let _ = rt.block_on(client::full_message_mode(config, sp_web::process_event, sp_web::process_rpc, sp_web::startup, None, None, (), ()));
  }
  

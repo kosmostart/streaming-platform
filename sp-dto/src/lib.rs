@@ -123,19 +123,19 @@ pub enum Response<T> {
 
 
 /// Helper function for creating responses.
-pub fn resp<T>(payload: T) -> Result<Response<T>, Box<dyn std::error::Error>> {
+pub fn resp<T>(payload: T) -> Result<Response<T>, Box<dyn std::error::Error + Send + Sync>> {
     Ok(Response::Simple(payload))
 }
 
-pub fn resp_full<T>(payload: T, attachments: Vec<(String, u64)>, attachments_data: Vec<u8>) -> Result<Response<T>, Box<dyn std::error::Error>> {
+pub fn resp_full<T>(payload: T, attachments: Vec<(String, u64)>, attachments_data: Vec<u8>) -> Result<Response<T>, Box<dyn std::error::Error + Send + Sync>> {
     Ok(Response::Full(payload, attachments, attachments_data))
 }
 
-pub fn resp_raw(payload: Vec<u8>) -> Result<ResponseRaw, Box<dyn std::error::Error>> {
+pub fn resp_raw(payload: Vec<u8>) -> Result<ResponseRaw, Box<dyn std::error::Error + Send + Sync>> {
     Ok(ResponseRaw::Simple(payload))
 }
 
-pub fn resp_raw_full(payload: Vec<u8>, attachments: Vec<(String, u64)>, attachments_data: Vec<u8>) -> Result<ResponseRaw, Box<dyn std::error::Error>> {
+pub fn resp_raw_full(payload: Vec<u8>, attachments: Vec<(String, u64)>, attachments_data: Vec<u8>) -> Result<ResponseRaw, Box<dyn std::error::Error + Send + Sync>> {
     Ok(ResponseRaw::Full(payload, attachments, attachments_data))
 }
 

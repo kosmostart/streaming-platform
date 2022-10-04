@@ -13,7 +13,7 @@ pub async fn process_event(_config: Value, _mb: MagicBall, _msg: Message<Value>,
     Ok(())
 }
 
-pub async fn process_rpc(_config: Value, mut mb: MagicBall, msg: Message<Value>, _: (), _emittable_rx: UnboundedReceiver<Frame>) -> Result<Response<Value>, Box<dyn std::error::Error>> {   
+pub async fn process_rpc(_config: Value, mut mb: MagicBall, msg: Message<Value>, _: (), _emittable_rx: UnboundedReceiver<Frame>) -> Result<Response<Value>, Box<dyn std::error::Error + Send + Sync>> {   
     info!("{:#?}", msg);
 
     let res = match msg.meta.key.action.as_ref() {

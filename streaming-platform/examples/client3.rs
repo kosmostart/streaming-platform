@@ -6,7 +6,7 @@ pub async fn process_event(_config: Value, _mb: MagicBall, _msg: Message<Value>,
     Ok(())
 }
 
-pub async fn process_rpc(_config: Value, _mb: MagicBall, _msg: Message<Value>, _: (), _emittable_rx: UnboundedReceiver<Frame>) -> Result<Response<Value>, Box<dyn std::error::Error>> {
+pub async fn process_rpc(_config: Value, _mb: MagicBall, _msg: Message<Value>, _: (), _emittable_rx: UnboundedReceiver<Frame>) -> Result<Response<Value>, Box<dyn std::error::Error + Send + Sync>> {
     resp(json!({}))
 }
 
@@ -33,4 +33,4 @@ pub fn main() {
  
     let rt = Runtime::new().expect("Failed to create runtime");
     rt.block_on(client::full_message_mode(config, process_event, process_rpc, startup, None, None, (), ()));
- }
+}

@@ -26,7 +26,7 @@ pub async fn process_event(_config: Value, mut _mb: MagicBall, _msg: Message<Val
     Ok(())
 }
 
-pub async fn process_rpc(_config: Value, mut _mb: MagicBall, _msg: Message<Value>, _: (), _emittable_rx: UnboundedReceiver<Frame>) -> Result<streaming_platform::sp_dto::Response<Value>, Box<dyn std::error::Error>> {
+pub async fn process_rpc(_config: Value, mut _mb: MagicBall, _msg: Message<Value>, _: (), _emittable_rx: UnboundedReceiver<Frame>) -> Result<streaming_platform::sp_dto::Response<Value>, Box<dyn std::error::Error + Send + Sync>> {
     resp(json!({}))    
 }
 

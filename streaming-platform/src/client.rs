@@ -112,7 +112,7 @@ where
 pub async fn full_message_mode<P: 'static, T: 'static, Q: 'static, R: 'static, D: 'static, U: 'static>(config: Value, process_event: ProcessEvent<T, P, D>, process_rpc: ProcessRpc<Q, P, D>, startup: Startup<R, D, U>, startup_data: Option<Value>, emittable_keys: Option<Vec<Key>>, clonable_dependency: D, non_clonable_dependency: U)
 where 
     T: Future<Output = Result<(), Box<dyn Error>>> + Send,
-    Q: Future<Output = Result<Response<P>, Box<dyn Error>>> + Send,
+    Q: Future<Output = Result<Response<P>, Box<dyn Error + Send + Sync>>> + Send,
     R: Future<Output = ()> + Send,
     P: serde::Serialize, for<'de> P: serde::Deserialize<'de> + Send,
     D: Clone + Send,

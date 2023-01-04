@@ -187,6 +187,15 @@ impl Key {
             tags: None
         }
     }
+    pub fn new_owned(action: String, service: String, domain: String) -> Key {
+        Key {
+            action,
+            service,
+            domain,
+			source: None,
+            tags: None
+        }
+    }
 	pub fn new_with_source(action: &str, service: &str, domain: &str, source: &str) -> Key {
         Key {
             action: action.to_owned(),

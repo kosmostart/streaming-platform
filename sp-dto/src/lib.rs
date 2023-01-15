@@ -944,5 +944,6 @@ pub enum ParameterPayload {
 	LessThanU64(u64),
     GreaterThanU64(u64),
 	EqualsString(String),
+    EqualsJSON(Value),
 	IdList(Vec<u64>)
 }

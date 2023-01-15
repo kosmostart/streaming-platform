@@ -938,7 +938,7 @@ pub struct Parameter {
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum ParameterPayload {
-    InitOnDemand,
+    OnDemandEqualsU64,
 	EqualsI64(i64),
 	EqualsU64(u64),
 	LessThanU64(u64),

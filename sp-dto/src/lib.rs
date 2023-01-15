@@ -931,7 +931,14 @@ pub fn get_payload<T>(msg_meta: &MsgMeta, data: &[u8]) -> Result<T, Error> where
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub enum QueryPrm {
+pub struct Parameter {
+    pub name: String,
+    pub payload: ParameterPayload
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub enum ParameterPayload {
+    InitOnDemand,
 	EqualsI64(i64),
 	EqualsU64(u64),
 	LessThanU64(u64),

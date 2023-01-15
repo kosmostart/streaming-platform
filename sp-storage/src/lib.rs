@@ -3,16 +3,10 @@ use std::collections::HashMap;
 use std::ops::Index;
 use log::*;
 use time::OffsetDateTime;
-use serde_json::{
-	json, Value
-};
-use sled::{
-	Db, Tree, transaction::TransactionalTree
-};
-use sp_dto::QueryPrm;
-use ser_de::{
-	serialize, deserialize, convert_value, convert_value2
-};
+use serde_json::{json, Value};
+use sled::{Db, Tree, transaction::TransactionalTree};
+use sp_dto::{Parameter, ParameterPayload};
+use ser_de::{serialize, deserialize, convert_value, convert_value2};
 use error::Error;
 pub use rkyv;
 pub use sled;
@@ -244,7 +238,7 @@ impl Dc {
         Ok(res)
     }
 
-    pub fn find_prm(&self, prm: Vec<(String, QueryPrm)>) -> Result<Option<(u64, Value)>, Error> {
+    pub fn find_prm(&self, parameters: &Vec<Parameter>) -> Result<Option<(u64, Value)>, Error> {
         for pair in self.tree.iter() {
             let (id, bytes) = pair?;            
 
@@ -253,50 +247,50 @@ impl Dc {
 
             let mut check_sum = 0;
 
-            for (key, value) in &prm {
-                match value {
-                    QueryPrm::EqualsI64(value) => {
-                        match payload[key].as_i64() {
+            for parameter in parameters {
+                match parameter.payload {
+                    ParameterPayload::EqualsI64(value) => {
+                        match payload[&parameter.name].as_i64() {
                             Some(field_value) => {
-                                if field_value == *value {
+                                if field_value == value {
                                     check_sum = check_sum + 1;
                                 }
                             }
                             None => {}
                         }
                     }
-                    QueryPrm::EqualsU64(value) => {
-                        match payload[key].as_u64() {
+                    ParameterPayload::EqualsU64(value) => {
+                        match payload[&parameter.name].as_u64() {
                             Some(field_value) => {
-                                if field_value == *value {
+                                if field_value == value {
                                     check_sum = check_sum + 1;
                                 }
                             }
                             None => {}
                         }
                     }
-                    QueryPrm::LessThanU64(value) => {
-                        match payload[key].as_u64() {
+                    ParameterPayload::LessThanU64(value) => {
+                        match payload[&parameter.name].as_u64() {
                             Some(field_value) => {
-                                if field_value < *value {
+                                if field_value < value {
                                     check_sum = check_sum + 1;
                                 }
                             }
                             None => {}
                         }
                     }
-                    QueryPrm::GreaterThanU64(value) => {
-                        match payload[key].as_u64() {
+                    ParameterPayload::GreaterThanU64(value) => {
+                        match payload[&parameter.name].as_u64() {
                             Some(field_value) => {
-                                if field_value > *value {
+                                if field_value > value {
                                     check_sum = check_sum + 1;
                                 }                         
                             }
                             None => {}
                         }
                     }
-                    QueryPrm::EqualsString(value) => {
-                        match payload[key].as_str() {
+                    ParameterPayload::EqualsString(ref value) => {
+                        match payload[&parameter.name].as_str() {
                             Some(field_value) => {
                                 if field_value == value {
                                     check_sum = check_sum + 1;
@@ -309,7 +303,7 @@ impl Dc {
                 }
             }
 
-            if check_sum == prm.len() {
+            if check_sum == parameters.len() {
                 return Ok(Some((u64::from_be_bytes(dog(&id)?), payload)));
             }
         }
@@ -317,7 +311,7 @@ impl Dc {
         Ok(None)
     }        
 
-    pub fn filter_prm(&self, prm: Vec<(String, QueryPrm)>) -> Result<Vec<(u64, Value)>, Error> {
+    pub fn filter_prm(&self, parameters: &Vec<Parameter>) -> Result<Vec<(u64, Value)>, Error> {
         let mut res = vec![];
 
         for pair in self.tree.iter() {
@@ -328,50 +322,50 @@ impl Dc {
 
             let mut check_sum = 0;
 
-            for (key, value) in &prm {
-                match value {
-                    QueryPrm::EqualsI64(value) => {
-                        match payload[key].as_i64() {
+            for parameter in parameters {
+                match parameter.payload {
+                    ParameterPayload::EqualsI64(value) => {
+                        match payload[&parameter.name].as_i64() {
                             Some(field_value) => {
-                                if field_value == *value {
+                                if field_value == value {
                                     check_sum = check_sum + 1;
                                 }
                             }
                             None => {}
                         }
                     }
-                    QueryPrm::EqualsU64(value) => {
-                        match payload[key].as_u64() {
+                    ParameterPayload::EqualsU64(value) => {
+                        match payload[&parameter.name].as_u64() {
                             Some(field_value) => {
-                                if field_value == *value {
+                                if field_value == value {
                                     check_sum = check_sum + 1;
                                 }
                             }
                             None => {}
                         }
                     }
-                    QueryPrm::LessThanU64(value) => {
-                        match payload[key].as_u64() {
+                    ParameterPayload::LessThanU64(value) => {
+                        match payload[&parameter.name].as_u64() {
                             Some(field_value) => {
-                                if field_value < *value {
+                                if field_value < value {
                                     check_sum = check_sum + 1;
                                 }                            
                             }
                             None => {}
                         }
                     }
-                    QueryPrm::GreaterThanU64(value) => {
-                        match payload[key].as_u64() {
+                    ParameterPayload::GreaterThanU64(value) => {
+                        match payload[&parameter.name].as_u64() {
                             Some(field_value) => {
-                                if field_value > *value {
+                                if field_value > value {
                                     check_sum = check_sum + 1;
                                 }                            
                             }
                             None => {}
                         }
                     }
-                    QueryPrm::EqualsString(value) => {
-                        match payload[key].as_str() {
+                    ParameterPayload::EqualsString(ref value) => {
+                        match payload[&parameter.name].as_str() {
                             Some(field_value) => {
                                 if field_value == value {
                                     check_sum = check_sum + 1;
@@ -384,7 +378,7 @@ impl Dc {
                 }
             }
 
-            if check_sum == prm.len() {
+            if check_sum == parameters.len() {
                 res.push((u64::from_be_bytes(dog(&id)?), payload));
             }
         }
@@ -392,7 +386,7 @@ impl Dc {
         Ok(res)
     }    
 
-    pub fn count_prm(&self, prm: Vec<(String, QueryPrm)>) -> Result<u64, Error> {
+    pub fn count_prm(&self, parameters: &Vec<Parameter>) -> Result<u64, Error> {
         let mut res = 0;
 
         for pair in self.tree.iter() {
@@ -403,50 +397,50 @@ impl Dc {
 
             let mut check_sum = 0;
 
-            for (key, value) in &prm {
-                match value {
-                    QueryPrm::EqualsI64(value) => {
-                        match payload[key].as_i64() {
+            for parameter in parameters {
+                match parameter.payload {
+                    ParameterPayload::EqualsI64(value) => {
+                        match payload[&parameter.name].as_i64() {
                             Some(field_value) => {
-                                if field_value == *value {
+                                if field_value == value {
                                     check_sum = check_sum + 1;
                                 }
                             }
                             None => {}
                         }
                     }
-                    QueryPrm::EqualsU64(value) => {
-                        match payload[key].as_u64() {
+                    ParameterPayload::EqualsU64(value) => {
+                        match payload[&parameter.name].as_u64() {
                             Some(field_value) => {
-                                if field_value == *value {
+                                if field_value == value {
                                     check_sum = check_sum + 1;
                                 }
                             }
                             None => {}
                         }
                     }
-                    QueryPrm::LessThanU64(value) => {
-                        match payload[key].as_u64() {
+                    ParameterPayload::LessThanU64(value) => {
+                        match payload[&parameter.name].as_u64() {
                             Some(field_value) => {
-                                if field_value < *value {
+                                if field_value < value {
                                     check_sum = check_sum + 1;
                                 }
                             }
                             None => {}
                         }
                     }
-                    QueryPrm::GreaterThanU64(value) => {
-                        match payload[key].as_u64() {
+                    ParameterPayload::GreaterThanU64(value) => {
+                        match payload[&parameter.name].as_u64() {
                             Some(field_value) => {
-                                if field_value > *value {
+                                if field_value > value {
                                     check_sum = check_sum + 1;
                                 }                         
                             }
                             None => {}
                         }
                     }
-                    QueryPrm::EqualsString(value) => {
-                        match payload[key].as_str() {
+                    ParameterPayload::EqualsString(ref value) => {
+                        match payload[&parameter.name].as_str() {
                             Some(field_value) => {
                                 if field_value == value {
                                     check_sum = check_sum + 1;
@@ -459,7 +453,7 @@ impl Dc {
                 }
             }
 
-            if check_sum == prm.len() {
+            if check_sum == parameters.len() {
                 res = res + 1;
             }
         }

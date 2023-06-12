@@ -38,7 +38,7 @@ pub struct TxDc<'a> {
 
 #[derive(Clone)]
 pub struct Sc {
-    pub name: String,
+    pub addr: String,
     pub service: String,
     pub domain: String,    
     pub files_path: Option<String>,
@@ -58,10 +58,10 @@ impl Index<&str> for Sc {
 }
 
 impl Sc {
-    pub fn new(user_id: u64, region_id: u64, scope_id: u64, service_id: u64, files_path: Option<String>, name: &str, service: &str, domain: &str, tokens: HashMap<String, Dc>) -> Result<Sc, Error> {
+    pub fn new(user_id: u64, region_id: u64, scope_id: u64, service_id: u64, files_path: Option<String>, addr: &str, service: &str, domain: &str, tokens: HashMap<String, Dc>) -> Result<Sc, Error> {
 
         Ok(Sc {
-            name: name.to_owned(),
+            addr: addr.to_owned(),
             service: service.to_owned(),
             domain: domain.to_owned(),            
             files_path: files_path.map(|a| a + "/scope-" + &scope_id.to_string()),

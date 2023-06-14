@@ -172,16 +172,9 @@ impl Dc {
     pub fn update(&self, id: u64, mut payload: Value) -> Result<u64, Error> {
         let id_bytes = id.to_be_bytes();        
 
-        match self.tree.contains_key(id_bytes)? {
-            true => {                    
-                payload["updated_at"] = json!(OffsetDateTime::now_utc());                    
-                self.tree.insert(id_bytes.to_vec(), &serialize(&convert_value(payload))?[..])?;
-            }
-            false => {
-                info!("Entity with id {} not found, path {}", id, self.path);
-            }
-        }
-    
+        payload["updated_at"] = json!(OffsetDateTime::now_utc());                    
+        self.tree.insert(id_bytes.to_vec(), &serialize(&convert_value(payload))?[..])?;
+        
         Ok(id)
     }
 

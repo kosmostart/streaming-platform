@@ -24,7 +24,9 @@ pub struct Dc {
     path: String,
     user_id: u64,
     pub id: Option<u64>,
-    pub payload: Option<Value>,
+    pub name: String,
+    pub fields: Vec<Value>,
+    //pub payload: Option<Value>,
     db: Db,
     tree: Tree
 }
@@ -75,7 +77,7 @@ impl Sc {
 }
 
 impl Dc {
-    pub fn new(path: String, tree_name: &str, user_id: u64, storage_path: &str, id: Option<u64>, payload: Option<Value>) -> Result<Dc, Error> {
+    pub fn new(path: String, tree_name: &str, user_id: u64, storage_path: &str, id: Option<u64>, name: String, fields: Vec<Value>, payload: Option<Value>) -> Result<Dc, Error> {
         let storage_path = storage_path.to_owned();
         
         let db = sled::open(&path)?;
@@ -86,7 +88,9 @@ impl Dc {
             path,
             user_id,
             id,
-            payload,
+            name,
+            fields,
+            //payload,
             db,
             tree
         })

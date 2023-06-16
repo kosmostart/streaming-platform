@@ -26,7 +26,7 @@ pub struct Dc {
     pub id: Option<u64>,
     pub name: String,
     pub fields: Vec<Value>,
-    //pub payload: Option<Value>,
+    pub payload: Option<Value>,
     db: Db,
     tree: Tree
 }
@@ -90,7 +90,7 @@ impl Dc {
             id,
             name,
             fields,
-            //payload,
+            payload,
             db,
             tree
         })

@@ -43,7 +43,7 @@ pub async fn process_rpc(_config: Value, _mb: MagicBall, msg: Message<Value>, _:
                 "auth_token": part1 + "." + &part2
             })
         }
-        _ => return Err(Box::new(Error::IncorrectKeyInRequest))
+        _ => Err(Box::new(Error::IncorrectKeyInRequest))?
     };
 
     resp(res)

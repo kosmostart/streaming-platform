@@ -214,6 +214,23 @@ impl Dc {
         Ok(res)
     }
 
+    pub fn filter_no_tuple(&self, condition: impl Fn(&Value) -> bool) -> Result<Vec<Value>, Error> {
+        let mut res = vec![];
+
+        for pair in self.tree.iter() {
+            let (id, bytes) = pair?;
+
+            let payload = deserialize(&bytes)?;
+            let payload = convert_value2(payload);
+
+            if condition(&payload) {
+                res.push(payload);
+            }
+        }
+
+        Ok(res)
+    }
+
     pub fn len(&self) -> u64 {
         self.tree.len() as u64
     }
@@ -381,7 +398,82 @@ impl Dc {
         }
 
         Ok(res)
-    }    
+    }
+
+    pub fn filter_prm_no_tuple(&self, parameters: &Vec<Parameter>) -> Result<Vec<Value>, Error> {
+        let mut res = vec![];
+
+        for pair in self.tree.iter() {
+            let (id, bytes) = pair?;
+
+            let payload = deserialize(&bytes)?;
+            let payload = convert_value2(payload);
+
+            let mut check_sum = 0;
+
+            for parameter in parameters {
+                match parameter.payload {
+                    ParameterPayload::EqualsI64(value) => {
+                        match payload[&parameter.name].as_i64() {
+                            Some(field_value) => {
+                                if field_value == value {
+                                    check_sum = check_sum + 1;
+                                }
+                            }
+                            None => {}
+                        }
+                    }
+                    ParameterPayload::EqualsU64(value) => {
+                        match payload[&parameter.name].as_u64() {
+                            Some(field_value) => {
+                                if field_value == value {
+                                    check_sum = check_sum + 1;
+                                }
+                            }
+                            None => {}
+                        }
+                    }
+                    ParameterPayload::LessThanU64(value) => {
+                        match payload[&parameter.name].as_u64() {
+                            Some(field_value) => {
+                                if field_value < value {
+                                    check_sum = check_sum + 1;
+                                }                            
+                            }
+                            None => {}
+                        }
+                    }
+                    ParameterPayload::GreaterThanU64(value) => {
+                        match payload[&parameter.name].as_u64() {
+                            Some(field_value) => {
+                                if field_value > value {
+                                    check_sum = check_sum + 1;
+                                }                            
+                            }
+                            None => {}
+                        }
+                    }
+                    ParameterPayload::EqualsString(ref value) => {
+                        match payload[&parameter.name].as_str() {
+                            Some(field_value) => {
+                                if field_value == value {
+                                    check_sum = check_sum + 1;
+                                }
+                            }
+                            None => {}
+                        }
+                    }
+                    _ => {}
+                }
+            }
+
+            if check_sum == parameters.len() {
+                res.push(payload);
+            }
+        }
+
+        Ok(res)
+    }
 
     pub fn count_prm(&self, parameters: &Vec<Parameter>) -> Result<u64, Error> {
         let mut res = 0;

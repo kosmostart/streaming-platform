@@ -1,16 +1,9 @@
 use std::time::Duration;
 use std::process::Child;
-use std::io::{
-	BufReader, Read
-};
+use std::io::{BufReader, Read};
 use log::*;
 use serde_derive::Deserialize;
-use serde_json::{
-	from_str
-};
-use sysinfo::{
-	PidExt, SystemExt, ProcessExt
-};
+use serde_json::from_str;
 
 #[derive(Debug, Deserialize)]
 struct RunUnit {

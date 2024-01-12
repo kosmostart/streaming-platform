@@ -150,11 +150,11 @@ pub fn unpack(save_path: String, file_name: String) -> Result<String, Error> {
     Ok(target_path)
 }
 
-fn compress(from: &str, to: &str) -> Result<(), Error> {    
+fn compress(from: &str, to: &str) -> Result<(), Error> {
     let mut input_file = File::open(from)?;
     let output_file = File::create(to)?;    
 
-    io::copy(&mut input_file, &mut FrameEncoder::new(output_file))?;    
+    io::copy(&mut input_file, &mut FrameEncoder::new(output_file))?;
 
     Ok(())
 }

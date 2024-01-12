@@ -182,6 +182,14 @@ impl Dc {
         Ok(id)
     }
 
+    pub fn delete(&self, id: u64) -> Result<(), Error> {
+        let id_bytes = id.to_be_bytes();
+        
+        self.tree.remove(id_bytes.to_vec())?;
+        
+        Ok(())
+    }
+
     pub fn find(&self, condition: impl Fn(&Value) -> bool) -> Result<Option<(u64, Value)>, Error> {
         for pair in self.tree.iter() {
             let (id, bytes) = pair?;
@@ -602,5 +610,13 @@ impl TxDc<'_> {
         self.tree.insert(id_bytes.to_vec(), &serialize(&convert_value(payload))?[..])?;
     
         Ok(id)
+    }
+
+    pub fn delete(&self, id: u64) -> Result<(), Error> {
+        let id_bytes = id.to_be_bytes();        
+
+        self.tree.remove(id_bytes.to_vec())?;
+    
+        Ok(())
     }
 }

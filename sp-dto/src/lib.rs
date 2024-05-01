@@ -936,6 +936,49 @@ pub struct Parameter {
     pub payload: ParameterPayload
 }
 
+impl  Parameter {
+    pub fn from_value(name: &str, value: &Value, parameter_type: &ParameterType) -> Parameter {
+        let payload = match parameter_type {
+            ParameterType::EqualsI64 => {
+                match value.as_i64() {
+                    Some(data) => Some(ParameterPayload::EqualsI64(data)),
+                    None => None
+                }
+            }
+            ParameterType::EqualsU64 => {
+                match value.as_u64() {
+                    Some(data) => Some(ParameterPayload::EqualsU64(data)),
+                    None => None
+                }
+            }
+            ParameterType::LessThanU64 => {
+                match value.as_u64() {
+                    Some(data) => Some(ParameterPayload::LessThanU64(data)),
+                    None => None
+                }
+            }
+            ParameterType::GreaterThanU64 => {
+                match value.as_u64() {
+                    Some(data) => Some(ParameterPayload::GreaterThanU64(data)),
+                    None => None
+                }
+            }
+            ParameterType::EqualsString => {
+                match value.as_str() {
+                    Some(data) => Some(ParameterPayload::EqualsString(data.to_owned())),
+                    None => None
+                }
+            }
+            ParameterType::EqualsJson => Some(ParameterPayload::EqualsJson(value.clone()))
+        };
+
+        Parameter {
+            name: name.to_owned(),
+            payload: payload.expect("Payload is empty")
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum ParameterPayload {    
 	EqualsI64(i64),
@@ -943,6 +986,15 @@ pub enum ParameterPayload {
 	LessThanU64(u64),
     GreaterThanU64(u64),
 	EqualsString(String),
-    EqualsJson(Value),
-	IdList(Vec<u64>)
+    EqualsJson(Value)	
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub enum ParameterType {
+	EqualsI64,
+	EqualsU64,
+	LessThanU64,
+    GreaterThanU64,
+	EqualsString,
+    EqualsJson	
 }

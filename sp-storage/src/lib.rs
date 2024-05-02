@@ -272,7 +272,7 @@ impl Dc {
             for parameter in parameters {
                 match parameter.payload {
                     ParameterPayload::EqualsI64(value) => {
-                        match payload[&parameter.name].as_i64() {
+                        match payload[&parameter.field_name].as_i64() {
                             Some(field_value) => {
                                 if field_value == value {
                                     check_sum = check_sum + 1;
@@ -282,7 +282,7 @@ impl Dc {
                         }
                     }
                     ParameterPayload::EqualsU64(value) => {
-                        match payload[&parameter.name].as_u64() {
+                        match payload[&parameter.field_name].as_u64() {
                             Some(field_value) => {
                                 if field_value == value {
                                     check_sum = check_sum + 1;
@@ -292,7 +292,7 @@ impl Dc {
                         }
                     }
                     ParameterPayload::LessThanU64(value) => {
-                        match payload[&parameter.name].as_u64() {
+                        match payload[&parameter.field_name].as_u64() {
                             Some(field_value) => {
                                 if field_value < value {
                                     check_sum = check_sum + 1;
@@ -302,7 +302,7 @@ impl Dc {
                         }
                     }
                     ParameterPayload::GreaterThanU64(value) => {
-                        match payload[&parameter.name].as_u64() {
+                        match payload[&parameter.field_name].as_u64() {
                             Some(field_value) => {
                                 if field_value > value {
                                     check_sum = check_sum + 1;
@@ -312,7 +312,7 @@ impl Dc {
                         }
                     }
                     ParameterPayload::EqualsString(ref value) => {
-                        match payload[&parameter.name].as_str() {
+                        match payload[&parameter.field_name].as_str() {
                             Some(field_value) => {
                                 if field_value == value {
                                     check_sum = check_sum + 1;
@@ -347,7 +347,7 @@ impl Dc {
             for parameter in parameters {
                 match parameter.payload {
                     ParameterPayload::EqualsI64(value) => {
-                        match payload[&parameter.name].as_i64() {
+                        match payload[&parameter.field_name].as_i64() {
                             Some(field_value) => {
                                 if field_value == value {
                                     check_sum = check_sum + 1;
@@ -357,7 +357,7 @@ impl Dc {
                         }
                     }
                     ParameterPayload::EqualsU64(value) => {
-                        match payload[&parameter.name].as_u64() {
+                        match payload[&parameter.field_name].as_u64() {
                             Some(field_value) => {
                                 if field_value == value {
                                     check_sum = check_sum + 1;
@@ -367,7 +367,7 @@ impl Dc {
                         }
                     }
                     ParameterPayload::LessThanU64(value) => {
-                        match payload[&parameter.name].as_u64() {
+                        match payload[&parameter.field_name].as_u64() {
                             Some(field_value) => {
                                 if field_value < value {
                                     check_sum = check_sum + 1;
@@ -377,7 +377,7 @@ impl Dc {
                         }
                     }
                     ParameterPayload::GreaterThanU64(value) => {
-                        match payload[&parameter.name].as_u64() {
+                        match payload[&parameter.field_name].as_u64() {
                             Some(field_value) => {
                                 if field_value > value {
                                     check_sum = check_sum + 1;
@@ -387,7 +387,7 @@ impl Dc {
                         }
                     }
                     ParameterPayload::EqualsString(ref value) => {
-                        match payload[&parameter.name].as_str() {
+                        match payload[&parameter.field_name].as_str() {
                             Some(field_value) => {
                                 if field_value == value {
                                     check_sum = check_sum + 1;
@@ -422,7 +422,7 @@ impl Dc {
             for parameter in parameters {
                 match parameter.payload {
                     ParameterPayload::EqualsI64(value) => {
-                        match payload[&parameter.name].as_i64() {
+                        match payload[&parameter.field_name].as_i64() {
                             Some(field_value) => {
                                 if field_value == value {
                                     check_sum = check_sum + 1;
@@ -432,7 +432,7 @@ impl Dc {
                         }
                     }
                     ParameterPayload::EqualsU64(value) => {
-                        match payload[&parameter.name].as_u64() {
+                        match payload[&parameter.field_name].as_u64() {
                             Some(field_value) => {
                                 if field_value == value {
                                     check_sum = check_sum + 1;
@@ -442,7 +442,7 @@ impl Dc {
                         }
                     }
                     ParameterPayload::LessThanU64(value) => {
-                        match payload[&parameter.name].as_u64() {
+                        match payload[&parameter.field_name].as_u64() {
                             Some(field_value) => {
                                 if field_value < value {
                                     check_sum = check_sum + 1;
@@ -452,7 +452,7 @@ impl Dc {
                         }
                     }
                     ParameterPayload::GreaterThanU64(value) => {
-                        match payload[&parameter.name].as_u64() {
+                        match payload[&parameter.field_name].as_u64() {
                             Some(field_value) => {
                                 if field_value > value {
                                     check_sum = check_sum + 1;
@@ -462,7 +462,7 @@ impl Dc {
                         }
                     }
                     ParameterPayload::EqualsString(ref value) => {
-                        match payload[&parameter.name].as_str() {
+                        match payload[&parameter.field_name].as_str() {
                             Some(field_value) => {
                                 if field_value == value {
                                     check_sum = check_sum + 1;
@@ -497,7 +497,7 @@ impl Dc {
             for parameter in parameters {
                 match parameter.payload {
                     ParameterPayload::EqualsI64(value) => {
-                        match payload[&parameter.name].as_i64() {
+                        match payload[&parameter.field_name].as_i64() {
                             Some(field_value) => {
                                 if field_value == value {
                                     check_sum = check_sum + 1;
@@ -507,7 +507,7 @@ impl Dc {
                         }
                     }
                     ParameterPayload::EqualsU64(value) => {
-                        match payload[&parameter.name].as_u64() {
+                        match payload[&parameter.field_name].as_u64() {
                             Some(field_value) => {
                                 if field_value == value {
                                     check_sum = check_sum + 1;
@@ -517,7 +517,7 @@ impl Dc {
                         }
                     }
                     ParameterPayload::LessThanU64(value) => {
-                        match payload[&parameter.name].as_u64() {
+                        match payload[&parameter.field_name].as_u64() {
                             Some(field_value) => {
                                 if field_value < value {
                                     check_sum = check_sum + 1;
@@ -527,7 +527,7 @@ impl Dc {
                         }
                     }
                     ParameterPayload::GreaterThanU64(value) => {
-                        match payload[&parameter.name].as_u64() {
+                        match payload[&parameter.field_name].as_u64() {
                             Some(field_value) => {
                                 if field_value > value {
                                     check_sum = check_sum + 1;
@@ -537,7 +537,7 @@ impl Dc {
                         }
                     }
                     ParameterPayload::EqualsString(ref value) => {
-                        match payload[&parameter.name].as_str() {
+                        match payload[&parameter.field_name].as_str() {
                             Some(field_value) => {
                                 if field_value == value {
                                     check_sum = check_sum + 1;

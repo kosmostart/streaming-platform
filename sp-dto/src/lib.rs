@@ -933,11 +933,12 @@ pub fn get_payload<T>(msg_meta: &MsgMeta, data: &[u8]) -> Result<T, Error> where
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Parameter {
     pub name: String,
+    pub field_name: String,
     pub payload: ParameterPayload
 }
 
-impl  Parameter {
-    pub fn from_value(name: &str, value: &Value, parameter_type: &ParameterType) -> Parameter {
+impl Parameter {
+    pub fn from_value(name: &str, field_name: &str, value: &Value, parameter_type: &ParameterType) -> Parameter {
         let payload = match parameter_type {
             ParameterType::EqualsI64 => {
                 match value.as_i64() {
@@ -974,6 +975,7 @@ impl  Parameter {
 
         Parameter {
             name: name.to_owned(),
+            field_name: field_name.to_owned(),
             payload: payload.expect("Payload is empty")
         }
     }

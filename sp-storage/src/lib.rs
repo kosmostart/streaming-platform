@@ -115,7 +115,11 @@ impl Dc {
             Ok(()) => Ok(()),
             Err(e) => Err(Error::SledTransactionDc(e))
         }        
-    }    
+    }
+
+    pub fn generate_id(&self) -> Result<u64, Error> {
+        Ok(self.db.generate_id()?)
+    }
 
     pub fn create(&self, mut payload: Value) -> Result<u64, Error> {
         let id = self.db.generate_id()?;
@@ -129,6 +133,34 @@ impl Dc {
         let _ = self.tree.insert(id.to_be_bytes(), &serialize(&convert_value(payload))?[..])?;
     
         Ok(id)
+    }
+
+    pub fn create_with_id(&self, id: u64, mut payload: Value) -> Result<u64, Error> {
+        payload["id"] = json!(id);
+        payload["created_at"] = json!(OffsetDateTime::now_utc());
+        payload["author"] = json!(self.user_id);
+        payload["deactivated_at"] = json!(None as Option<OffsetDateTime>);
+        payload["updated_at"] = json!(None as Option<OffsetDateTime>);
+
+        let _ = self.tree.insert(id.to_be_bytes(), &serialize(&convert_value(payload))?[..])?;
+    
+        Ok(id)
+    }
+
+    pub fn create_with_id_and_payload_return(&self, id: u64, mut payload: Value) -> Result<(u64, Value), Error> {        
+        payload["id"] = json!(id);
+        payload["created_at"] = json!(OffsetDateTime::now_utc());
+        payload["author"] = json!(self.user_id);
+        payload["deactivated_at"] = json!(None as Option<OffsetDateTime>);
+        payload["updated_at"] = json!(None as Option<OffsetDateTime>);
+
+        let converted_payload = convert_value(payload);
+
+        let _ = self.tree.insert(id.to_be_bytes(), &serialize(&converted_payload)?[..])?;
+
+        let res = convert_value2(converted_payload);
+    
+        Ok((id, res))
     }
 
     pub fn create_with_payload_return(&self, mut payload: Value) -> Result<(u64, Value), Error> {
@@ -560,6 +592,38 @@ impl Dc {
 }
 
 impl TxDc<'_> {
+    pub fn generate_id(&self) -> Result<u64, Error> {
+        Ok(self.db.generate_id()?)
+    }
+
+    pub fn create_with_id(&self, id: u64, mut payload: Value) -> Result<u64, Error> {
+        payload["id"] = json!(id);
+        payload["created_at"] = json!(OffsetDateTime::now_utc());
+        payload["author"] = json!(self.user_id);
+        payload["deactivated_at"] = json!(None as Option<OffsetDateTime>);
+        payload["updated_at"] = json!(None as Option<OffsetDateTime>);
+
+        let _ = self.tree.insert(id.to_be_bytes().to_vec(), &serialize(&convert_value(payload))?[..])?;
+    
+        Ok(id)
+    }
+
+    pub fn create_with_id_and_payload_return(&self, id: u64, mut payload: Value) -> Result<(u64, Value), Error> {        
+        payload["id"] = json!(id);
+        payload["created_at"] = json!(OffsetDateTime::now_utc());
+        payload["author"] = json!(self.user_id);
+        payload["deactivated_at"] = json!(None as Option<OffsetDateTime>);
+        payload["updated_at"] = json!(None as Option<OffsetDateTime>);
+
+        let converted_payload = convert_value(payload);
+
+        let _ = self.tree.insert(id.to_be_bytes().to_vec(), &serialize(&converted_payload)?[..])?;
+
+        let res = convert_value2(converted_payload);
+    
+        Ok((id, res))
+    }
+
     pub fn create(&self, mut payload: Value) -> Result<u64, Error> {
         let id = self.db.generate_id()?;
 

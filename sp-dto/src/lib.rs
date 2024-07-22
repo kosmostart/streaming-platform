@@ -940,6 +940,7 @@ pub struct Parameter {
 impl Parameter {
     pub fn from_value(name: &str, field_name: &str, value: &Value, parameter_type: &ParameterType) -> Parameter {
         let payload = match parameter_type {
+            ParameterType::IsNull => Some(ParameterPayload::IsNull),
             ParameterType::EqualsI64 => {
                 match value.as_i64() {
                     Some(data) => Some(ParameterPayload::EqualsI64(data)),
@@ -982,7 +983,8 @@ impl Parameter {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub enum ParameterPayload {    
+pub enum ParameterPayload {
+    IsNull,
 	EqualsI64(i64),
 	EqualsU64(u64),
 	LessThanU64(u64),
@@ -993,6 +995,7 @@ pub enum ParameterPayload {
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum ParameterType {
+    IsNull,
 	EqualsI64,
 	EqualsU64,
 	LessThanU64,

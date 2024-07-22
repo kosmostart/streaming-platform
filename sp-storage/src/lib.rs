@@ -303,6 +303,11 @@ impl Dc {
 
             for parameter in parameters {
                 match parameter.payload {
+                    ParameterPayload::IsNull => {
+                        if payload[&parameter.field_name].is_null() {
+                            check_sum = check_sum + 1;
+                        }
+                    }
                     ParameterPayload::EqualsI64(value) => {
                         match payload[&parameter.field_name].as_i64() {
                             Some(field_value) => {
@@ -378,6 +383,11 @@ impl Dc {
 
             for parameter in parameters {
                 match parameter.payload {
+                    ParameterPayload::IsNull => {
+                        if payload[&parameter.field_name].is_null() {
+                            check_sum = check_sum + 1;
+                        }
+                    }
                     ParameterPayload::EqualsI64(value) => {
                         match payload[&parameter.field_name].as_i64() {
                             Some(field_value) => {
@@ -453,6 +463,11 @@ impl Dc {
 
             for parameter in parameters {
                 match parameter.payload {
+                    ParameterPayload::IsNull => {
+                        if payload[&parameter.field_name].is_null() {
+                            check_sum = check_sum + 1;
+                        }
+                    }
                     ParameterPayload::EqualsI64(value) => {
                         match payload[&parameter.field_name].as_i64() {
                             Some(field_value) => {
@@ -528,6 +543,11 @@ impl Dc {
 
             for parameter in parameters {
                 match parameter.payload {
+                    ParameterPayload::IsNull => {
+                        if payload[&parameter.field_name].is_null() {
+                            check_sum = check_sum + 1;
+                        }
+                    }
                     ParameterPayload::EqualsI64(value) => {
                         match payload[&parameter.field_name].as_i64() {
                             Some(field_value) => {

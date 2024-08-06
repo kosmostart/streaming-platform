@@ -16,6 +16,7 @@ edition = "2021"
 [dependencies]
 
 bytes = "*"
+rkyv = "*"
 serde = "*"
 serde_derive = "*"
 serde_json = "*"
@@ -29,3 +30,8 @@ features = ["serde", "v4"]
 package = "uuid"
 version = "*"
 features = ["serde", "v4", "js"]
+
+[dev-dependencies]
+
+log = "*"
+env_logger = "*"

@@ -3,6 +3,7 @@ pub enum Error {
 	None,
 	ConversionFromSlice(std::array::TryFromSliceError),
 	Custom(String),
+	SerDe(sp_dto::ser_de::Error),
 	Io(std::io::Error),	
 	SerdeJson(serde_json::Error),
 	Sled(sled::Error),
@@ -39,6 +40,12 @@ impl From<std::array::TryFromSliceError> for Error {
 impl From<String> for Error {
 	fn from(e: String) -> Error {
 		Error::Custom(e)
+	}
+}
+
+impl From<sp_dto::ser_de::Error> for Error {
+	fn from(e: sp_dto::ser_de::Error) -> Error {
+		Error::SerDe(e)
 	}
 }
 

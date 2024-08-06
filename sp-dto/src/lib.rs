@@ -6,6 +6,9 @@ use serde_json::{Value, Error};
 use uuid::Uuid;
 pub use bytes;
 pub use uuid;
+pub use rkyv;
+
+pub mod ser_de;
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct CmpSpec {

@@ -2059,6 +2059,9 @@ name = "sp-dto"
 version = "0.1.0"
 dependencies = [
  "bytes",
+ "env_logger",
+ "log",
+ "rkyv",
  "serde",
  "serde_derive",
  "serde_json",
@@ -2084,7 +2087,6 @@ version = "0.1.0"
 dependencies = [
  "env_logger",
  "log",
- "rkyv",
  "serde",
  "serde_derive",
  "serde_json",

@@ -70,7 +70,7 @@ pub fn deserialize_value(buf: &[u8]) -> Result<Value, Error> {
     match archived.deserialize(&mut Infallible) {
         Ok(res) => Ok(res),
         Err(e) => Err(Error::Deserialize)
-    }    
+    }
 }
 
 pub fn convert_value(input: serde_json::Value) -> Value {

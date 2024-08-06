@@ -5,7 +5,7 @@ use time::OffsetDateTime;
 use serde_json::{json, Value};
 use sled::{Db, Tree, transaction::TransactionalTree};
 use sp_dto::{Parameter, ParameterPayload};
-use sp_dto::ser_de::{serialize, deserialize, convert_value, convert_value2};
+use sp_dto::ser_de::{serialize, deserialize_value, convert_value, convert_value2};
 use error::Error;
 pub use sled;
 
@@ -184,7 +184,7 @@ impl Dc {
         for pair in self.tree.iter() {
             let (id, bytes) = pair?;
 
-            let payload = deserialize(&bytes)?;
+            let payload = deserialize_value(&bytes)?;
 
             res.push((u64::from_be_bytes(dog(&id)?), convert_value2(payload)));
         }
@@ -195,7 +195,7 @@ impl Dc {
     pub fn get(&self, id: u64) -> Result<Option<Value>, Error> {
         Ok(match self.tree.get(id.to_be_bytes())? {
             Some(bytes) => {
-                let payload = deserialize(&bytes)?;                
+                let payload = deserialize_value(&bytes)?;                
                 Some(convert_value2(payload))
             }
             None => None
@@ -223,7 +223,7 @@ impl Dc {
         for pair in self.tree.iter() {
             let (id, bytes) = pair?;
 
-            let payload = deserialize(&bytes)?;
+            let payload = deserialize_value(&bytes)?;
             let payload = convert_value2(payload);
 
             if condition(&payload) {
@@ -240,7 +240,7 @@ impl Dc {
         for pair in self.tree.iter() {
             let (id, bytes) = pair?;
 
-            let payload = deserialize(&bytes)?;
+            let payload = deserialize_value(&bytes)?;
             let payload = convert_value2(payload);
 
             if condition(&payload) {
@@ -257,7 +257,7 @@ impl Dc {
         for pair in self.tree.iter() {
             let (id, bytes) = pair?;
 
-            let payload = deserialize(&bytes)?;
+            let payload = deserialize_value(&bytes)?;
             let payload = convert_value2(payload);
 
             if condition(&payload) {
@@ -278,7 +278,7 @@ impl Dc {
         for pair in self.tree.iter() {
             let (_id, bytes) = pair?;
 
-            let payload = deserialize(&bytes)?;
+            let payload = deserialize_value(&bytes)?;
             let payload = convert_value2(payload);
 
             if condition(&payload) {
@@ -293,7 +293,7 @@ impl Dc {
         for pair in self.tree.iter() {
             let (id, bytes) = pair?;            
 
-            let payload = deserialize(&bytes)?;
+            let payload = deserialize_value(&bytes)?;
             let payload = convert_value2(payload);
 
             let mut check_sum = 0;
@@ -373,7 +373,7 @@ impl Dc {
         for pair in self.tree.iter() {
             let (id, bytes) = pair?;
 
-            let payload = deserialize(&bytes)?;
+            let payload = deserialize_value(&bytes)?;
             let payload = convert_value2(payload);
 
             let mut check_sum = 0;
@@ -453,7 +453,7 @@ impl Dc {
         for pair in self.tree.iter() {
             let (id, bytes) = pair?;
 
-            let payload = deserialize(&bytes)?;
+            let payload = deserialize_value(&bytes)?;
             let payload = convert_value2(payload);
 
             let mut check_sum = 0;
@@ -533,7 +533,7 @@ impl Dc {
         for pair in self.tree.iter() {
             let (_id, bytes) = pair?;
 
-            let payload = deserialize(&bytes)?;
+            let payload = deserialize_value(&bytes)?;
             let payload = convert_value2(payload);
 
             let mut check_sum = 0;
@@ -676,7 +676,7 @@ impl TxDc<'_> {
     pub fn get(&self, id: u64) -> Result<Option<Value>, Error> {
         Ok(match self.tree.get(id.to_be_bytes())? {
             Some(bytes) => {
-                let payload = deserialize(&bytes)?;
+                let payload = deserialize_value(&bytes)?;
                 let payload = convert_value2(payload);
                 Some(payload)
             }

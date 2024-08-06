@@ -64,7 +64,7 @@ pub fn serialize<T>(value: &T) -> Result<AlignedVec, Error> where
     Ok(res)
 }
 
-pub fn deserialize(buf: &[u8]) -> Result<Value, Error> {
+pub fn deserialize_value(buf: &[u8]) -> Result<Value, Error> {
     let archived = unsafe { archived_root::<Value>(buf) };
 
     match archived.deserialize(&mut Infallible) {

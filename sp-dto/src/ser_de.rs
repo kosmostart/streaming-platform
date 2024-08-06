@@ -212,7 +212,7 @@ fn full_test() -> Result<(), Error> {
     info!("{:#?}", value);
 
     let buf = serialize(&value)?;
-    let deserialized: Value = deserialize(&buf)?;
+    let deserialized: Value = deserialize_value(&buf)?;
     info!("{:#?}", deserialized);
 
     Ok(())

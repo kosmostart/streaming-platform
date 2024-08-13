@@ -81,7 +81,7 @@ where
                         Some(rpc_tx) => {
                             match rpc_outbound_tx.send(RpcMsg::RpcDataResponse(correlation_id, rpc_tx)) {
                                 Ok(()) => {}
-                                Err(_) => panic!("stream_mode: Rpc outbound tx send failed on rpc data request")
+                                Err(_) => panic!("stream_mode: RPC outbound tx send failed on rpc data request")
                             }
                         }
                         None => error!("stream_mode: not found rpc data for removal, correlation_id {}", correlation_id)
@@ -92,7 +92,7 @@ where
             }
         }
 
-		info!("Rpc loop completed");
+		info!("RPC loop completed");
     });
 
     let mb = MagicBall::new(addr.to_owned(), write_tx, rpc_inbound_tx);
@@ -171,7 +171,7 @@ where
         let mut rpcs = HashMap::new();        
 
         loop {
-            let msg = rpc_inbound_rx.recv().await.expect("Rpc inbound msg receive failed");
+            let msg = rpc_inbound_rx.recv().await.expect("RPC inbound msg receive failed");
 
             match msg {
                 RpcMsg::AddRpc(correlation_id, rpc_tx) => {
@@ -196,7 +196,7 @@ where
             }
         }
 
-		info!("Rpc loop completed");
+		info!("RPC loop completed");
     });
 
     tokio::spawn(async move {		
@@ -289,9 +289,9 @@ where
                                 Ok(()) => {
                                     debug!("Client RpcDataRequest send succeeded {}", msg_meta.display());
                                 }
-                                Err(_) => panic!("Rpc inbound tx2 msg send failed on rpc response")
+                                Err(_) => panic!("RPC inbound tx2 msg send failed on rpc response")
                             }
-                            let msg = rpc_outbound_rx.recv().await.expect("Rpc outbound msg receive failed");                            
+                            let msg = rpc_outbound_rx.recv().await.expect("RPC outbound msg receive failed");                            
 
                             match msg {
                                 RpcMsg::RpcDataResponse(received_correlation_id, rpc_tx) => {
@@ -687,7 +687,7 @@ pub async fn cfg_mode(cfg_host: String, cfg_domain: String, cfg_token: String, r
         let mut rpcs = HashMap::new();        
 
         loop {
-            let msg = rpc_inbound_rx.recv().await.expect("Rpc inbound msg receive failed");
+            let msg = rpc_inbound_rx.recv().await.expect("RPC inbound msg receive failed");
 
             match msg {
                 RpcMsg::AddRpc(correlation_id, rpc_tx) => {
@@ -700,7 +700,7 @@ pub async fn cfg_mode(cfg_host: String, cfg_domain: String, cfg_token: String, r
                         Some(rpc_tx) => {
                             match rpc_outbound_tx.send(RpcMsg::RpcDataResponse(correlation_id, rpc_tx)) {
                                 Ok(()) => {}
-                                Err(_) => panic!("cfg_mode: Rpc outbound tx send failed on rpc data request")
+                                Err(_) => panic!("cfg_mode: RPC outbound tx send failed on rpc data request")
                             }
                         }
                         None => error!("cfg_mode: not found rpc data for removal, correlation_id {}", correlation_id)
@@ -711,7 +711,7 @@ pub async fn cfg_mode(cfg_host: String, cfg_domain: String, cfg_token: String, r
             }
         }
 
-		info!("Rpc loop completed");
+		info!("RPC loop completed");
     });
 
     let addr = uuid::Uuid::new_v4().to_string();

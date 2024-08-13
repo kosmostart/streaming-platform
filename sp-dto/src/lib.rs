@@ -56,7 +56,7 @@ pub enum Participator {
 pub enum RouteSpec {
     /// No rpc reponse receiver overwrite will happen
     Simple,
-    /// Rpc reponse receiver overwrite will happen
+    /// RPC reponse receiver overwrite will happen
     Client(Participator)
 }
 

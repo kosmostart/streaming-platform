@@ -310,12 +310,12 @@ pub async fn start_future(config: ServerConfig, mut event_subscribes: Vec<Subscr
                                     info!("Done");
                                 }
                                 None => {
-                                    error!("Rpc subscribe not found by key hash in hashed for remove from settings, {:?}, addr_hash {}, key_hash {}", subscribe, addr_hash, key_hash);
+                                    error!("RPC subscribe not found by key hash in hashed for remove from settings, {:?}, addr_hash {}, key_hash {}", subscribe, addr_hash, key_hash);
                                 }
                             }
                         }
                         None => {
-                            error!("Rpc subscribe not found for remove from settings, {:?}, addr_hash {}, key_hash {}", subscribe, addr_hash, key_hash);
+                            error!("RPC subscribe not found for remove from settings, {:?}, addr_hash {}, key_hash {}", subscribe, addr_hash, key_hash);
                         }
                     };
                 }
@@ -789,7 +789,7 @@ async fn process_write_tcp_stream(addr: String, addr_hash: u64, tcp_stream: &mut
                                                         }
                                                     }
                                                     None => {
-                                                        error!("Rpc subscribe not found by key hash in hashed for remove from settings, {:?}, addr_hash {}, key_hash {}", subscribe, subscribe_addr_hash, subscribe_key_hash);
+                                                        error!("RPC subscribe not found by key hash in hashed for remove from settings, {:?}, addr_hash {}, key_hash {}", subscribe, subscribe_addr_hash, subscribe_key_hash);
                                                     }
                                                 }
 

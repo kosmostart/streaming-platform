@@ -22,7 +22,7 @@ pub enum Request {
     Auth(String),
     SetSubscribes(Subscribes),
     Msg(MsgMeta, Value),
-    Rpc(String, Uuid, Vec<u8>),
+    RPC(String, Uuid, Vec<u8>),
     PostStringRpc(String, Uuid, String),
     PostBinaryRpc(String, Uuid, Vec<u8>),
     GetStringRpc(String, Uuid),
@@ -213,7 +213,7 @@ impl Agent for Worker {
                     None => ConsoleService::log(&format!("No subscribes found for key {:#?}, {}, {:?}", msg_meta.key, msg_meta.tx, msg_meta.route.source))
                 }                
             }
-            Request::Rpc(url, correlation_id, data) => {
+            Request::RPC(url, correlation_id, data) => {
                 match self.clients.iter().find(|(_, x)| **x == who) {
                     Some((addr, _)) => {
 
@@ -390,7 +390,7 @@ impl Hub {
         };
         let (correlation_id, dto) = rpc_dto(self.spec.addr.clone(), key.to_owned(), payload, route, self.cfg.auth_token.clone(), self.cfg.auth_data.clone()).expect("failed to create rpc dto with correlation id on server rpc");
         let url = self.cfg.fetch_url.clone().expect("fetch host is empty on server rpc");
-        self.hub.send(Request::Rpc(url, correlation_id, dto));
+        self.hub.send(Request::RPC(url, correlation_id, dto));
     }
     /// Sends rpc request to the server, but result will forwarded to component with client_addr
     pub fn rpc_with_client(&mut self, key: Key, payload: Value, client_addr: String) {
@@ -401,7 +401,7 @@ impl Hub {
         };
         let (correlation_id, dto) = rpc_dto(self.spec.addr.clone(), key.to_owned(), payload, route, self.cfg.auth_token.clone(), self.cfg.auth_data.clone()).expect("failed to create rpc dto with correlation id on server rpc");
         let host = self.cfg.fetch_url.clone().expect("fetch host is empty on server rpc");
-        self.hub.send(Request::Rpc(host, correlation_id, dto));
+        self.hub.send(Request::RPC(host, correlation_id, dto));
     }    
     /// Sends rpc request to the server, iserting url segment to the resulting url.
     pub fn rpc_with_segment(&mut self, segment: &str,  key: Key, payload: Value) {
@@ -412,7 +412,7 @@ impl Hub {
         };
         let (correlation_id, dto) = rpc_dto(self.spec.addr.clone(), key.to_owned(), payload, route, self.cfg.auth_token.clone(), self.cfg.auth_data.clone()).expect("failed to create rpc dto with correlation id on server rpc");
         let url = self.cfg.host.clone().expect("fetch host is empty on server rpc") + "/" + segment + "/";
-        self.hub.send(Request::Rpc(url, correlation_id, dto));
+        self.hub.send(Request::RPC(url, correlation_id, dto));
     }
     /// Sends message marked as event to other component.
     pub fn send_event_local(&mut self, key: Key, payload: Value) {

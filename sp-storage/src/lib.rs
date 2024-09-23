@@ -5,7 +5,8 @@ use time::OffsetDateTime;
 use serde_json::{json, Value};
 use sled::{Db, Tree, transaction::TransactionalTree};
 use sp_dto::{Parameter, ParameterPayload};
-use sp_dto::ser_de::{serialize, deserialize_value, convert_value, convert_value2};
+use sp_dto::ser_de::{deserialize_value, convert_value, convert_value2};
+use sp_dto::rkyv;
 use error::Error;
 pub use sled;
 
@@ -127,7 +128,7 @@ impl Dc {
         payload["deactivated_at"] = json!(None as Option<OffsetDateTime>);
         payload["updated_at"] = json!(None as Option<OffsetDateTime>);
 
-        let _ = self.tree.insert(id.to_be_bytes(), &serialize(&convert_value(payload))?[..])?;
+        let _ = self.tree.insert(id.to_be_bytes(), &rkyv::to_bytes::<rkyv::rancor::Error>(&convert_value(payload))?[..])?;
     
         Ok(id)
     }
@@ -139,7 +140,7 @@ impl Dc {
         payload["deactivated_at"] = json!(None as Option<OffsetDateTime>);
         payload["updated_at"] = json!(None as Option<OffsetDateTime>);
 
-        let _ = self.tree.insert(id.to_be_bytes(), &serialize(&convert_value(payload))?[..])?;
+        let _ = self.tree.insert(id.to_be_bytes(), &rkyv::to_bytes::<rkyv::rancor::Error>(&convert_value(payload))?[..])?;
     
         Ok(id)
     }
@@ -153,7 +154,7 @@ impl Dc {
 
         let converted_payload = convert_value(payload);
 
-        let _ = self.tree.insert(id.to_be_bytes(), &serialize(&converted_payload)?[..])?;
+        let _ = self.tree.insert(id.to_be_bytes(), &rkyv::to_bytes::<rkyv::rancor::Error>(&converted_payload)?[..])?;
 
         let res = convert_value2(converted_payload);
     
@@ -171,7 +172,7 @@ impl Dc {
 
         let converted_payload = convert_value(payload);
 
-        let _ = self.tree.insert(id.to_be_bytes(), &serialize(&converted_payload)?[..])?;
+        let _ = self.tree.insert(id.to_be_bytes(), &rkyv::to_bytes::<rkyv::rancor::Error>(&converted_payload)?[..])?;
 
         let res = convert_value2(converted_payload);
     
@@ -206,7 +207,7 @@ impl Dc {
         let id_bytes = id.to_be_bytes();
 
         payload["updated_at"] = json!(OffsetDateTime::now_utc());
-        self.tree.insert(id_bytes.to_vec(), &serialize(&convert_value(payload))?[..])?;
+        self.tree.insert(id_bytes.to_vec(), &rkyv::to_bytes::<rkyv::rancor::Error>(&convert_value(payload))?[..])?;
         
         Ok(id)
     }
@@ -620,7 +621,7 @@ impl TxDc<'_> {
         payload["deactivated_at"] = json!(None as Option<OffsetDateTime>);
         payload["updated_at"] = json!(None as Option<OffsetDateTime>);
 
-        let _ = self.tree.insert(id.to_be_bytes().to_vec(), &serialize(&convert_value(payload))?[..])?;
+        let _ = self.tree.insert(id.to_be_bytes().to_vec(), &rkyv::to_bytes::<rkyv::rancor::Error>(&convert_value(payload))?[..])?;
     
         Ok(id)
     }
@@ -634,7 +635,7 @@ impl TxDc<'_> {
 
         let converted_payload = convert_value(payload);
 
-        let _ = self.tree.insert(id.to_be_bytes().to_vec(), &serialize(&converted_payload)?[..])?;
+        let _ = self.tree.insert(id.to_be_bytes().to_vec(), &rkyv::to_bytes::<rkyv::rancor::Error>(&converted_payload)?[..])?;
 
         let res = convert_value2(converted_payload);
     
@@ -650,7 +651,7 @@ impl TxDc<'_> {
         payload["deactivated_at"] = json!(None as Option<OffsetDateTime>);
         payload["updated_at"] = json!(None as Option<OffsetDateTime>);
 
-        let _ = self.tree.insert(id.to_be_bytes().to_vec(), &serialize(&convert_value(payload))?[..])?;
+        let _ = self.tree.insert(id.to_be_bytes().to_vec(), &rkyv::to_bytes::<rkyv::rancor::Error>(&convert_value(payload))?[..])?;
     
         Ok(id)
     }
@@ -666,7 +667,7 @@ impl TxDc<'_> {
 
         let converted_payload = convert_value(payload);
 
-        let _ = self.tree.insert(id.to_be_bytes().to_vec(), &serialize(&converted_payload)?[..])?;
+        let _ = self.tree.insert(id.to_be_bytes().to_vec(), &rkyv::to_bytes::<rkyv::rancor::Error>(&converted_payload)?[..])?;
 
         let res = convert_value2(converted_payload);
     
@@ -688,7 +689,7 @@ impl TxDc<'_> {
         let id_bytes = id.to_be_bytes();        
 
         payload["updated_at"] = json!(OffsetDateTime::now_utc());
-        self.tree.insert(id_bytes.to_vec(), &serialize(&convert_value(payload))?[..])?;
+        self.tree.insert(id_bytes.to_vec(), &rkyv::to_bytes::<rkyv::rancor::Error>(&convert_value(payload))?[..])?;
     
         Ok(id)
     }

@@ -38,7 +38,7 @@ fn main() {
     for (id, process) in system.processes() {
         //info!("{}:{} status: {:?}", pid, proc_.name(), proc_.status());
 
-        running.push((id.as_u32() as usize, process.name().to_owned()));
+        running.push((id.as_u32() as usize, process.name().to_str().expect("Failed to get process name").to_owned()));
     }
 
     info!("Processes running: {}", running.len());

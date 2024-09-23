@@ -1,48 +1,56 @@
 use std::collections::HashMap;
 use serde_json::json;
-use rkyv::{
-	AlignedVec, Archive, Deserialize, Fallible, Infallible, Serialize, archived_root,
-	ser::{
-		serializers::{AllocSerializer, CompositeSerializerError, AllocScratchError, SharedSerializeMapError}, Serializer
-	}
-};
+use rkyv::{access, ser::{allocator::ArenaHandle, sharing::Share}, util::AlignedVec, Archive, Deserialize, Portable, Serialize};
 
 pub const POSITION_LEN: usize = 8;
 
-#[derive(Debug, Archive)]
+#[derive(Archive, Debug, Deserialize, Serialize)]
+// We have a recursive type, which requires some special handling
+//
+// First the compiler will return an error:
+//
+// > error[E0275]: overflow evaluating the requirement `HashMap<String,
+// > JsonValue>: Archive`
+//
+// This is because the implementation of Archive for Json value requires that
+// JsonValue: Archive, which is recursive!
+// We can fix this by adding #[omit_bounds] on the recursive fields. This will
+// prevent the derive from automatically adding a `HashMap<String, JsonValue>:
+// Archive` bound on the generated impl.
+//
+// Next, the compiler will return these errors:
+//
+// > error[E0277]: the trait bound `__S: ScratchSpace` is not satisfied
+// > error[E0277]: the trait bound `__S: Serializer` is not satisfied
+//
+// This is because those bounds are required by HashMap and Vec, but we removed
+// the default generated bounds to prevent a recursive impl.
+// We can fix this by manually specifying the bounds required by HashMap and Vec
+// in an attribute, and then everything will compile:
+#[rkyv(serialize_bounds(
+    __S: rkyv::ser::Writer + rkyv::ser::Allocator,
+    __S::Error: rkyv::rancor::Source,
+))]
+#[rkyv(deserialize_bounds(__D::Error: rkyv::rancor::Source))]
+// We need to manually add the appropriate non-recursive bounds to our
+// `CheckBytes` derive. In our case, we need to bound
+// `__C: rkyv::validation::ArchiveContext`. This will make sure that our `Vec`
+// and `HashMap` have the `ArchiveContext` trait implemented on the validator.
+// This is a necessary requirement for containers to check their bytes.
+//
+// With those two changes, our recursive type can be validated with `access`!
+#[rkyv(bytecheck(
+    bounds(
+        __C: rkyv::validation::ArchiveContext,
+    )
+))]
 pub enum Value {
     Null,
     Bool(bool),
     Number(Number),
     String(String),
-    Array(#[omit_bounds] Vec<Value>),
-    Object(#[omit_bounds] HashMap<String, Value>)
-}
-
-impl Serialize<AllocSerializer<1024>> for Value {
-    fn serialize(&self, serializer: &mut AllocSerializer<1024>) -> Result<Self::Resolver, CompositeSerializerError<std::convert::Infallible, AllocScratchError, SharedSerializeMapError>> {
-        Ok(match self {
-            Value::Null => ValueResolver::Null,
-            Value::Bool(b) => ValueResolver::Bool(b.serialize(serializer)?),
-            Value::Number(n) => ValueResolver::Number(n.serialize(serializer)?),
-            Value::String(s) => ValueResolver::String(s.serialize(serializer)?),
-            Value::Array(a) => ValueResolver::Array(a.serialize(serializer)?),
-            Value::Object(m) => ValueResolver::Object(m.serialize(serializer)?)
-        })
-    }
-}
-
-impl<D: Fallible + ?Sized> Deserialize<Value, D> for ArchivedValue {
-    fn deserialize(&self, deserializer: &mut D) -> Result<Value, D::Error> {
-        Ok(match self {
-            ArchivedValue::Null => Value::Null,
-            ArchivedValue::Bool(b) => Value::Bool(b.deserialize(deserializer)?),
-            ArchivedValue::Number(n) => Value::Number(n.deserialize(deserializer)?),
-            ArchivedValue::String(s) => Value::String(s.deserialize(deserializer)?),
-            ArchivedValue::Array(a) => Value::Array(a.deserialize(deserializer)?),
-            ArchivedValue::Object(m) => Value::Object(m.deserialize(deserializer)?)
-        })
-    }
+    Array(#[rkyv(omit_bounds)] Vec<Value>),
+    Object(#[rkyv(omit_bounds)] HashMap<String, Value>)
 }
 
 #[derive(Debug, Archive, Deserialize, Serialize)]
@@ -52,24 +60,12 @@ pub enum Number {
     Float(f64),
 }
 
-pub fn serialize<T>(value: &T) -> Result<AlignedVec, Error> where 
-    T: rkyv::Serialize<rkyv::ser::serializers::CompositeSerializer<rkyv::ser::serializers::AlignedSerializer<rkyv::AlignedVec>, 
-    rkyv::ser::serializers::FallbackScratch<rkyv::ser::serializers::HeapScratch<1024>, 
-    rkyv::ser::serializers::AllocScratch>, rkyv::ser::serializers::SharedSerializeMap>>
-{
-    let mut serializer = AllocSerializer::<1024>::default();
-    let _ = serializer.serialize_value(value)?;
-    let res = serializer.into_serializer().into_inner();
-
-    Ok(res)
-}
-
 pub fn deserialize_value(buf: &[u8]) -> Result<Value, Error> {
-    let archived = unsafe { archived_root::<Value>(buf) };
+    let archived = unsafe { rkyv::access_unchecked::<ArchivedValue>(buf) };
 
-    match archived.deserialize(&mut Infallible) {
+    match rkyv::deserialize::<Value, rkyv::rancor::Error>(archived) {
         Ok(res) => Ok(res),
-        Err(e) => Err(Error::Deserialize)
+        Err(e) => Err(Error::Rkyv(e))
     }
 }
 
@@ -150,9 +146,8 @@ pub fn convert_value2(input: Value) -> serde_json::Value {
 #[derive(Debug)]
 pub enum Error {
 	None,	
-	Custom(String),
-    Serialize(CompositeSerializerError<std::convert::Infallible, AllocScratchError, SharedSerializeMapError>),
-    Deserialize
+	Custom(String),    
+    Rkyv(rkyv::rancor::Error)
 }
 
 impl Error {
@@ -179,9 +174,9 @@ impl From<String> for Error {
 	}
 }
 
-impl From<CompositeSerializerError<std::convert::Infallible, AllocScratchError, SharedSerializeMapError>> for Error {
-	fn from(e: CompositeSerializerError<std::convert::Infallible, AllocScratchError, SharedSerializeMapError>) -> Error {
-		Error::Serialize(e)
+impl From<rkyv::rancor::Error> for Error {
+	fn from(e: rkyv::rancor::Error) -> Error {
+		Error::Rkyv(e)
 	}
 }
 
@@ -211,7 +206,7 @@ fn full_test() -> Result<(), Error> {
 
     info!("{:#?}", value);
 
-    let buf = serialize(&value)?;
+    let buf = rkyv::to_bytes::<rkyv::rancor::Error>(&value)?;
     let deserialized: Value = deserialize_value(&buf)?;
     info!("{:#?}", deserialized);
 

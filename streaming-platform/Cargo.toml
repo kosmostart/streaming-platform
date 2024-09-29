@@ -26,6 +26,7 @@ serde = "*"
 serde_derive = "*"
 serde_json = "*"
 tokio = { version = "*", features = ["full"] }
+rustls = "*"
 hyper = { version = "0.14.27", optional = true }
 sp-dto = { path = "../sp-dto" }
 

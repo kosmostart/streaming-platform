@@ -283,7 +283,7 @@ pub async fn startup(initial_config: Value, mut target_config: Value, mut mb: Ma
                     crate::downstream::go(aca_origin, auth_token_key, cookie_header, restream_tx)
                 }
             )
-        )        
+        )
     ;
 
     if cert_path.is_some() && key_path.is_some() {
